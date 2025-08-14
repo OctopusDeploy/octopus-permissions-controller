@@ -1,0 +1,18 @@
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-resource
+  namespace: default
+spec:
+  scope:
+    projects:
+      - Liam
+    environments:
+      - Development
+    steps:
+      - "*"
+  permissions:
+    clusterRoles:
+      - apiGroup: "rbac.authorization.k8s.io"
+        kind: "ClusterRole"
+        name: "test-cluster-role"
