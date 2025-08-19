@@ -37,7 +37,7 @@ const namespace = "octopus-permissions-controller-system"
 const serviceAccountName = "octopus-permissions-controller-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "octopus-permissions-controller-controller-manager-metrics-service"
+const metricsServiceName = "octopus-permissions-controller-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "octopus-permissions-controller-metrics-binding"
