@@ -94,9 +94,9 @@ func (v *WorkloadServiceAccountCustomValidator) ValidateCreate(_ context.Context
 	}
 	workloadserviceaccountlog.Info("Validation for WorkloadServiceAccount upon creation", "name", workloadserviceaccount.GetName())
 
-	if len(workloadserviceaccount.Spec.Scope.Projects) == 0 &&
-		len(workloadserviceaccount.Spec.Scope.Environments) == 0 {
-		return nil, fmt.Errorf("at least one of 'projects' or 'environments' must be specified in the scope")
+	scope := workloadserviceaccount.Spec.Scope
+	if len(scope.Projects)+len(scope.Environments)+len(scope.Tenants)+len(scope.Steps) == 0 {
+		return nil, fmt.Errorf("at least one scope must be defined (projects, environments, tenants, or steps)")
 	}
 
 	return nil, nil
