@@ -37,38 +37,11 @@ var workloadserviceaccountlog = logf.Log.WithName("workloadserviceaccount-resour
 func SetupWorkloadServiceAccountWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&agentoctopuscomv1beta1.WorkloadServiceAccount{}).
 		WithValidator(&WorkloadServiceAccountCustomValidator{}).
-		WithDefaulter(&WorkloadServiceAccountCustomDefaulter{}).
 		Complete()
 }
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-// +kubebuilder:webhook:path=/mutate-agent-octopus-com-v1beta1-workloadserviceaccount,mutating=true,failurePolicy=fail,sideEffects=None,groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=create;update,versions=v1beta1,name=mworkloadserviceaccount-v1beta1.kb.io,admissionReviewVersions=v1
-
-// WorkloadServiceAccountCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind WorkloadServiceAccount when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
-type WorkloadServiceAccountCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
-}
-
-var _ webhook.CustomDefaulter = &WorkloadServiceAccountCustomDefaulter{}
-
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind WorkloadServiceAccount.
-func (d *WorkloadServiceAccountCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	workloadserviceaccount, ok := obj.(*agentoctopuscomv1beta1.WorkloadServiceAccount)
-
-	if !ok {
-		return fmt.Errorf("expected an WorkloadServiceAccount object but got %T", obj)
-	}
-	workloadserviceaccountlog.Info("Defaulting for WorkloadServiceAccount", "name", workloadserviceaccount.GetName())
-
-	// TODO(user): fill in your defaulting logic.
-
-	return nil
-}
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
