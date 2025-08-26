@@ -17,4 +17,8 @@ resources:
   kind: WorkloadServiceAccount
   path: github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1
   version: v1beta1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"
