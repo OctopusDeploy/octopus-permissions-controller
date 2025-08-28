@@ -283,6 +283,50 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
+		It("should list WSAs when creating a resource", func() {
+			By("creating a WorkloadServiceAccount resource")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create WSA resource")
+
+			By("waiting for reconciliation to process the WSA")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Found WSAs in namespace"))
+				g.Expect(output).To(ContainSubstring("WSA has project scope"))
+				g.Expect(output).NotTo(ContainSubstring("failed to list WorkloadServiceAccounts"))
+			}).Should(Succeed())
+
+			By("cleaning up the WSA resource")
+			cmd = exec.Command("kubectl", "delete", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should list WSAs when deleting a resource", func() {
+			By("creating a WorkloadServiceAccount resource")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create WSA resource")
+
+			By("waiting for initial reconciliation")
+			time.Sleep(2 * time.Second)
+
+			By("deleting the WorkloadServiceAccount resource")
+			cmd = exec.Command("kubectl", "delete", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete WSA resource")
+
+			By("verifying reconciliation handles deletion without listing errors")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace, "--tail=50")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).NotTo(ContainSubstring("failed to list WorkloadServiceAccounts"))
+			}).Should(Succeed())
+		})
+
 		// TODO: Customize the e2e test suite with scenarios specific to your project.
 		// Consider applying sample/CR(s) and check their status and/or verifying
 		// the reconciliation by using the metrics, i.e.:
