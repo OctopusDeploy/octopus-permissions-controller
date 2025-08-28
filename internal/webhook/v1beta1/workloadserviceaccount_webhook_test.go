@@ -17,11 +17,12 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("WorkloadServiceAccount Webhook", func() {
@@ -29,16 +30,17 @@ var _ = Describe("WorkloadServiceAccount Webhook", func() {
 		obj       *agentoctopuscomv1beta1.WorkloadServiceAccount
 		oldObj    *agentoctopuscomv1beta1.WorkloadServiceAccount
 		validator WorkloadServiceAccountCustomValidator
+		ctx       context.Context
 	)
 
 	BeforeEach(func() {
 		obj = &agentoctopuscomv1beta1.WorkloadServiceAccount{}
 		oldObj = &agentoctopuscomv1beta1.WorkloadServiceAccount{}
 		validator = WorkloadServiceAccountCustomValidator{}
+		ctx = context.Background()
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
 	})
 
 	AfterEach(func() {
@@ -46,26 +48,27 @@ var _ = Describe("WorkloadServiceAccount Webhook", func() {
 	})
 
 	Context("When creating or updating WorkloadServiceAccount under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		It("Should allow creation with valid scope", func() {
+			By("setting up a WorkloadServiceAccount with project scope")
+			obj.Spec.Scope.Projects = []string{"web-app", "api-service"}
+
+			By("validating the creation")
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeNil())
+		})
+
+		It("Should deny creation if all scopes are missing", func() {
+			By("setting up a WorkloadServiceAccount with no scopes")
+			obj.Spec.Scope = agentoctopuscomv1beta1.WorkloadServiceAccountScope{}
+
+			By("validating the creation should fail")
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("at least one scope must be defined"))
+			Expect(warnings).To(BeNil())
+		})
+
 	})
 
 })

@@ -45,10 +45,10 @@ func SetupWorkloadServiceAccountWebhookWithManager(mgr ctrl.Manager) error {
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
 // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-// +kubebuilder:webhook:path=/validate-agent-octopus-com-v1beta1-workloadserviceaccount,mutating=false,failurePolicy=fail,sideEffects=None,groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=create;update,versions=v1beta1,name=vworkloadserviceaccount-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-agent-octopus-com-v1beta1-workloadserviceaccount,mutating=false,failurePolicy=fail,sideEffects=None,groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=create,versions=v1beta1,name=vworkloadserviceaccount-v1beta1.kb.io,admissionReviewVersions=v1
 
 // WorkloadServiceAccountCustomValidator struct is responsible for validating the WorkloadServiceAccount resource
-// when it is created, updated, or deleted.
+// when it is created.
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
@@ -74,28 +74,12 @@ func (v *WorkloadServiceAccountCustomValidator) ValidateCreate(_ context.Context
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type WorkloadServiceAccount.
-func (v *WorkloadServiceAccountCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	workloadserviceaccount, ok := newObj.(*agentoctopuscomv1beta1.WorkloadServiceAccount)
-	if !ok {
-		return nil, fmt.Errorf("expected a WorkloadServiceAccount object for the newObj but got %T", newObj)
-	}
-	workloadserviceaccountlog.Info("Validation for WorkloadServiceAccount upon update", "name", workloadserviceaccount.GetName())
-
-	// TODO(user): fill in your validation logic upon object update.
-
+// ValidateUpdate implements webhook.CustomValidator but is not used since webhook only handles create operations.
+func (v *WorkloadServiceAccountCustomValidator) ValidateUpdate(_ context.Context, _, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type WorkloadServiceAccount.
-func (v *WorkloadServiceAccountCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	workloadserviceaccount, ok := obj.(*agentoctopuscomv1beta1.WorkloadServiceAccount)
-	if !ok {
-		return nil, fmt.Errorf("expected a WorkloadServiceAccount object but got %T", obj)
-	}
-	workloadserviceaccountlog.Info("Validation for WorkloadServiceAccount upon deletion", "name", workloadserviceaccount.GetName())
-
-	// TODO(user): fill in your validation logic upon object deletion.
-
+// ValidateDelete implements webhook.CustomValidator but is not used since webhook only handles create operations.
+func (v *WorkloadServiceAccountCustomValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

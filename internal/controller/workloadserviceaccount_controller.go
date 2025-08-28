@@ -39,38 +39,35 @@ type WorkloadServiceAccountReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the WorkloadServiceAccount object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var wsa agentoctopuscomv1beta1.WorkloadServiceAccount
-	if err := r.Get(ctx, req.NamespacedName, &wsa); err != nil {
-		log.Error(err, "unable to fetch WorkloadServiceAccount")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+	log.Info("WorkloadServiceAccount reconciliation triggered")
+
+	wsaList := &agentoctopuscomv1beta1.WorkloadServiceAccountList{}
+	if err := r.List(ctx, wsaList, client.InNamespace(req.Namespace)); err != nil {
+		log.Error(err, "failed to list WorkloadServiceAccounts")
+		return ctrl.Result{}, err
 	}
 
-	for _, project := range wsa.Spec.Scope.Projects {
-		log.Info("We have a project scope", "project", project)
+	log.Info("Found WSAs in namespace", "count", len(wsaList.Items))
+
+	for _, currentWSA := range wsaList.Items {
+		for _, project := range currentWSA.Spec.Scope.Projects {
+			log.Info("WSA has project scope", "wsa", currentWSA.Name, "project", project)
+		}
+		for _, environment := range currentWSA.Spec.Scope.Environments {
+			log.Info("WSA has environment scope", "wsa", currentWSA.Name, "environment", environment)
+		}
+		for _, tenant := range currentWSA.Spec.Scope.Tenants {
+			log.Info("WSA has tenant scope", "wsa", currentWSA.Name, "tenant", tenant)
+		}
+		for _, step := range currentWSA.Spec.Scope.Steps {
+			log.Info("WSA has step scope", "wsa", currentWSA.Name, "step", step)
+		}
 	}
 
-	for _, environment := range wsa.Spec.Scope.Environments {
-		log.Info("We have an environment scope", "project", environment)
-	}
-
-	for _, tenant := range wsa.Spec.Scope.Tenants {
-		log.Info("We have a tenant scope", "tenant", tenant)
-	}
-
-	for _, step := range wsa.Spec.Scope.Steps {
-		log.Info("We have a step scope", "step", step)
-	}
-
+	log.Info("Successfully reconciled WorkloadServiceAccounts")
 	return ctrl.Result{}, nil
 }
 

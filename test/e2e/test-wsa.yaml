@@ -1,0 +1,13 @@
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa
+spec:
+  scope:
+    projects: ["test-project"]
+    environments: ["test-env"]
+  permissions:
+    permissions:
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list"]
