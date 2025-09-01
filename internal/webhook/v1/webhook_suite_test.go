@@ -26,10 +26,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -46,12 +47,34 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	ctx       context.Context
-	cancel    context.CancelFunc
-	k8sClient client.Client
-	cfg       *rest.Config
-	testEnv   *envtest.Environment
+	ctx        context.Context
+	cancel     context.CancelFunc
+	k8sClient  client.Client
+	cfg        *rest.Config
+	testEnv    *envtest.Environment
+	mockEngine *MockEngine
 )
+
+type MockEngine struct {
+	mock.Mock
+}
+
+func (m *MockEngine) GetServiceAccountForScope(
+	scope rules.Scope, agentName rules.AgentName,
+) (rules.ServiceAccountName, error) {
+	args := m.Called(scope, agentName)
+	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
+}
+
+func (m *MockEngine) AddScopeRuleset(scope rules.Scope, rule rules.Rule, targetNamespace rules.Namespace) error {
+	args := m.Called(scope, rule, targetNamespace)
+	return args.Error(0)
+}
+
+func (m *MockEngine) RemoveScopeRuleset(scope rules.Scope, rule rules.Rule, targetNamespace rules.Namespace) error {
+	args := m.Called(scope, rule, targetNamespace)
+	return args.Error(0)
+}
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -110,7 +133,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = SetupPodWebhookWithManager(mgr)
+	mockEngine = &MockEngine{}
+	err = SetupPodWebhookWithManager(mgr, mockEngine)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:webhook
@@ -163,46 +187,3 @@ func getFirstFoundEnvTestBinaryDir() string {
 	}
 	return ""
 }
-
-var _ = Describe("Pod Webhook", func() {
-
-	const (
-		timeout  = time.Second * 10
-		duration = time.Second * 10
-		interval = time.Millisecond * 250
-	)
-
-	Context("When label is set", func() {
-		It("Should inject a service account", func() {
-			By("By creating a pod")
-			pod := &corev1.Pod{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Pod",
-					APIVersion: "v1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod",
-					Namespace: "default",
-					Labels: map[string]string{
-						EnabledLabelKey: "true",
-					},
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx:1.7.9",
-						},
-					},
-					ServiceAccountName: "want-to-override",
-				},
-				Status: corev1.PodStatus{},
-			}
-			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
-
-			var actualPod corev1.Pod
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
-			Expect(actualPod.Spec.ServiceAccountName).To(Equal("overridden"))
-		})
-	})
-})

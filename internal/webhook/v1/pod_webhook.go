@@ -29,7 +29,11 @@ import (
 )
 
 const (
-	EnabledLabelKey = "agent.octopus.com/permissions-enabled"
+	EnabledLabelKey          = "agent.octopus.com/permissions-enabled"
+	ProjectAnnotationKey     = "agent.octopus.com/project"
+	EnvironmentAnnotationKey = "agent.octopus.com/environment"
+	TenantAnnotationKey      = "agent.octopus.com/tenant"
+	StepAnnotationKey        = "agent.octopus.com/step"
 )
 
 // nolint:unused
@@ -37,7 +41,7 @@ const (
 var podlog = logf.Log.WithName("pod-resource")
 
 // SetupPodWebhookWithManager registers the webhook for Pod in the manager.
-func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
+func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&corev1.Pod{}).
 		WithDefaulter(&PodCustomDefaulter{
 			engine,
@@ -61,15 +65,6 @@ var _ webhook.CustomDefaulter = &PodCustomDefaulter{}
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pod.
 func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	pod, ok := obj.(*corev1.Pod)
-
-	scope := rules.Scope{
-		Project:     "",
-		Environment: "",
-		Tenant:      "",
-		Step:        "",
-	}
-	sa, err := d.engine.GetServiceAccountForScope(scope)
-
 	if !ok {
 		return fmt.Errorf("expected an Pod object but got %T", obj)
 	}
@@ -81,9 +76,14 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 
 	podlog.Info("Setting service account name for pod", "name", pod.GetName())
 
-	pod.Spec.ServiceAccountName = "overridden"
+	scope := getPodScope(pod)
+	agent := getPodControllingAgentName(pod)
 
-	return nil
+	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope, agent)
+	if err == nil && serviceAccountName != "" {
+		pod.Spec.ServiceAccountName = string(serviceAccountName)
+	}
+	return err
 }
 
 func (d *PodCustomDefaulter) shouldRunOnPod(ctx context.Context, p *corev1.Pod) bool {
@@ -91,4 +91,28 @@ func (d *PodCustomDefaulter) shouldRunOnPod(ctx context.Context, p *corev1.Pod) 
 		return true
 	}
 	return false
+}
+
+func getPodScope(p *corev1.Pod) rules.Scope {
+	scope := rules.Scope{}
+
+	if project, ok := p.Annotations[ProjectAnnotationKey]; ok {
+		scope.Project = project
+	}
+	if environment, ok := p.Annotations[EnvironmentAnnotationKey]; ok {
+		scope.Environment = environment
+	}
+	if tenant, ok := p.Annotations[TenantAnnotationKey]; ok {
+		scope.Tenant = tenant
+	}
+	if step, ok := p.Annotations[StepAnnotationKey]; ok {
+		scope.Step = step
+	}
+
+	return scope
+}
+
+func getPodControllingAgentName(p *corev1.Pod) rules.AgentName {
+	namespace := p.Namespace
+	return rules.AgentName(namespace)
 }

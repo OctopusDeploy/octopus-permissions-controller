@@ -17,45 +17,74 @@ limitations under the License.
 package v1
 
 import (
+	"time"
+
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"
-	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("Pod Webhook", func() {
-	var (
-		obj       *corev1.Pod
-		oldObj    *corev1.Pod
-		defaulter PodCustomDefaulter
+
+	const (
+		timeout  = time.Second * 10
+		duration = time.Second * 10
+		interval = time.Millisecond * 250
 	)
 
-	BeforeEach(func() {
-		obj = &corev1.Pod{}
-		oldObj = &corev1.Pod{}
-		defaulter = PodCustomDefaulter{}
-		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
-		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
-		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
-	})
+	Context("When label is set", func() {
+		It("Should inject a service account", func() {
+			By("By creating a pod")
 
-	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
-	})
+			expectedScope := rules.Scope{
+				Project:     "my-project",
+				Environment: "my-environment",
+				Tenant:      "my-tenant",
+				Step:        "my-step",
+			}
+			expectedAgent := rules.AgentName("default")
+			mockEngine.On("GetServiceAccountForScope", expectedScope, expectedAgent).Return(rules.ServiceAccountName("overridden"), nil)
 
-	Context("When creating Pod under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
-	})
+			pod := &corev1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Pod",
+					APIVersion: "v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Labels: map[string]string{
+						EnabledLabelKey: "true",
+					},
+					Annotations: map[string]string{
+						ProjectAnnotationKey:     "my-project",
+						EnvironmentAnnotationKey: "my-environment",
+						TenantAnnotationKey:      "my-tenant",
+						StepAnnotationKey:        "my-step",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:1.7.9",
+						},
+					},
+					ServiceAccountName: "want-to-override",
+				},
+				Status: corev1.PodStatus{},
+			}
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 
+			var actualPod corev1.Pod
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
+			Expect(actualPod.Spec.ServiceAccountName).To(Equal("overridden"))
+
+			mockEngine.AssertExpectations(GinkgoT())
+		})
+	})
 })
