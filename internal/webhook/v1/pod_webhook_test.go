@@ -27,56 +27,76 @@ import (
 )
 
 var _ = Describe("Pod Webhook", func() {
+	var (
+		pod       *corev1.Pod
+		podScope  rules.Scope
+		agentName rules.AgentName = "default"
+	)
+
+	BeforeEach(func() {
+		pod = &corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Pod",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pod",
+				Namespace: "default",
+				Labels: map[string]string{
+					EnabledLabelKey: "true",
+				},
+				Annotations: map[string]string{
+					ProjectAnnotationKey:     "my-project",
+					EnvironmentAnnotationKey: "my-environment",
+					TenantAnnotationKey:      "my-tenant",
+					StepAnnotationKey:        "my-step",
+				},
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{
+						Name:  "nginx",
+						Image: "nginx:1.7.9",
+					},
+				},
+				ServiceAccountName: "not-overridden",
+			},
+			Status: corev1.PodStatus{},
+		}
+		podScope = rules.Scope{
+			Project:     "my-project",
+			Environment: "my-environment",
+			Tenant:      "my-tenant",
+			Step:        "my-step",
+		}
+	})
+
+	AfterEach(func() {
+		Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+	})
 
 	Context("When label is set", func() {
 		It("Should inject a service account", func() {
 			By("By creating a pod")
 
-			expectedScope := rules.Scope{
-				Project:     "my-project",
-				Environment: "my-environment",
-				Tenant:      "my-tenant",
-				Step:        "my-step",
-			}
-			expectedAgent := rules.AgentName("default")
-			mockEngine.On("GetServiceAccountForScope", expectedScope, expectedAgent).Return(rules.ServiceAccountName("overridden"), nil)
-
-			pod := &corev1.Pod{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Pod",
-					APIVersion: "v1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod",
-					Namespace: "default",
-					Labels: map[string]string{
-						EnabledLabelKey: "true",
-					},
-					Annotations: map[string]string{
-						ProjectAnnotationKey:     "my-project",
-						EnvironmentAnnotationKey: "my-environment",
-						TenantAnnotationKey:      "my-tenant",
-						StepAnnotationKey:        "my-step",
-					},
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx:1.7.9",
-						},
-					},
-					ServiceAccountName: "want-to-override",
-				},
-				Status: corev1.PodStatus{},
-			}
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope, agentName).Return(rules.ServiceAccountName("overridden"), nil)
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 
 			var actualPod corev1.Pod
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
 			Expect(actualPod.Spec.ServiceAccountName).To(Equal("overridden"))
-
 			mockEngine.AssertExpectations(GinkgoT())
+			mockCall.Unset()
+		})
+		It("Should not inject a service account", func() {
+			By("When no matching scope exists")
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope, agentName).Return(rules.ServiceAccountName(""), nil)
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+			var actualPod corev1.Pod
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
+			Expect(actualPod.Spec.ServiceAccountName).To(Equal("not-overridden"))
+			mockEngine.AssertExpectations(GinkgoT())
+			mockCall.Unset()
 		})
 	})
 })
