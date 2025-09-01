@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 )
 
 var _ = Describe("WorkloadServiceAccount Controller", func() {
@@ -68,9 +69,11 @@ var _ = Describe("WorkloadServiceAccount Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+			engine := rules.NewInMemoryEngine()
 			controllerReconciler := &WorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
+				Engine: &engine,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

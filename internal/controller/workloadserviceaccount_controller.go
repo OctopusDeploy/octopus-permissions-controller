@@ -54,22 +54,9 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	log.Info("Found WSAs in namespace", "count", len(wsaList.Items))
 
-	for _, currentWSA := range wsaList.Items {
-		for _, project := range currentWSA.Spec.Scope.Projects {
-			log.Info("WSA has project scope", "wsa", currentWSA.Name, "project", project)
-		}
-		for _, environment := range currentWSA.Spec.Scope.Environments {
-			log.Info("WSA has environment scope", "wsa", currentWSA.Name, "environment", environment)
-		}
-		for _, tenant := range currentWSA.Spec.Scope.Tenants {
-			log.Info("WSA has tenant scope", "wsa", currentWSA.Name, "tenant", tenant)
-		}
-		for _, step := range currentWSA.Spec.Scope.Steps {
-			log.Info("WSA has step scope", "wsa", currentWSA.Name, "step", step)
-		}
-		for _, space := range currentWSA.Spec.Scope.Spaces {
-			log.Info("WSA has space scope", "wsa", currentWSA.Name, "space", space)
-		}
+	if err := r.Engine.RegenerateFromWSAs(wsaList.Items); err != nil {
+		log.Error(err, "failed to regenerate ServiceAccount mappings from WSAs")
+		return ctrl.Result{}, err
 	}
 
 	log.Info("Successfully reconciled WorkloadServiceAccounts")
