@@ -86,7 +86,7 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 	return err
 }
 
-func (d *PodCustomDefaulter) shouldRunOnPod(ctx context.Context, p *corev1.Pod) bool {
+func (d *PodCustomDefaulter) shouldRunOnPod(_ context.Context, p *corev1.Pod) bool {
 	if _, ok := p.Labels[EnabledLabelKey]; ok {
 		return true
 	}

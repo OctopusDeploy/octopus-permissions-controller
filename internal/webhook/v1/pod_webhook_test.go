@@ -17,8 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	"time"
-
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,12 +27,6 @@ import (
 )
 
 var _ = Describe("Pod Webhook", func() {
-
-	const (
-		timeout  = time.Second * 10
-		duration = time.Second * 10
-		interval = time.Millisecond * 250
-	)
 
 	Context("When label is set", func() {
 		It("Should inject a service account", func() {
