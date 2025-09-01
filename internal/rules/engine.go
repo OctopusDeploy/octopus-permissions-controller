@@ -32,6 +32,12 @@ type InMemoryEngine struct {
 	// client kubernetes.Interface
 }
 
+func NewInMemoryEngine() InMemoryEngine {
+	return InMemoryEngine{
+		rules: make(map[AgentName]map[Scope]ServiceAccountName),
+	}
+}
+
 func (i InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error) {
 	if agentRules, ok := i.rules[agentName]; ok {
 		if sa, ok := agentRules[scope]; ok {
@@ -42,6 +48,11 @@ func (i InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentNa
 }
 
 func (i InMemoryEngine) AddScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error {
+	// TODO: Implement me
+	return nil
+}
+
+func (i InMemoryEngine) RemoveScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error {
 	// TODO: Implement me
 	return nil
 }

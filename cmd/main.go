@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -203,9 +204,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the rules engine instance
+	engine := rules.NewInMemoryEngine()
+
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Engine: &engine,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WorkloadServiceAccount")
 		os.Exit(1)

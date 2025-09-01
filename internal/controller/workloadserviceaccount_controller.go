@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,6 +32,7 @@ import (
 type WorkloadServiceAccountReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Engine rules.Engine
 }
 
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=get;list;watch;create;update;patch;delete
