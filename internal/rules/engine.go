@@ -2,7 +2,6 @@ package rules
 
 import (
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	"k8s.io/client-go/kubernetes"
 )
 
 type AgentName string
@@ -29,8 +28,8 @@ type Engine interface {
 }
 
 type InMemoryEngine struct {
-	rules  map[AgentName]map[Scope]ServiceAccountName
-	client kubernetes.Interface
+	rules map[AgentName]map[Scope]ServiceAccountName
+	// client kubernetes.Interface
 }
 
 func (i InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error) {
