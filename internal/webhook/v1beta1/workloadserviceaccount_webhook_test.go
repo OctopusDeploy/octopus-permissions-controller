@@ -58,6 +58,16 @@ var _ = Describe("WorkloadServiceAccount Webhook", func() {
 			Expect(warnings).To(BeNil())
 		})
 
+		It("Should allow creation with space scope", func() {
+			By("setting up a WorkloadServiceAccount with space scope")
+			obj.Spec.Scope.Spaces = []string{"production-space", "dev-space"}
+
+			By("validating the creation")
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeNil())
+		})
+
 		It("Should deny creation if all scopes are missing", func() {
 			By("setting up a WorkloadServiceAccount with no scopes")
 			obj.Spec.Scope = agentoctopuscomv1beta1.WorkloadServiceAccountScope{}

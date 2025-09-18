@@ -53,6 +53,9 @@ type WorkloadServiceAccountScope struct {
 	// +optional
 	// +kubebuilder:validation:items:Pattern="^[\\p{Ll}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$"
 	Steps []string `json:"steps,omitempty"`
+	// +optional
+	// +kubebuilder:validation:items:Pattern="^[\\p{Ll}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$"
+	Spaces []string `json:"spaces,omitempty"`
 }
 
 // WorkloadServiceAccountPermissions defines the permissions for the WorkloadServiceAccount.

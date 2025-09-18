@@ -6,6 +6,7 @@ spec:
   scope:
     projects: ["test-project"]
     environments: ["test-env"]
+    spaces: ["test-space"]
   permissions:
     permissions:
     - apiGroups: [""]
