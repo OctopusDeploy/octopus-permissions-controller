@@ -67,6 +67,9 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 		for _, step := range currentWSA.Spec.Scope.Steps {
 			log.Info("WSA has step scope", "wsa", currentWSA.Name, "step", step)
 		}
+		for _, space := range currentWSA.Spec.Scope.Spaces {
+			log.Info("WSA has space scope", "wsa", currentWSA.Name, "space", space)
+		}
 	}
 
 	log.Info("Successfully reconciled WorkloadServiceAccounts")

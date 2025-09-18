@@ -11,6 +11,8 @@ spec:
       - Development
     steps:
       - "*"
+    spaces:
+      - "test-space"
   permissions:
     clusterRoles:
       - apiGroup: "rbac.authorization.k8s.io"
