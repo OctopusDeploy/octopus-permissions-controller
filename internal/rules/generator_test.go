@@ -14,10 +14,13 @@ import (
 func TestGenerateAllScopesWithPermissions_EmptyList_ReturnsNil(t *testing.T) {
 	var wsas []v1beta1.WorkloadServiceAccount
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
-	if result != nil {
-		t.Errorf("Expected nil result for empty WSA list, got %v", result)
+	if result == nil {
+		t.Error("Expected non-nil empty map for empty WSA list, got nil")
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected empty map for empty WSA list, got %v", result)
 	}
 }
 
@@ -26,14 +29,14 @@ func TestGenerateAllScopesWithPermissions_SingleWSA_GeneratesSingleScope(t *test
 		createWSA("test-wsa-1",
 			[]string{"web-app"},
 			[]string{"development"},
-			nil, nil,
+			nil, nil, nil,
 			"", "pods", []string{"get", "list"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
 	expectedScopes := []string{
-		"projects=web-app,environments=development,tenants=*,steps=*",
+		"projects=web-app,environments=development,tenants=*,steps=*,spaces=*",
 	}
 
 	assertScopesMatch(t, result, expectedScopes)
@@ -44,15 +47,15 @@ func TestGenerateAllScopesWithPermissions_SingleWSA_GeneratesMultipleScopes(t *t
 		createWSA("test-wsa-1",
 			[]string{"web-app"},
 			[]string{"development", "test"},
-			nil, nil,
+			nil, nil, nil,
 			"", "pods", []string{"get", "list"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
 	expectedScopes := []string{
-		"projects=web-app,environments=development,tenants=*,steps=*",
-		"projects=web-app,environments=test,tenants=*,steps=*",
+		"projects=web-app,environments=development,tenants=*,steps=*,spaces=*",
+		"projects=web-app,environments=test,tenants=*,steps=*,spaces=*",
 	}
 
 	assertScopesMatch(t, result, expectedScopes)
@@ -63,20 +66,20 @@ func TestGenerateAllScopesWithPermissions_DifferentOrder_GeneratesSameScopes(t *
 		createWSA("dev-prod-wsa",
 			nil,
 			[]string{"development", "production"},
-			nil, nil,
+			nil, nil, nil,
 			"", "pods", []string{"get", "list"}),
 		createWSA("prod-dev-wsa",
 			nil,
 			[]string{"production", "development"},
-			nil, nil,
+			nil, nil, nil,
 			"apps", "deployments", []string{"get", "watch"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
 	expectedScopes := []string{
-		"projects=*,environments=development,tenants=*,steps=*",
-		"projects=*,environments=production,tenants=*,steps=*",
+		"projects=*,environments=development,tenants=*,steps=*,spaces=*",
+		"projects=*,environments=production,tenants=*,steps=*,spaces=*",
 	}
 
 	assertScopesMatch(t, result, expectedScopes)
@@ -87,28 +90,28 @@ func TestGenerateAllScopesWithPermissions_MultipleWSAs_GeneratesScopes(t *testin
 		createWSA("dev-wsa",
 			nil,
 			[]string{"development"},
-			nil, nil,
+			nil, nil, nil,
 			"", "configmaps", []string{"get", "list"}),
 		createWSA("prod-wsa",
 			nil,
 			[]string{"production"},
-			nil, nil,
+			nil, nil, nil,
 			"apps", "deployments", []string{"get", "watch"}),
 		createWSA("project-wsa",
 			[]string{"api-service"},
 			nil,
-			nil, nil,
+			nil, nil, nil,
 			"", "secrets", []string{"get"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
 	expectedScopes := []string{
-		"projects=*,environments=development,tenants=*,steps=*",
-		"projects=*,environments=production,tenants=*,steps=*",
-		"projects=api-service,environments=*,tenants=*,steps=*",
-		"projects=api-service,environments=development,tenants=*,steps=*",
-		"projects=api-service,environments=production,tenants=*,steps=*",
+		"projects=*,environments=development,tenants=*,steps=*,spaces=*",
+		"projects=*,environments=production,tenants=*,steps=*,spaces=*",
+		"projects=api-service,environments=*,tenants=*,steps=*,spaces=*",
+		"projects=api-service,environments=development,tenants=*,steps=*,spaces=*",
+		"projects=api-service,environments=production,tenants=*,steps=*,spaces=*",
 	}
 
 	assertScopesMatch(t, result, expectedScopes)
@@ -119,27 +122,27 @@ func TestGenerateAllScopesWithPermissions_WithOverlappingEnvironments_GeneratesS
 		createWSA("dev-test-wsa",
 			nil,
 			[]string{"dev", "test"},
-			nil, nil,
+			nil, nil, nil,
 			"", "configmaps", []string{"get", "list"}),
 		createWSA("test-stg-wsa",
 			nil,
 			[]string{"test", "stg"},
-			nil, nil,
+			nil, nil, nil,
 			"apps", "deployments", []string{"get", "watch"}),
 		createWSA("stg-prod-wsa",
 			nil,
 			[]string{"stg", "prod"},
-			nil, nil,
+			nil, nil, nil,
 			"", "secrets", []string{"get"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
 	expectedScopes := []string{
-		"projects=*,environments=dev,tenants=*,steps=*",
-		"projects=*,environments=test,tenants=*,steps=*",
-		"projects=*,environments=stg,tenants=*,steps=*",
-		"projects=*,environments=prod,tenants=*,steps=*",
+		"projects=*,environments=dev,tenants=*,steps=*,spaces=*",
+		"projects=*,environments=test,tenants=*,steps=*,spaces=*",
+		"projects=*,environments=stg,tenants=*,steps=*,spaces=*",
+		"projects=*,environments=prod,tenants=*,steps=*,spaces=*",
 	}
 
 	assertScopesMatch(t, result, expectedScopes)
@@ -152,26 +155,29 @@ func TestGenerateAllScopesWithPermissions_NoWildcards(t *testing.T) {
 			[]string{"development"},
 			[]string{"tenant-a"},
 			[]string{"deploy"},
+			nil,
 			"", "configmaps", []string{"get", "list"}),
 		createWSA("api-prod-wsa",
 			[]string{"api-service"},
 			[]string{"production"},
 			[]string{"tenant-b"},
 			[]string{"deploy"},
+			nil,
 			"apps", "deployments", []string{"get", "watch"}),
 		createWSA("monitoring-wsa",
 			[]string{"web-app"},
 			[]string{"development"},
 			[]string{"tenant-a"},
 			[]string{"deploy"},
+			nil,
 			"", "pods", []string{"get", "list", "watch"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
 	expectedScopes := []string{
-		"projects=web-app,environments=development,tenants=tenant-a,steps=deploy",
-		"projects=api-service,environments=production,tenants=tenant-b,steps=deploy",
+		"projects=web-app,environments=development,tenants=tenant-a,steps=deploy,spaces=*",
+		"projects=api-service,environments=production,tenants=tenant-b,steps=deploy,spaces=*",
 	}
 
 	assertScopesMatch(t, result, expectedScopes)
@@ -182,29 +188,29 @@ func TestPermissionMerging_OverlappingEnvironments(t *testing.T) {
 		createWSA("dev-test-wsa",
 			nil,
 			[]string{"dev", "test"},
-			nil, nil,
+			nil, nil, nil,
 			"", "configmaps", []string{"get", "list"}),
 		createWSA("test-stg-wsa",
 			nil,
 			[]string{"test", "stg"},
-			nil, nil,
+			nil, nil, nil,
 			"apps", "deployments", []string{"get", "watch"}),
 		createWSA("stg-prod-wsa",
 			nil,
 			[]string{"stg", "prod"},
-			nil, nil,
+			nil, nil, nil,
 			"", "secrets", []string{"get"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
-	assertScopeHasPermissions(t, result, "*", "test", "*", "*",
+	assertScopeHasPermissions(t, result, "*", "test", "*", "*", "*",
 		[]rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"configmaps"}, Verbs: []string{"get", "list"}},
 			{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "watch"}},
 		})
 
-	assertScopeHasPermissions(t, result, "*", "stg", "*", "*",
+	assertScopeHasPermissions(t, result, "*", "stg", "*", "*", "*",
 		[]rbacv1.PolicyRule{
 			{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"}},
@@ -218,18 +224,20 @@ func TestPermissionMerging_IntersectingScopes(t *testing.T) {
 			[]string{"development"},
 			[]string{"tenant-a"},
 			[]string{"deploy"},
+			nil,
 			"", "configmaps", []string{"get", "list"}),
 		createWSA("monitoring-wsa",
 			[]string{"web-app"},
 			[]string{"development"},
 			[]string{"tenant-a"},
 			[]string{"deploy"},
+			nil,
 			"", "pods", []string{"get", "list", "watch"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
-	assertScopeHasPermissions(t, result, "web-app", "development", "tenant-a", "deploy",
+	assertScopeHasPermissions(t, result, "web-app", "development", "tenant-a", "deploy", "*",
 		[]rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"configmaps"}, Verbs: []string{"get", "list"}},
 			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch"}},
@@ -243,29 +251,31 @@ func TestPermissionMerging_NoOverlap(t *testing.T) {
 			[]string{"development"},
 			[]string{"tenant-a"},
 			[]string{"deploy"},
+			nil,
 			"", "configmaps", []string{"get", "list"}),
 		createWSA("api-prod-wsa",
 			[]string{"api-service"},
 			[]string{"production"},
 			[]string{"tenant-b"},
 			[]string{"deploy"},
+			nil,
 			"apps", "deployments", []string{"get", "watch"}),
 	}
 
-	result := GenerateAllScopesWithPermissions(wsas)
+	result := generateAllScopesWithPermissions(wsas)
 
-	assertScopeHasPermissions(t, result, "web-app", "development", "tenant-a", "deploy",
+	assertScopeHasPermissions(t, result, "web-app", "development", "tenant-a", "deploy", "*",
 		[]rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"configmaps"}, Verbs: []string{"get", "list"}},
 		})
 
-	assertScopeHasPermissions(t, result, "api-service", "production", "tenant-b", "deploy",
+	assertScopeHasPermissions(t, result, "api-service", "production", "tenant-b", "deploy", "*",
 		[]rbacv1.PolicyRule{
 			{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "watch"}},
 		})
 }
 
-func createWSA(name string, projects, environments, tenants, steps []string, apiGroup, resource string, verbs []string) v1beta1.WorkloadServiceAccount {
+func createWSA(name string, projects, environments, tenants, steps, spaces []string, apiGroup, resource string, verbs []string) v1beta1.WorkloadServiceAccount {
 	return v1beta1.WorkloadServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: v1beta1.WorkloadServiceAccountSpec{
@@ -274,6 +284,7 @@ func createWSA(name string, projects, environments, tenants, steps []string, api
 				Environments: environments,
 				Tenants:      tenants,
 				Steps:        steps,
+				Spaces:       spaces,
 			},
 			Permissions: v1beta1.WorkloadServiceAccountPermissions{
 				Permissions: []rbacv1.PolicyRule{
@@ -304,7 +315,7 @@ func assertScopesMatch(t *testing.T, result map[Scope]v1beta1.WorkloadServiceAcc
 	}
 }
 
-func assertScopeHasPermissions(t *testing.T, result map[Scope]v1beta1.WorkloadServiceAccountPermissions, projects, environments, tenants, steps string, expectedPermissions []rbacv1.PolicyRule) {
+func assertScopeHasPermissions(t *testing.T, result map[Scope]v1beta1.WorkloadServiceAccountPermissions, projects, environments, tenants, steps, spaces string, expectedPermissions []rbacv1.PolicyRule) {
 	t.Helper()
 
 	scope := Scope{
@@ -312,6 +323,7 @@ func assertScopeHasPermissions(t *testing.T, result map[Scope]v1beta1.WorkloadSe
 		Environment: environments,
 		Tenant:      tenants,
 		Step:        steps,
+		Space:       spaces,
 	}
 
 	actualPermissions, exists := result[scope]
@@ -323,4 +335,106 @@ func assertScopeHasPermissions(t *testing.T, result map[Scope]v1beta1.WorkloadSe
 	if diff := cmp.Diff(expectedPermissions, actualPermissions.Permissions); diff != "" {
 		t.Errorf("Permissions mismatch for scope %s (-expected +actual):\n%s", scope.String(), diff)
 	}
+}
+
+// Space-specific test cases
+
+func TestGenerateAllScopesWithPermissions_WithSpaces_GeneratesSpaceScopes(t *testing.T) {
+	wsas := []v1beta1.WorkloadServiceAccount{
+		createWSA("space1-wsa",
+			nil, nil, nil, nil,
+			[]string{"space-1"},
+			"", "pods", []string{"get", "list"}),
+		createWSA("space2-wsa",
+			nil, nil, nil, nil,
+			[]string{"space-2"},
+			"apps", "deployments", []string{"get", "watch"}),
+	}
+
+	result := generateAllScopesWithPermissions(wsas)
+
+	expectedScopes := []string{
+		"projects=*,environments=*,tenants=*,steps=*,spaces=space-1",
+		"projects=*,environments=*,tenants=*,steps=*,spaces=space-2",
+	}
+
+	assertScopesMatch(t, result, expectedScopes)
+}
+
+func TestGenerateAllScopesWithPermissions_WithMultipleSpaces_GeneratesAllCombinations(t *testing.T) {
+	wsas := []v1beta1.WorkloadServiceAccount{
+		createWSA("multi-space-wsa",
+			[]string{"project-a"},
+			[]string{"dev"},
+			nil, nil,
+			[]string{"space-1", "space-2"},
+			"", "configmaps", []string{"get", "list"}),
+	}
+
+	result := generateAllScopesWithPermissions(wsas)
+
+	expectedScopes := []string{
+		"projects=project-a,environments=dev,tenants=*,steps=*,spaces=space-1",
+		"projects=project-a,environments=dev,tenants=*,steps=*,spaces=space-2",
+	}
+
+	assertScopesMatch(t, result, expectedScopes)
+}
+
+func TestGenerateAllScopesWithPermissions_SpacePermissionMerging(t *testing.T) {
+	wsas := []v1beta1.WorkloadServiceAccount{
+		createWSA("space1-configmaps-wsa",
+			nil, nil, nil, nil,
+			[]string{"shared-space"},
+			"", "configmaps", []string{"get", "list"}),
+		createWSA("space1-secrets-wsa",
+			nil, nil, nil, nil,
+			[]string{"shared-space"},
+			"", "secrets", []string{"get"}),
+	}
+
+	result := generateAllScopesWithPermissions(wsas)
+
+	assertScopeHasPermissions(t, result, "*", "*", "*", "*", "shared-space",
+		[]rbacv1.PolicyRule{
+			{APIGroups: []string{""}, Resources: []string{"configmaps"}, Verbs: []string{"get", "list"}},
+			{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"}},
+		})
+}
+
+func TestGenerateAllScopesWithPermissions_MixedSpacesAndOtherDimensions(t *testing.T) {
+	wsas := []v1beta1.WorkloadServiceAccount{
+		createWSA("mixed-wsa",
+			[]string{"web-app"},
+			[]string{"production"},
+			[]string{"tenant-x"},
+			nil,
+			[]string{"space-prod"},
+			"", "pods", []string{"get", "list"}),
+	}
+
+	result := generateAllScopesWithPermissions(wsas)
+
+	expectedScopes := []string{
+		"projects=web-app,environments=production,tenants=tenant-x,steps=*,spaces=space-prod",
+	}
+
+	assertScopesMatch(t, result, expectedScopes)
+}
+
+func TestGenerateAllScopesWithPermissions_EmptySpaces_CreatesWildcard(t *testing.T) {
+	wsas := []v1beta1.WorkloadServiceAccount{
+		createWSA("no-spaces-wsa",
+			[]string{"project-a"},
+			nil, nil, nil, nil,
+			"", "pods", []string{"get"}),
+	}
+
+	result := generateAllScopesWithPermissions(wsas)
+
+	expectedScopes := []string{
+		"projects=project-a,environments=*,tenants=*,steps=*,spaces=*",
+	}
+
+	assertScopesMatch(t, result, expectedScopes)
 }

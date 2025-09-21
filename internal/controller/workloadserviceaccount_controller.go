@@ -38,6 +38,10 @@ type WorkloadServiceAccountReconciler struct {
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -46,16 +50,8 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	log.Info("WorkloadServiceAccount reconciliation triggered")
 
-	wsaList := &agentoctopuscomv1beta1.WorkloadServiceAccountList{}
-	if err := r.List(ctx, wsaList, client.InNamespace(req.Namespace)); err != nil {
-		log.Error(err, "failed to list WorkloadServiceAccounts")
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Found WSAs in namespace", "count", len(wsaList.Items))
-
-	if err := r.Engine.RegenerateFromWSAs(wsaList.Items); err != nil {
-		log.Error(err, "failed to regenerate ServiceAccount mappings from WSAs")
+	if err := r.Engine.Reconcile(ctx, r.Client, req.Namespace); err != nil {
+		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccounts")
 		return ctrl.Result{}, err
 	}
 
