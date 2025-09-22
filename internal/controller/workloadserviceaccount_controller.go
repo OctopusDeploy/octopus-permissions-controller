@@ -50,7 +50,7 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	log.Info("WorkloadServiceAccount reconciliation triggered")
 
-	if err := r.Engine.Reconcile(ctx, r.Client, req.Namespace); err != nil {
+	if err := r.Engine.Reconcile(ctx, req.Namespace); err != nil {
 		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccounts")
 		return ctrl.Result{}, err
 	}

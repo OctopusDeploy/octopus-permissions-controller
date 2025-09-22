@@ -42,20 +42,22 @@ type Rule struct {
 
 type Engine interface {
 	GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error)
-	Reconcile(ctx context.Context, c client.Client, namespace string) error
+	Reconcile(ctx context.Context, namespace string) error
 }
 
 type InMemoryEngine struct {
-	rules map[AgentName]map[Scope]ServiceAccountName
+	rules  map[AgentName]map[Scope]ServiceAccountName
+	client client.Client
 }
 
 func (s *Scope) IsEmpty() bool {
 	return s.Project == "" && s.Environment == "" && s.Tenant == "" && s.Step == "" && s.Space == ""
 }
 
-func NewInMemoryEngine() InMemoryEngine {
+func NewInMemoryEngine(c client.Client) InMemoryEngine {
 	return InMemoryEngine{
-		rules: make(map[AgentName]map[Scope]ServiceAccountName),
+		rules:  make(map[AgentName]map[Scope]ServiceAccountName),
+		client: c,
 	}
 }
 
@@ -68,10 +70,10 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentN
 	return "", nil
 }
 
-func (i *InMemoryEngine) Reconcile(ctx context.Context, c client.Client, namespace string) error {
+func (i *InMemoryEngine) Reconcile(ctx context.Context, namespace string) error {
 	logger := log.FromContext(ctx).WithName("engine")
 
-	wsas, err := getWorkloadServiceAccounts(ctx, c, namespace)
+	wsas, err := getWorkloadServiceAccounts(ctx, i.client, namespace)
 	if err != nil {
 		return err
 	}
@@ -80,19 +82,19 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context, c client.Client, namespa
 	logger.Info("Generated scope permissions mapping from workload service accounts")
 
 	for scope, permissions := range scopePermissionsMap {
-		if err := createServiceAccount(ctx, c, namespace, scope); err != nil {
+		if err := createServiceAccount(ctx, i.client, namespace, scope); err != nil {
 			logger.Error(err, "failed to create ServiceAccount for scope", "scope", scope.String())
 			continue
 		}
 
-		generatedRoleName, err := createRoleIfNeeded(ctx, c, namespace, permissions.Permissions)
+		generatedRoleName, err := createRoleIfNeeded(ctx, i.client, namespace, permissions.Permissions)
 		if err != nil {
 			logger.Error(err, "failed to create Role for scope", "scope", scope.String())
 			continue
 		}
 
 		serviceAccountName := generateServiceAccountName(scope)
-		if err := createRoleBindings(ctx, c, namespace, serviceAccountName, permissions, generatedRoleName); err != nil {
+		if err := createRoleBindings(ctx, i.client, namespace, serviceAccountName, permissions, generatedRoleName); err != nil {
 			logger.Error(err, "failed to create RoleBindings for scope", "scope", scope.String())
 			continue
 		}

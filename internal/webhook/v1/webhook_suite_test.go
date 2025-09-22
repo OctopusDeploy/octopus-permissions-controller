@@ -76,8 +76,8 @@ func (m *MockEngine) RemoveScopeRuleset(scope rules.Scope, rule rules.Rule, targ
 	return args.Error(0)
 }
 
-func (m *MockEngine) Reconcile(ctx context.Context, c client.Client, namespace string) error {
-	args := m.Called(ctx, c, namespace)
+func (m *MockEngine) Reconcile(ctx context.Context, namespace string) error {
+	args := m.Called(ctx, namespace)
 	return args.Error(0)
 }
 
