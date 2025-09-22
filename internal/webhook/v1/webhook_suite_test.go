@@ -76,6 +76,11 @@ func (m *MockEngine) RemoveScopeRuleset(scope rules.Scope, rule rules.Rule, targ
 	return args.Error(0)
 }
 
+func (m *MockEngine) Reconcile(ctx context.Context, c client.Client, namespace string) error {
+	args := m.Called(ctx, c, namespace)
+	return args.Error(0)
+}
+
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 

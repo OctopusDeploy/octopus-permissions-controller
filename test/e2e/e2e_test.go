@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -297,14 +298,52 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput := getMetricsOutput()
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		It("should create ServiceAccount and roles when WorkloadServiceAccount is created", func() {
+			wsaName := "test-wsa"
+			testNamespace := "default"
+
+			By("creating a WorkloadServiceAccount using kubectl apply")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(fmt.Sprintf(`
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  scope:
+    projects: ["web-app", "mobile-app"]
+    environments: ["production", "staging"]
+    tenants: ["customer-a", "customer-b"]
+    steps: ["deploy-api", "deploy-frontend"]
+    spaces: ["default-space", "team-space"]
+  permissions:
+    permissions:
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list"]
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      verbs: ["get", "watch"]
+`, wsaName, testNamespace))
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
+
+			By("waiting for the controller to reconcile and create ServiceAccount")
+			verifyServiceAccountCreated := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+					"-l", "agent.octopus.com/permissions=enabled", "-o", "jsonpath={.items[*].metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to list ServiceAccounts")
+				g.Expect(output).NotTo(BeEmpty(), "Expected at least one ServiceAccount")
+				g.Expect(output).To(ContainSubstring("octopus-sa-"), "ServiceAccount should have octopus-sa- prefix")
+			}
+			Eventually(verifyServiceAccountCreated, 2*time.Minute).Should(Succeed())
+
+			By("cleaning up test resources")
+			cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
+			_, _ = utils.Run(cmd)
+		})
 	})
 })
 
