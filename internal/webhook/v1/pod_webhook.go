@@ -29,11 +29,12 @@ import (
 )
 
 const (
-	EnabledLabelKey          = "agent.octopus.com/permissions-enabled"
+	EnabledLabelKey          = "agent.octopus.com/permissions"
 	ProjectAnnotationKey     = "agent.octopus.com/project"
 	EnvironmentAnnotationKey = "agent.octopus.com/environment"
 	TenantAnnotationKey      = "agent.octopus.com/tenant"
 	StepAnnotationKey        = "agent.octopus.com/step"
+	SpaceAnnotationKey       = "agent.octopus.com/space"
 )
 
 // nolint:unused
@@ -74,13 +75,18 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		return nil
 	}
 
-	podlog.Info("Setting service account name for pod", "name", pod.GetName())
+	podlog.Info("Getting scope for pod", "name", pod.GetName())
 
 	scope := getPodScope(pod)
 	agent := getPodControllingAgentName(pod)
 
+	if scope.IsEmpty() {
+		return nil
+	}
+
 	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope, agent)
 	if err == nil && serviceAccountName != "" {
+		podlog.Info("Setting service account for pod", "name", pod.GetName(), "originalServiceAccount", pod.Spec.ServiceAccountName, "newServiceAccount", serviceAccountName)
 		pod.Spec.ServiceAccountName = string(serviceAccountName)
 	}
 	return err
@@ -111,6 +117,9 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 	}
 	if step, ok := p.Annotations[StepAnnotationKey]; ok {
 		scope.Step = step
+	}
+	if space, ok := p.Annotations[SpaceAnnotationKey]; ok {
+		scope.Space = space
 	}
 
 	return scope
