@@ -66,16 +66,6 @@ func (m *MockEngine) GetServiceAccountForScope(
 	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
 }
 
-func (m *MockEngine) AddScopeRuleset(scope rules.Scope, rule rules.Rule, targetNamespace rules.Namespace) error {
-	args := m.Called(scope, rule, targetNamespace)
-	return args.Error(0)
-}
-
-func (m *MockEngine) RemoveScopeRuleset(scope rules.Scope, rule rules.Rule, targetNamespace rules.Namespace) error {
-	args := m.Called(scope, rule, targetNamespace)
-	return args.Error(0)
-}
-
 func (m *MockEngine) Reconcile(ctx context.Context, namespace string) error {
 	args := m.Called(ctx, namespace)
 	return args.Error(0)
