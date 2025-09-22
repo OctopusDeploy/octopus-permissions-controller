@@ -73,7 +73,7 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentN
 func (i *InMemoryEngine) Reconcile(ctx context.Context, namespace string) error {
 	logger := log.FromContext(ctx).WithName("engine")
 
-	wsas, err := getWorkloadServiceAccounts(ctx, i.client, namespace)
+	wsas, err := getWorkloadServiceAccounts(ctx, i.client)
 	if err != nil {
 		return err
 	}
@@ -114,9 +114,9 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context, namespace string) error 
 	return nil
 }
 
-func getWorkloadServiceAccounts(ctx context.Context, c client.Client, namespace string) ([]v1beta1.WorkloadServiceAccount, error) {
+func getWorkloadServiceAccounts(ctx context.Context, c client.Client) ([]v1beta1.WorkloadServiceAccount, error) {
 	wsaList := &v1beta1.WorkloadServiceAccountList{}
-	err := c.List(ctx, wsaList, client.InNamespace(namespace))
+	err := c.List(ctx, wsaList)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list workload service accounts: %w", err)
 	}
