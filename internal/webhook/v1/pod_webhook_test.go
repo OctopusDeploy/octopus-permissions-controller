@@ -43,13 +43,14 @@ var _ = Describe("Pod Webhook", func() {
 				Name:      "test-pod",
 				Namespace: "default",
 				Labels: map[string]string{
-					EnabledLabelKey: "true",
+					EnabledLabelKey: "enabled",
 				},
 				Annotations: map[string]string{
 					ProjectAnnotationKey:     "my-project",
 					EnvironmentAnnotationKey: "my-environment",
 					TenantAnnotationKey:      "my-tenant",
 					StepAnnotationKey:        "my-step",
+					SpaceAnnotationKey:       "my-space",
 				},
 			},
 			Spec: corev1.PodSpec{
@@ -68,6 +69,7 @@ var _ = Describe("Pod Webhook", func() {
 			Environment: "my-environment",
 			Tenant:      "my-tenant",
 			Step:        "my-step",
+			Space:       "my-space",
 		}
 	})
 

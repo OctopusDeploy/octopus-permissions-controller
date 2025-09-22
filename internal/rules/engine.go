@@ -15,6 +15,7 @@ type Scope struct {
 	Environment string `json:"environment"`
 	Tenant      string `json:"tenant"`
 	Step        string `json:"step"`
+	Space       string `json:"space"`
 }
 
 type Rule struct {
@@ -30,6 +31,10 @@ type Engine interface {
 type InMemoryEngine struct {
 	rules map[AgentName]map[Scope]ServiceAccountName
 	// client kubernetes.Interface
+}
+
+func (s *Scope) IsEmpty() bool {
+	return s.Project == "" && s.Environment == "" && s.Tenant == "" && s.Step == "" && s.Space == ""
 }
 
 func NewInMemoryEngine() InMemoryEngine {

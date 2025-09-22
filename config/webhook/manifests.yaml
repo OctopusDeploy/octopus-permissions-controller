@@ -13,6 +13,12 @@ webhooks:
       path: /mutate--v1-pod
   failurePolicy: Fail
   name: mpod-v1.kb.io
+  objectSelector:
+    matchExpressions:
+      - key: agent.octopus.com/permissions
+        operator: In
+        values:
+        - enabled
   rules:
   - apiGroups:
     - ""
