@@ -87,8 +87,12 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 }
 
 func (d *PodCustomDefaulter) shouldRunOnPod(_ context.Context, p *corev1.Pod) bool {
-	if _, ok := p.Labels[EnabledLabelKey]; ok {
-		return true
+	// This condition should always be true, as our webhook configuration only selects pods with the label.
+	// this is here for safety and to allow an easy entry point for further logic if necessary
+	if val, ok := p.Labels[EnabledLabelKey]; ok {
+		if val == "enabled" {
+			return true
+		}
 	}
 	return false
 }
