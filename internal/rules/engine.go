@@ -21,6 +21,8 @@ type Namespace string
 
 type ServiceAccountName string
 
+type WsaName string
+
 type Scope struct {
 	Project     string `json:"project"`
 	Environment string `json:"environment"`
@@ -49,7 +51,8 @@ type Engine interface {
 
 type InMemoryEngine struct {
 	rules        map[AgentName]map[Scope]ServiceAccountName
-	createdRoles map[string]string
+	createdRoles map[WsaName]*rbacv1.Role
+	roleBindings map[WsaName][]*rbacv1.RoleBinding
 	client       client.Client
 }
 
@@ -75,7 +78,8 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentN
 
 func (i *InMemoryEngine) Reconcile2(ctx context.Context) error {
 	logger := log.FromContext(ctx).WithName("engine")
-	i.createdRoles = make(map[string]string)
+	i.createdRoles = make(map[WsaName]*rbacv1.Role)
+	i.roleBindings = make(map[WsaName][]*rbacv1.RoleBinding)
 
 	wsaList, err := getWorkloadServiceAccounts(ctx, i.client)
 	if err != nil {
@@ -87,9 +91,8 @@ func (i *InMemoryEngine) Reconcile2(ctx context.Context) error {
 		logger.Error(err, "failed to ensure roles for workload service accounts")
 	}
 
-	err = i.generateRoleBindings(&wsaList)
-	if err != nil {
-		logger.Error(err, "failed to ensure role bindings for workload service accounts")
+	for _, wsa := range wsaList {
+		i.roleBindings[WsaName(wsa.Name)] = i.generateRoleBindings(&wsa)
 	}
 
 	return nil
@@ -102,19 +105,7 @@ func (i *InMemoryEngine) ensureRoles(wsaList *[]v1beta1.WorkloadServiceAccount) 
 		if role, createErr := i.createRoleIfNeeded(ctx, wsa); createErr != nil {
 			err = multierr.Append(err, createErr)
 		} else if role != nil {
-			i.createdRoles[wsa.Name] = role.Name
-		}
-	}
-	return err
-}
-
-func (i *InMemoryEngine) generateRoleBindings(wsaList *[]v1beta1.WorkloadServiceAccount) error {
-	var err error
-	for _, wsa := range *wsaList {
-		if role, createErr := i.createRoleIfNeeded(ctx, wsa); createErr != nil {
-			err = multierr.Append(err, createErr)
-		} else if role != nil {
-			i.createdRoles[wsa.Name] = role.Name
+			i.createdRoles[WsaName(wsa.Name)] = role
 		}
 	}
 	return err
@@ -127,46 +118,46 @@ func getContextWithTimeout(timeout time.Duration) context.Context {
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context, namespace string) error {
-	logger := log.FromContext(ctx).WithName("engine")
+	//logger := log.FromContext(ctx).WithName("engine")
+	//
+	//wsas, err := getWorkloadServiceAccounts(ctx, i.client)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//scopePermissionsMap := generateAllScopesWithPermissions(wsas)
+	//logger.Info("Generated scope permissions mapping from workload service accounts")
+	//
+	//for scope, permissions := range scopePermissionsMap {
+	//	if err := createServiceAccount(ctx, i.client, namespace, scope); err != nil {
+	//		logger.Error(err, "failed to create ServiceAccount for scope", "scope", scope.String())
+	//		continue
+	//	}
+	//
+	//	generatedRoleName, err := createRoleIfNeeded(ctx, i.client, namespace, permissions.Permissions)
+	//	if err != nil {
+	//		logger.Error(err, "failed to create Role for scope", "scope", scope.String())
+	//		continue
+	//	}
+	//
+	//	serviceAccountName := generateServiceAccountName(scope)
+	//	if err := createRoleBindings(ctx, i.client, namespace, serviceAccountName, permissions, generatedRoleName); err != nil {
+	//		logger.Error(err, "failed to create RoleBindings for scope", "scope", scope.String())
+	//		continue
+	//	}
+	//
+	//	logger.Info("Successfully created Kubernetes resources for scope", "scope", scope.String(), "serviceAccount", serviceAccountName)
+	//}
 
-	wsas, err := getWorkloadServiceAccounts(ctx, i.client)
-	if err != nil {
-		return err
-	}
-
-	scopePermissionsMap := generateAllScopesWithPermissions(wsas)
-	logger.Info("Generated scope permissions mapping from workload service accounts")
-
-	for scope, permissions := range scopePermissionsMap {
-		if err := createServiceAccount(ctx, i.client, namespace, scope); err != nil {
-			logger.Error(err, "failed to create ServiceAccount for scope", "scope", scope.String())
-			continue
-		}
-
-		generatedRoleName, err := createRoleIfNeeded(ctx, i.client, namespace, permissions.Permissions)
-		if err != nil {
-			logger.Error(err, "failed to create Role for scope", "scope", scope.String())
-			continue
-		}
-
-		serviceAccountName := generateServiceAccountName(scope)
-		if err := createRoleBindings(ctx, i.client, namespace, serviceAccountName, permissions, generatedRoleName); err != nil {
-			logger.Error(err, "failed to create RoleBindings for scope", "scope", scope.String())
-			continue
-		}
-
-		logger.Info("Successfully created Kubernetes resources for scope", "scope", scope.String(), "serviceAccount", serviceAccountName)
-	}
-
-	// TODO: Support scoping WSAs to specific agents
-	const defaultAgent = AgentName("default")
-	i.rules[defaultAgent] = make(map[Scope]ServiceAccountName)
-
-	for scope := range scopePermissionsMap {
-		serviceAccountName := generateServiceAccountName(scope)
-		i.rules[defaultAgent][scope] = serviceAccountName
-	}
-
+	//// TODO: Support scoping WSAs to specific agents
+	//const defaultAgent = AgentName("default")
+	//i.rules[defaultAgent] = make(map[Scope]ServiceAccountName)
+	//
+	//for scope := range scopePermissionsMap {
+	//	serviceAccountName := generateServiceAccountName(scope)
+	//	i.rules[defaultAgent][scope] = serviceAccountName
+	//}
+	//
 	return nil
 }
 
@@ -209,7 +200,9 @@ func createServiceAccount(ctx context.Context, c client.Client, namespace string
 }
 
 // createRoleIfNeeded creates a Role for inline permissions if they exist
-func (i *InMemoryEngine) createRoleIfNeeded(ctx context.Context, wsa v1beta1.WorkloadServiceAccount) (*rbacv1.Role, error) {
+func (i *InMemoryEngine) createRoleIfNeeded(
+	ctx context.Context, wsa v1beta1.WorkloadServiceAccount,
+) (*rbacv1.Role, error) {
 	logger := log.FromContext(ctx).WithName("createRoleIfNeeded")
 
 	if len(wsa.Spec.Permissions.Permissions) == 0 {
@@ -254,16 +247,16 @@ func (i *InMemoryEngine) createRoleIfNeeded(ctx context.Context, wsa v1beta1.Wor
 	return role, nil
 }
 
-func (i *InMemoryEngine) generateRoleBindings(ctx context.Context, wsa v1beta1.WorkloadServiceAccount) []*rbacv1.RoleBinding {
-	logger := log.FromContext(ctx).WithName("generateRoleBindings")
+func (i *InMemoryEngine) generateRoleBindings(wsa *v1beta1.WorkloadServiceAccount) []*rbacv1.RoleBinding {
 	namespace := wsa.GetNamespace()
+	roleBindings := make([]*rbacv1.RoleBinding, 0)
 
 	if len(wsa.Spec.Permissions.Roles) != 0 {
 		roleRefs := wsa.Spec.Permissions.Roles
 
 		for _, roleRef := range roleRefs {
 			roleBindingName := fmt.Sprintf("%s-%s-binding", wsa.Name, roleRef.Name)
-			roleBinding := &rbacv1.RoleBinding{
+			roleBindings = append(roleBindings, &rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      roleBindingName,
 					Namespace: namespace,
@@ -272,110 +265,45 @@ func (i *InMemoryEngine) generateRoleBindings(ctx context.Context, wsa v1beta1.W
 					},
 				},
 				RoleRef: roleRef,
-			}
+			})
 		}
 	}
 
-	// Bind to existing Roles
-	for _, roleRef := range permissions.Roles {
-		bindingName := fmt.Sprintf("%s-%s-binding", serviceAccountName, roleRef.Name)
+	if len(wsa.Spec.Permissions.ClusterRoles) != 0 {
+		roleRefs := wsa.Spec.Permissions.ClusterRoles
 
-		roleBinding := &rbacv1.RoleBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: namespace,
-				Labels: map[string]string{
-					PermissionsKey: "enabled",
-				},
-			},
-			Subjects: []rbacv1.Subject{
-				{
-					Kind:      "ServiceAccount",
-					Name:      string(serviceAccountName),
+		for _, roleRef := range roleRefs {
+			roleBindingName := fmt.Sprintf("%s-%s-binding", wsa.Name, roleRef.Name)
+			roleBindings = append(roleBindings, &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roleBindingName,
 					Namespace: namespace,
+					Labels: map[string]string{
+						PermissionsKey: "enabled",
+					},
 				},
-			},
-			RoleRef: roleRef,
-		}
-
-		err := c.Create(ctx, roleBinding)
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return fmt.Errorf("failed to create RoleBinding %s: %w", bindingName, err)
-		}
-		if err == nil {
-			logger.Info("Created RoleBinding", "name", bindingName, "role", roleRef.Name)
+				RoleRef: roleRef,
+			})
 		}
 	}
 
-	// Bind to existing ClusterRoles
-	for _, clusterRoleRef := range permissions.ClusterRoles {
-		bindingName := fmt.Sprintf("%s-%s-binding", serviceAccountName, clusterRoleRef.Name)
-
-		roleBinding := &rbacv1.RoleBinding{
+	if role, ok := i.createdRoles[WsaName(wsa.Name)]; ok {
+		roleBindingName := fmt.Sprintf("%s-%s-binding", wsa.Name, role.Name)
+		roleBindings = append(roleBindings, &rbacv1.RoleBinding{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
+				Name:      roleBindingName,
 				Namespace: namespace,
 				Labels: map[string]string{
 					PermissionsKey: "enabled",
-				},
-			},
-			Subjects: []rbacv1.Subject{
-				{
-					Kind:      "ServiceAccount",
-					Name:      string(serviceAccountName),
-					Namespace: namespace,
 				},
 			},
 			RoleRef: rbacv1.RoleRef{
-				Kind:     "ClusterRole",
-				Name:     clusterRoleRef.Name,
+				Kind:     role.Kind,
+				Name:     role.Name,
 				APIGroup: "rbac.authorization.k8s.io",
 			},
-		}
-
-		err := c.Create(ctx, roleBinding)
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return fmt.Errorf("failed to create RoleBinding for ClusterRole %s: %w", bindingName, err)
-		}
-		if err == nil {
-			logger.Info("Created RoleBinding for ClusterRole", "name", bindingName, "clusterRole", clusterRoleRef.Name)
-		}
+		})
 	}
 
-	// Bind to generated Role if it exists
-	if generatedRoleName != "" {
-		bindingName := fmt.Sprintf("%s-%s-binding", serviceAccountName, generatedRoleName)
-
-		roleBinding := &rbacv1.RoleBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: namespace,
-				Labels: map[string]string{
-					PermissionsKey: "enabled",
-				},
-			},
-			Subjects: []rbacv1.Subject{
-				{
-					Kind:      "ServiceAccount",
-					Name:      string(serviceAccountName),
-					Namespace: namespace,
-				},
-			},
-			RoleRef: rbacv1.RoleRef{
-				Kind:     "Role",
-				Name:     generatedRoleName,
-				APIGroup: "rbac.authorization.k8s.io",
-			},
-		}
-
-		err := c.Create(ctx, roleBinding)
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return fmt.Errorf("failed to create RoleBinding for generated Role %s: %w", bindingName, err)
-		}
-		if err == nil {
-			logger.Info("Created RoleBinding for generated Role", "name", bindingName, "role", generatedRoleName)
-		}
-	}
-
-	return nil
+	return roleBindings
 }

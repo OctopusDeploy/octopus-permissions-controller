@@ -4,8 +4,19 @@ import (
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 )
 
+//func getServiceAccountsForWsas(wsas []*v1beta1.WorkloadServiceAccount) map[Scope][]*v1beta1.WorkloadServiceAccount {
+//	result := make(map[string][]*v1beta1.WorkloadServiceAccount)
+//
+//	// Get all unique scope values (including wildcards)
+//	projectSet, environmentSet, tenantSet, stepSet, spaceSet := getAllScopeValues(wsas)
+//
+//	// Generate all possible scope combinations
+//	allScopeCombinations := generateAllScopeCombinations(projectSet, environmentSet, tenantSet, stepSet, spaceSet)
+//
+//}
+
 // generateAllScopesWithPermissions creates ServiceAccounts for all unique scope combinations
-func generateAllScopesWithPermissions(wsas []v1beta1.WorkloadServiceAccount) map[Scope]v1beta1.WorkloadServiceAccountPermissions {
+func generateAllScopesWithPermissions(wsas []*v1beta1.WorkloadServiceAccount) map[Scope]v1beta1.WorkloadServiceAccountPermissions {
 	if len(wsas) == 0 {
 		return make(map[Scope]v1beta1.WorkloadServiceAccountPermissions)
 	}
@@ -13,74 +24,80 @@ func generateAllScopesWithPermissions(wsas []v1beta1.WorkloadServiceAccount) map
 	result := make(map[Scope]v1beta1.WorkloadServiceAccountPermissions)
 
 	// Get all unique scope values (including wildcards)
-	projectSet, environmentSet, tenantSet, stepSet, spaceSet := getAllScopeValues(wsas)
+	//projectSet, environmentSet, tenantSet, stepSet, spaceSet := getAllScopeValues(wsas)
 
 	// Generate all possible scope combinations
-	allScopeCombinations := generateAllScopeCombinations(projectSet, environmentSet, tenantSet, stepSet, spaceSet)
-
-	// For each scope combination find WSAs that match the scope and merge their permissions
-	// If no WSAs match the scope, no ServiceAccount is created for that scope
-	for _, scope := range allScopeCombinations {
-		matchingWSAs := getMatchingWSAsForScope(scope, wsas)
-		if len(matchingWSAs) > 0 {
-			var mergedPermissions v1beta1.WorkloadServiceAccountPermissions
-			for _, wsa := range matchingWSAs {
-				mergedPermissions = mergePermissions(mergedPermissions, wsa.Spec.Permissions)
-			}
-			result[scope] = mergedPermissions
-		}
-	}
+	//allScopeCombinations := generateAllScopeCombinations(projectSet, environmentSet, tenantSet, stepSet, spaceSet)
+	//
+	//// For each scope combination find WSAs that match the scope and merge their permissions
+	//// If no WSAs match the scope, no ServiceAccount is created for that scope
+	//for _, scope := range allScopeCombinations {
+	//	matchingWSAs := getMatchingWSAsForScope(scope, wsas)
+	//	if len(matchingWSAs) > 0 {
+	//		var mergedPermissions v1beta1.WorkloadServiceAccountPermissions
+	//		for _, wsa := range matchingWSAs {
+	//			mergedPermissions = mergePermissions(mergedPermissions, wsa.Spec.Permissions)
+	//		}
+	//		result[scope] = mergedPermissions
+	//	}
+	//}
 
 	return result
 }
 
-// getAllScopeValues extracts all unique scope values from all WSAs
-func getAllScopeValues(wsas []v1beta1.WorkloadServiceAccount) (projects, environments, tenants, steps, spaces map[string]struct{}) {
-	projects = make(map[string]struct{})
-	environments = make(map[string]struct{})
-	tenants = make(map[string]struct{})
-	steps = make(map[string]struct{})
-	spaces = make(map[string]struct{})
+type ScopeType int
 
-	hasWildcardProjects := false
-	hasWildcardEnvironments := false
-	hasWildcardTenants := false
-	hasWildcardSteps := false
-	hasWildcardSpaces := false
+const (
+	ScopeProjects ScopeType = iota
+	ScopeEnvironments
+	ScopeTenants
+	ScopeSteps
+	ScopeSpaces
+)
+
+// getAllScopeValues extracts all unique scope values from all WSAs
+func getAllScopeValues(wsas []*v1beta1.WorkloadServiceAccount) (projects, environments, tenants, steps, spaces map[string][]*v1beta1.WorkloadServiceAccount) {
+	projects = make(map[string][]*v1beta1.WorkloadServiceAccount)
+	environments = make(map[string][]*v1beta1.WorkloadServiceAccount)
+	tenants = make(map[string][]*v1beta1.WorkloadServiceAccount)
+	steps = make(map[string][]*v1beta1.WorkloadServiceAccount)
+	spaces = make(map[string][]*v1beta1.WorkloadServiceAccount)
 
 	for _, wsa := range wsas {
-		processScopeValues(wsa.Spec.Scope.Projects, projects, &hasWildcardProjects)
-		processScopeValues(wsa.Spec.Scope.Environments, environments, &hasWildcardEnvironments)
-		processScopeValues(wsa.Spec.Scope.Tenants, tenants, &hasWildcardTenants)
-		processScopeValues(wsa.Spec.Scope.Steps, steps, &hasWildcardSteps)
-		processScopeValues(wsa.Spec.Scope.Spaces, spaces, &hasWildcardSpaces)
-	}
-
-	if hasWildcardProjects {
-		projects["*"] = struct{}{}
-	}
-	if hasWildcardEnvironments {
-		environments["*"] = struct{}{}
-	}
-	if hasWildcardTenants {
-		tenants["*"] = struct{}{}
-	}
-	if hasWildcardSteps {
-		steps["*"] = struct{}{}
-	}
-	if hasWildcardSpaces {
-		spaces["*"] = struct{}{}
+		processScopeValues(wsa, &projects, ScopeProjects)
+		processScopeValues(wsa, &environments, ScopeEnvironments)
+		processScopeValues(wsa, &tenants, ScopeTenants)
+		processScopeValues(wsa, &steps, ScopeSteps)
+		processScopeValues(wsa, &spaces, ScopeSpaces)
 	}
 
 	return projects, environments, tenants, steps, spaces
 }
 
-func processScopeValues(slice []string, valueSet map[string]struct{}, hasWildcard *bool) {
-	if !*hasWildcard && len(slice) == 0 {
-		*hasWildcard = true
+func processScopeValues(
+	wsa *v1beta1.WorkloadServiceAccount, valueSet *map[string][]*v1beta1.WorkloadServiceAccount, scopeType ScopeType,
+) {
+	var slice []string
+	switch scopeType {
+	case ScopeProjects:
+		slice = wsa.Spec.Scope.Projects
+	case ScopeEnvironments:
+		slice = wsa.Spec.Scope.Environments
+	case ScopeTenants:
+		slice = wsa.Spec.Scope.Tenants
+	case ScopeSteps:
+		slice = wsa.Spec.Scope.Steps
+	case ScopeSpaces:
+		slice = wsa.Spec.Scope.Spaces
+	default:
+		return
+	}
+
+	if len(slice) == 0 {
+		(*valueSet)["*"] = append((*valueSet)["*"], wsa)
 	} else {
 		for _, value := range slice {
-			valueSet[value] = struct{}{}
+			(*valueSet)[value] = append((*valueSet)[value], wsa)
 		}
 	}
 }
