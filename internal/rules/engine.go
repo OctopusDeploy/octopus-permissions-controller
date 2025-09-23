@@ -3,8 +3,10 @@ package rules
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"go.uber.org/multierr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -46,8 +48,9 @@ type Engine interface {
 }
 
 type InMemoryEngine struct {
-	rules  map[AgentName]map[Scope]ServiceAccountName
-	client client.Client
+	rules        map[AgentName]map[Scope]ServiceAccountName
+	createdRoles map[string]string
+	client       client.Client
 }
 
 func (s *Scope) IsEmpty() bool {
@@ -68,6 +71,59 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentN
 		}
 	}
 	return "", nil
+}
+
+func (i *InMemoryEngine) Reconcile2(ctx context.Context) error {
+	logger := log.FromContext(ctx).WithName("engine")
+	i.createdRoles = make(map[string]string)
+
+	wsaList, err := getWorkloadServiceAccounts(ctx, i.client)
+	if err != nil {
+		return err
+	}
+
+	err = i.ensureRoles(&wsaList)
+	if err != nil {
+		logger.Error(err, "failed to ensure roles for workload service accounts")
+	}
+
+	err = i.generateRoleBindings(&wsaList)
+	if err != nil {
+		logger.Error(err, "failed to ensure role bindings for workload service accounts")
+	}
+
+	return nil
+}
+
+func (i *InMemoryEngine) ensureRoles(wsaList *[]v1beta1.WorkloadServiceAccount) error {
+	var err error
+	for _, wsa := range *wsaList {
+		ctx := getContextWithTimeout(time.Second * 30)
+		if role, createErr := i.createRoleIfNeeded(ctx, wsa); createErr != nil {
+			err = multierr.Append(err, createErr)
+		} else if role != nil {
+			i.createdRoles[wsa.Name] = role.Name
+		}
+	}
+	return err
+}
+
+func (i *InMemoryEngine) generateRoleBindings(wsaList *[]v1beta1.WorkloadServiceAccount) error {
+	var err error
+	for _, wsa := range *wsaList {
+		if role, createErr := i.createRoleIfNeeded(ctx, wsa); createErr != nil {
+			err = multierr.Append(err, createErr)
+		} else if role != nil {
+			i.createdRoles[wsa.Name] = role.Name
+		}
+	}
+	return err
+}
+
+func getContextWithTimeout(timeout time.Duration) context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	defer cancel()
+	return ctx
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context, namespace string) error {
@@ -153,12 +209,14 @@ func createServiceAccount(ctx context.Context, c client.Client, namespace string
 }
 
 // createRoleIfNeeded creates a Role for inline permissions if they exist
-func createRoleIfNeeded(ctx context.Context, c client.Client, namespace string, permissions []rbacv1.PolicyRule) (string, error) {
+func (i *InMemoryEngine) createRoleIfNeeded(ctx context.Context, wsa v1beta1.WorkloadServiceAccount) (*rbacv1.Role, error) {
 	logger := log.FromContext(ctx).WithName("createRoleIfNeeded")
 
-	if len(permissions) == 0 {
-		return "", nil
+	if len(wsa.Spec.Permissions.Permissions) == 0 {
+		return nil, nil
 	}
+	permissions := wsa.Spec.Permissions.Permissions
+	namespace := wsa.GetNamespace()
 
 	// Generate a role name based on permissions hash to ensure uniqueness
 	permissionsHash := shortHash(fmt.Sprintf("%+v", permissions))
@@ -175,22 +233,48 @@ func createRoleIfNeeded(ctx context.Context, c client.Client, namespace string, 
 		Rules: permissions,
 	}
 
-	err := c.Create(ctx, role)
+	existingRole := &rbacv1.Role{}
+	err := i.client.Get(ctx, client.ObjectKeyFromObject(role), existingRole)
+	if err == nil {
+		//TODO: Compare existing rules with desired rules and update if necessary
+		logger.Info("Role already exists", "name", roleName)
+		return existingRole, nil
+	}
+
+	err = i.client.Create(ctx, role)
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			logger.Info("Role already exists", "name", roleName)
-			return roleName, nil
+			return role, nil
 		}
-		return "", fmt.Errorf("failed to create Role %s: %w", roleName, err)
+		return nil, fmt.Errorf("failed to create Role %s: %w", roleName, err)
 	}
 
 	logger.Info("Created Role", "name", roleName, "permissions", len(permissions))
-	return roleName, nil
+	return role, nil
 }
 
-// createRoleBindings creates RoleBindings to bind the ServiceAccount to Roles and ClusterRoles
-func createRoleBindings(ctx context.Context, c client.Client, namespace string, serviceAccountName ServiceAccountName, permissions v1beta1.WorkloadServiceAccountPermissions, generatedRoleName string) error {
-	logger := log.FromContext(ctx).WithName("createRoleBindings")
+func (i *InMemoryEngine) generateRoleBindings(ctx context.Context, wsa v1beta1.WorkloadServiceAccount) []*rbacv1.RoleBinding {
+	logger := log.FromContext(ctx).WithName("generateRoleBindings")
+	namespace := wsa.GetNamespace()
+
+	if len(wsa.Spec.Permissions.Roles) != 0 {
+		roleRefs := wsa.Spec.Permissions.Roles
+
+		for _, roleRef := range roleRefs {
+			roleBindingName := fmt.Sprintf("%s-%s-binding", wsa.Name, roleRef.Name)
+			roleBinding := &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roleBindingName,
+					Namespace: namespace,
+					Labels: map[string]string{
+						PermissionsKey: "enabled",
+					},
+				},
+				RoleRef: roleRef,
+			}
+		}
+	}
 
 	// Bind to existing Roles
 	for _, roleRef := range permissions.Roles {
