@@ -206,7 +206,7 @@ func main() {
 	}
 
 	// Create the rules engine instance
-	engine := rules.NewInMemoryEngine()
+	engine := rules.NewInMemoryEngine(mgr.GetClient())
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),
