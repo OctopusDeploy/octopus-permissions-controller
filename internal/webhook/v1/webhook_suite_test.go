@@ -60,19 +60,14 @@ type MockEngine struct {
 }
 
 func (m *MockEngine) GetServiceAccountForScope(
-	scope rules.Scope, agentName rules.AgentName,
+	scope rules.Scope,
 ) (rules.ServiceAccountName, error) {
-	args := m.Called(scope, agentName)
+	args := m.Called(scope)
 	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
 }
 
-func (m *MockEngine) AddScopeRuleset(scope rules.Scope, rule rules.Rule, targetNamespace rules.Namespace) error {
-	args := m.Called(scope, rule, targetNamespace)
-	return args.Error(0)
-}
-
-func (m *MockEngine) RemoveScopeRuleset(scope rules.Scope, rule rules.Rule, targetNamespace rules.Namespace) error {
-	args := m.Called(scope, rule, targetNamespace)
+func (m *MockEngine) Reconcile(ctx context.Context) error {
+	args := m.Called(ctx)
 	return args.Error(0)
 }
 

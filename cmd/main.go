@@ -213,7 +213,7 @@ func main() {
 	}
 
 	// Create the rules engine instance
-	engine := rules.NewInMemoryEngine(targetNamespaces)
+	engine := rules.NewInMemoryEngine(targetNamespaces, mgr.GetClient())
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),

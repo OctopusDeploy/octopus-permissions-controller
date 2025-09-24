@@ -1,0 +1,113 @@
+package rules
+
+import (
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"time"
+
+	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"go.uber.org/multierr"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+// Constants for metadata keys (used in both labels and annotations)
+const (
+	MetadataNamespace = "agent.octopus.com"
+	PermissionsKey    = MetadataNamespace + "/permissions"
+)
+
+type Resources struct {
+	client client.Client
+}
+
+func NewResources(client client.Client) Resources {
+	return Resources{
+		client: client,
+	}
+}
+
+func (r *Resources) getWorkloadServiceAccounts(ctx context.Context) ([]v1beta1.WorkloadServiceAccount, error) {
+	wsaList := &v1beta1.WorkloadServiceAccountList{}
+	err := r.client.List(ctx, wsaList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list workload service accounts: %w", err)
+	}
+
+	return wsaList.Items, nil
+}
+
+func (r *Resources) ensureRoles(wsaList []v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error) {
+	createdRoles := make(map[string]rbacv1.Role)
+	var err error
+
+	for _, wsa := range wsaList {
+		ctxWithTimeout := r.getContextWithTimeout(time.Second * 30)
+		if role, createErr := r.createRoleIfNeeded(ctxWithTimeout, wsa); createErr != nil {
+			err = multierr.Append(err, createErr)
+		} else if role.Name != "" {
+			createdRoles[wsa.Name] = role
+		}
+	}
+	return createdRoles, err
+}
+
+func (r *Resources) createRoleIfNeeded(ctx context.Context, wsa v1beta1.WorkloadServiceAccount) (rbacv1.Role, error) {
+	logger := log.FromContext(ctx).WithName("createRoleIfNeeded")
+
+	if len(wsa.Spec.Permissions.Permissions) == 0 {
+		return rbacv1.Role{}, nil
+	}
+	permissions := wsa.Spec.Permissions.Permissions
+	namespace := wsa.GetNamespace()
+
+	// Generate a role name based on permissions hash to ensure uniqueness
+	permissionsHash := r.shortHash(fmt.Sprintf("%+v", permissions))
+	roleName := fmt.Sprintf("octopus-role-%s", permissionsHash)
+
+	role := rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      roleName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				PermissionsKey: "enabled",
+			},
+		},
+		Rules: permissions,
+	}
+
+	existingRole := rbacv1.Role{}
+	err := r.client.Get(ctx, client.ObjectKeyFromObject(&role), &existingRole)
+	if err == nil {
+		logger.Info("Role already exists", "name", roleName)
+		return existingRole, nil
+	}
+
+	err = r.client.Create(ctx, &role)
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			logger.Info("Role already exists", "name", roleName)
+			return role, nil
+		}
+		return rbacv1.Role{}, fmt.Errorf("failed to create Role %s: %w", roleName, err)
+	}
+
+	logger.Info("Created Role", "name", roleName, "permissions", len(permissions))
+	return role, nil
+}
+
+func (r *Resources) getContextWithTimeout(timeout time.Duration) context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	defer cancel()
+	return ctx
+}
+
+// shortHash generates a hash of a string for use in labels and names
+func (r *Resources) shortHash(value string) string {
+	hash := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", hash)[:32] // Use first 32 characters (128 bits)
+}

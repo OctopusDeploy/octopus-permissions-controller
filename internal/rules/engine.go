@@ -1,7 +1,10 @@
 package rules
 
 import (
-	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"context"
+	"fmt"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type AgentName string
@@ -18,48 +21,53 @@ type Scope struct {
 	Space       string `json:"space"`
 }
 
-type Rule struct {
-	Permissions v1beta1.WorkloadServiceAccountPermissions `json:"permissions"`
-}
-
 type Engine interface {
-	GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error)
-	AddScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error
-	RemoveScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error
+	GetServiceAccountForScope(scope Scope) (ServiceAccountName, error)
+	Reconcile(ctx context.Context) error
 }
 
 type InMemoryEngine struct {
-	rules            map[AgentName]map[Scope]ServiceAccountName
+	scopeToSA        map[Scope]ServiceAccountName
 	targetNamespaces []string
-	// client kubernetes.Interface
+	resources        Resources
 }
 
 func (s *Scope) IsEmpty() bool {
 	return s.Project == "" && s.Environment == "" && s.Tenant == "" && s.Step == "" && s.Space == ""
 }
 
-func NewInMemoryEngine(targetNamespaces []string) InMemoryEngine {
+func (s *Scope) String() string {
+	return fmt.Sprintf("projects=%s,environments=%s,tenants=%s,steps=%s,spaces=%s",
+		s.Project,
+		s.Environment,
+		s.Tenant,
+		s.Step,
+		s.Space)
+}
+
+func NewInMemoryEngine(targetNamespaces []string, client client.Client) InMemoryEngine {
 	return InMemoryEngine{
-		rules:            make(map[AgentName]map[Scope]ServiceAccountName),
+		scopeToSA:        make(map[Scope]ServiceAccountName),
 		targetNamespaces: targetNamespaces,
+		resources:        NewResources(client),
 	}
 }
 
-func (i InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error) {
-	if agentRules, ok := i.rules[agentName]; ok {
-		if sa, ok := agentRules[scope]; ok {
-			return sa, nil
-		}
+func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
+	if sa, ok := i.scopeToSA[scope]; ok {
+		return sa, nil
 	}
+
 	return "", nil
 }
 
-func (i InMemoryEngine) AddScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error {
-	// TODO: Implement me
-	return nil
-}
+func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
+	wsaList, err := i.resources.getWorkloadServiceAccounts(ctx)
+	if err != nil {
+		return err
+	}
 
-func (i InMemoryEngine) RemoveScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error {
-	// TODO: Implement me
+	_, err = i.resources.ensureRoles(wsaList)
+
 	return nil
 }
