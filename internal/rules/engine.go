@@ -67,7 +67,18 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 		return err
 	}
 
+	scopeMap := getScopesForWSAs(wsaList)
+
+	// Create roles for WSAs with inline permissions
 	_, err = i.resources.ensureRoles(wsaList)
+	if err != nil {
+		return fmt.Errorf("failed to ensure roles: %w", err)
+	}
+
+	_, err = i.resources.ensureServiceAccounts(scopeMap, i.targetNamespaces)
+	if err != nil {
+		return fmt.Errorf("failed to ensure service accounts: %w", err)
+	}
 
 	return nil
 }
