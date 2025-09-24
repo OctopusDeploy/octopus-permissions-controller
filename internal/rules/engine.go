@@ -29,7 +29,8 @@ type Engine interface {
 }
 
 type InMemoryEngine struct {
-	rules map[AgentName]map[Scope]ServiceAccountName
+	rules            map[AgentName]map[Scope]ServiceAccountName
+	targetNamespaces []string
 	// client kubernetes.Interface
 }
 
@@ -37,9 +38,10 @@ func (s *Scope) IsEmpty() bool {
 	return s.Project == "" && s.Environment == "" && s.Tenant == "" && s.Step == "" && s.Space == ""
 }
 
-func NewInMemoryEngine() InMemoryEngine {
+func NewInMemoryEngine(targetNamespaces []string) InMemoryEngine {
 	return InMemoryEngine{
-		rules: make(map[AgentName]map[Scope]ServiceAccountName),
+		rules:            make(map[AgentName]map[Scope]ServiceAccountName),
+		targetNamespaces: targetNamespaces,
 	}
 }
 

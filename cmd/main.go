@@ -205,8 +205,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Discover target namespaces from octopus tentacle deployments
+	targetNamespaces, err := rules.DiscoverTargetNamespaces(mgr.GetClient())
+	if err != nil {
+		setupLog.Error(err, "unable to discover target namespaces")
+		os.Exit(1)
+	}
+
 	// Create the rules engine instance
-	engine := rules.NewInMemoryEngine()
+	engine := rules.NewInMemoryEngine(targetNamespaces)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),
