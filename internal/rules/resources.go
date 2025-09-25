@@ -218,13 +218,6 @@ func (r *Resources) createRoleBindingsForWSA(ctx context.Context, wsa v1beta1.Wo
 		}
 	}
 
-	// Create role bindings for cluster roles
-	for _, roleRef := range wsa.Spec.Permissions.ClusterRoles {
-		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
-			err = multierr.Append(err, bindErr)
-		}
-	}
-
 	// Create role binding for inline permissions (if role was created)
 	if createdRole, exists := createdRoles[wsa.Name]; exists {
 		roleRef := rbacv1.RoleRef{
@@ -233,6 +226,13 @@ func (r *Resources) createRoleBindingsForWSA(ctx context.Context, wsa v1beta1.Wo
 			APIGroup: "rbac.authorization.k8s.io",
 		}
 		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+			err = multierr.Append(err, bindErr)
+		}
+	}
+
+	// Create cluster role bindings for cluster roles
+	for _, roleRef := range wsa.Spec.Permissions.ClusterRoles {
+		if bindErr := r.createClusterRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
 			err = multierr.Append(err, bindErr)
 		}
 	}
@@ -251,9 +251,7 @@ func (r *Resources) createRoleBinding(ctx context.Context, wsa v1beta1.WorkloadS
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
-			Labels: map[string]string{
-				PermissionsKey: "enabled",
-			},
+			// TODO: Labels?
 		},
 		RoleRef:  roleRef,
 		Subjects: subjects,
@@ -269,6 +267,35 @@ func (r *Resources) createRoleBinding(ctx context.Context, wsa v1beta1.WorkloadS
 	}
 
 	logger.Info("Created RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
+	return nil
+}
+
+func (r *Resources) createClusterRoleBinding(ctx context.Context, wsa v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject) error {
+	logger := log.FromContext(ctx).WithName("createClusterRoleBinding")
+
+	// TODO: This is non-namespaced, check the name is unique across the cluster
+	name := fmt.Sprintf("octopus-crb-%s", r.shortHash(fmt.Sprintf("%s-%s", wsa.Name, roleRef.Name)))
+	namespace := wsa.GetNamespace()
+
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			// TODO: Labels?
+		},
+		RoleRef:  roleRef,
+		Subjects: subjects,
+	}
+
+	err := r.client.Create(ctx, clusterRoleBinding)
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			logger.Info("ClusterRoleBinding already exists", "name", name, "namespace", namespace)
+			return nil
+		}
+		return fmt.Errorf("failed to create ClusterRoleBinding %s in namespace %s: %w", name, namespace, err)
+	}
+
+	logger.Info("Created ClusterRoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
 	return nil
 }
 
