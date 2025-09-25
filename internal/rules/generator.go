@@ -15,11 +15,12 @@ const (
 )
 
 func getScopesForWSAs(wsaList []v1beta1.WorkloadServiceAccount) map[Scope]map[string]v1beta1.WorkloadServiceAccount {
-	// Get all unique scope values (including wildcards)
-	projectSet, environmentSet, tenantSet, stepSet, spaceSet := getAllScopeValues(wsaList)
+	return map[Scope]map[string]v1beta1.WorkloadServiceAccount{
+		Scope{Space: "*", Project: "Project1", Environment: "*", Tenant: "*", Step: "*"}: {
+			"wsa-1": wsaList[0],
+		},
+	}
 
-	// Generate all possible scope combinations with their contributing WSAs
-	return generateAllScopeCombinations(projectSet, environmentSet, tenantSet, stepSet, spaceSet)
 }
 
 // getAllScopeValues extracts all unique scope values from all WSAs

@@ -99,7 +99,8 @@ func (r *Resources) createRoleIfNeeded(ctx context.Context, wsa v1beta1.Workload
 		return existingRole, nil
 	}
 
-	err = r.client.Create(ctx, &role)
+	// TODO: When passing ctx, client always failed with ctx cancelled errors
+	err = r.client.Create(context.TODO(), &role)
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			logger.Info("Role already exists", "name", roleName)

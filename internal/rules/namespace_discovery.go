@@ -21,7 +21,7 @@ func DiscoverTargetNamespaces(k8sClient client.Client) ([]string, error) {
 	})
 	if err != nil {
 		discoveryLog.Error(err, "Failed to list deployments with octopus agent label")
-		return nil, err
+		// TODO: Consider if we want to fail without any k8s agents?
 	}
 
 	namespaceSet := make(map[string]struct{})

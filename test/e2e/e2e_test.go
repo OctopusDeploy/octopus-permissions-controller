@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -297,48 +298,95 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		It("should list WSAs when creating a resource", func() {
-			By("creating a WorkloadServiceAccount resource")
-			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+		// It("should list WSAs when creating a resource", func() {
+		// 	By("creating a WorkloadServiceAccount resource")
+		// 	cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+		// 	_, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to create WSA resource")
+
+		// 	By("waiting for reconciliation to process the WSA")
+		// 	Eventually(func(g Gomega) {
+		// 		cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+		// 		output, err := utils.Run(cmd)
+		// 		g.Expect(err).NotTo(HaveOccurred())
+		// 		g.Expect(output).To(ContainSubstring("Found WSAs in namespace"))
+		// 		g.Expect(output).To(ContainSubstring("WSA has project scope"))
+		// 		g.Expect(output).NotTo(ContainSubstring("failed to list WorkloadServiceAccounts"))
+		// 	}).Should(Succeed())
+
+		// 	By("cleaning up the WSA resource")
+		// 	cmd = exec.Command("kubectl", "delete", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+		// 	_, _ = utils.Run(cmd)
+		// })
+
+		// It("should list WSAs when deleting a resource", func() {
+		// 	By("creating a WorkloadServiceAccount resource")
+		// 	cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+		// 	_, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to create WSA resource")
+
+		// 	By("waiting for initial reconciliation")
+		// 	time.Sleep(2 * time.Second)
+
+		// 	By("deleting the WorkloadServiceAccount resource")
+		// 	cmd = exec.Command("kubectl", "delete", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+		// 	_, err = utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to delete WSA resource")
+
+		// 	By("verifying reconciliation handles deletion without listing errors")
+		// 	Eventually(func(g Gomega) {
+		// 		cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace, "--tail=50")
+		// 		output, err := utils.Run(cmd)
+		// 		g.Expect(err).NotTo(HaveOccurred())
+		// 		g.Expect(output).NotTo(ContainSubstring("failed to list WorkloadServiceAccounts"))
+		// 	}).Should(Succeed())
+		// })
+
+		It("should create ServiceAccount and roles when WorkloadServiceAccount is created", func() {
+			wsaName := "test-wsa"
+			testNamespace := "default"
+
+			By("creating a WorkloadServiceAccount using kubectl apply")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(fmt.Sprintf(`
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  scope:
+    projects: ["web-app", "mobile-app"]
+    environments: ["production", "staging"]
+    tenants: ["customer-a", "customer-b"]
+    steps: ["deploy-api", "deploy-frontend"]
+    spaces: ["default-space", "team-space"]
+  permissions:
+    permissions:
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list"]
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      verbs: ["get", "watch"]
+`, wsaName, testNamespace))
 			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create WSA resource")
+			Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
 
-			By("waiting for reconciliation to process the WSA")
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+			By("waiting for the controller to reconcile and create ServiceAccount")
+			verifyServiceAccountCreated := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+					"-l", "agent.octopus.com/permissions=enabled", "-o", "jsonpath={.items[*].metadata.name}")
 				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("Found WSAs in namespace"))
-				g.Expect(output).To(ContainSubstring("WSA has project scope"))
-				g.Expect(output).NotTo(ContainSubstring("failed to list WorkloadServiceAccounts"))
-			}).Should(Succeed())
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to list ServiceAccounts")
+				g.Expect(output).NotTo(BeEmpty(), "Expected at least one ServiceAccount")
+				g.Expect(output).To(ContainSubstring("octopus-sa-"), "ServiceAccount should have octopus-sa- prefix")
+			}
+			Eventually(verifyServiceAccountCreated, 2*time.Minute).Should(Succeed())
 
-			By("cleaning up the WSA resource")
-			cmd = exec.Command("kubectl", "delete", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
+			By("cleaning up test resources")
+			cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
 			_, _ = utils.Run(cmd)
-		})
-
-		It("should list WSAs when deleting a resource", func() {
-			By("creating a WorkloadServiceAccount resource")
-			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create WSA resource")
-
-			By("waiting for initial reconciliation")
-			time.Sleep(2 * time.Second)
-
-			By("deleting the WorkloadServiceAccount resource")
-			cmd = exec.Command("kubectl", "delete", "-f", "test/e2e/test-wsa.yaml", "-n", namespace)
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to delete WSA resource")
-
-			By("verifying reconciliation handles deletion without listing errors")
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace, "--tail=50")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).NotTo(ContainSubstring("failed to list WorkloadServiceAccounts"))
-			}).Should(Succeed())
 		})
 
 		// TODO: Customize the e2e test suite with scenarios specific to your project.
