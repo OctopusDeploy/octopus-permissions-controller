@@ -69,15 +69,19 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 
 	scopeMap := getScopesForWSAs(wsaList)
 
-	// Create roles for WSAs with inline permissions
-	_, err = i.resources.ensureRoles(wsaList)
+	createdRoles, err := i.resources.ensureRoles(wsaList)
 	if err != nil {
 		return fmt.Errorf("failed to ensure roles: %w", err)
 	}
 
-	_, err = i.resources.ensureServiceAccounts(scopeMap, i.targetNamespaces)
+	wsaToServiceAccounts, err := i.resources.ensureServiceAccounts(scopeMap, i.targetNamespaces)
 	if err != nil {
 		return fmt.Errorf("failed to ensure service accounts: %w", err)
+	}
+
+	// Create role bindings to connect service accounts with roles
+	if bindErr := i.resources.ensureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccounts); bindErr != nil {
+		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
 	}
 
 	return nil

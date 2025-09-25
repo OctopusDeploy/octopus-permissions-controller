@@ -171,6 +171,107 @@ func (r *Resources) createServiceAccount(ctx context.Context, namespace string, 
 	return nil
 }
 
+// ensureRoleBindings creates role bindings to connect service accounts with roles for all WSAs
+func (r *Resources) ensureRoleBindings(ctx context.Context, wsaList []v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role, wsaToServiceAccounts map[string][]serviceAccountInfo) error {
+	logger := log.FromContext(ctx).WithName("ensureRoleBindings")
+	var err error
+
+	// Loop over WSAs and create role bindings for each
+	for _, wsa := range wsaList {
+		serviceAccounts, exists := wsaToServiceAccounts[wsa.Name]
+		if !exists || len(serviceAccounts) == 0 {
+			continue
+		}
+
+		ctxWithTimeout := r.getContextWithTimeout(time.Second * 30)
+		if bindErr := r.createRoleBindingsForWSA(ctxWithTimeout, wsa, serviceAccounts, createdRoles); bindErr != nil {
+			logger.Error(bindErr, "failed to create role bindings for WSA", "wsa", wsa.Name)
+			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for WSA %s: %w", wsa.Name, bindErr))
+		}
+	}
+
+	return err
+}
+
+// createRoleBindingsForWSA creates all role bindings for a WSA with all its service accounts as subjects
+func (r *Resources) createRoleBindingsForWSA(ctx context.Context, wsa v1beta1.WorkloadServiceAccount, serviceAccounts []serviceAccountInfo, createdRoles map[string]rbacv1.Role) error {
+	logger := log.FromContext(ctx).WithName("createRoleBindingsForWSA")
+	var err error
+
+	// Create subjects from all service accounts for this WSA
+	subjects := make([]rbacv1.Subject, len(serviceAccounts))
+	for i, sa := range serviceAccounts {
+		subjects[i] = rbacv1.Subject{
+			Kind:      "ServiceAccount",
+			Name:      sa.name,
+			Namespace: sa.namespace,
+		}
+	}
+
+	// WSA namespace is where role bindings will be created
+	wsaNamespace := wsa.GetNamespace()
+
+	// Create role bindings for explicit roles
+	for _, roleRef := range wsa.Spec.Permissions.Roles {
+		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+			err = multierr.Append(err, bindErr)
+		}
+	}
+
+	// Create role bindings for cluster roles
+	for _, roleRef := range wsa.Spec.Permissions.ClusterRoles {
+		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+			err = multierr.Append(err, bindErr)
+		}
+	}
+
+	// Create role binding for inline permissions (if role was created)
+	if createdRole, exists := createdRoles[wsa.Name]; exists {
+		roleRef := rbacv1.RoleRef{
+			Kind:     "Role",
+			Name:     createdRole.Name,
+			APIGroup: "rbac.authorization.k8s.io",
+		}
+		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+			err = multierr.Append(err, bindErr)
+		}
+	}
+
+	logger.Info("Created role bindings for WSA", "wsa", wsa.Name, "namespace", wsaNamespace, "serviceAccounts", len(serviceAccounts))
+	return err
+}
+
+func (r *Resources) createRoleBinding(ctx context.Context, wsa v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject) error {
+	logger := log.FromContext(ctx).WithName("createRoleBinding")
+
+	name := fmt.Sprintf("octopus-rb-%s", r.shortHash(fmt.Sprintf("%s-%s", wsa.Name, roleRef.Name)))
+	namespace := wsa.GetNamespace()
+
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				PermissionsKey: "enabled",
+			},
+		},
+		RoleRef:  roleRef,
+		Subjects: subjects,
+	}
+
+	err := r.client.Create(ctx, roleBinding)
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			logger.Info("RoleBinding already exists", "name", name, "namespace", namespace)
+			return nil
+		}
+		return fmt.Errorf("failed to create RoleBinding %s in namespace %s: %w", name, namespace, err)
+	}
+
+	logger.Info("Created RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
+	return nil
+}
+
 func (r *Resources) getContextWithTimeout(timeout time.Duration) context.Context {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
 	defer cancel()
