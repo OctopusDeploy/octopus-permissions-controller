@@ -3,7 +3,9 @@ package rules
 import (
 	"context"
 	"fmt"
+	"slices"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -28,6 +30,7 @@ type Engine interface {
 
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName
+	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
 	targetNamespaces []string
 	resources        Resources
 }
@@ -62,25 +65,32 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountN
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
-	wsaList, err := i.resources.getWorkloadServiceAccounts(ctx)
+	wsaEnumerable, err := i.resources.getWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return err
 	}
 
+	var wsaList = slices.Collect(wsaEnumerable)
 	scopeMap := getScopesForWSAs(wsaList)
+
+	// Generate service accounts
+	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+	i.scopeToSA = scopeToSaNameMap
+	i.saToWsaMap = saToWsaMap
 
 	createdRoles, err := i.resources.ensureRoles(wsaList)
 	if err != nil {
 		return fmt.Errorf("failed to ensure roles: %w", err)
 	}
 
-	wsaToServiceAccounts, err := i.resources.ensureServiceAccounts(scopeMap, i.targetNamespaces)
+	err = i.resources.ensureServiceAccounts(uniqueServiceAccounts, i.targetNamespaces)
 	if err != nil {
 		return fmt.Errorf("failed to ensure service accounts: %w", err)
 	}
 
-	// Create role bindings to connect service accounts with roles
-	if bindErr := i.resources.ensureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccounts); bindErr != nil {
+	// For each WSA, bind the roles or created roles to the service accounts in each target namespace
+	if bindErr := i.resources.ensureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
 		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
 	}
 
