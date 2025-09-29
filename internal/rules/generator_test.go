@@ -83,6 +83,27 @@ func Test_getScopesForWSAs(t *testing.T) {
 	}
 }
 
+func Test_GenerateServiceAccountMappings_OnlyHasOneMappingPerServiceAccount(t *testing.T) {
+	// This test ensures that even if multiple scopes map to the same set of WSAs,
+	// only one service account is created for that set of WSAs.
+	scopeMap := map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+		{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
+			"wsa1": &v1beta1.WorkloadServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
+			},
+		},
+		{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
+			"wsa1": &v1beta1.WorkloadServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
+			},
+		},
+	}
+	_, _, wsaToSANames, _ := GenerateServiceAccountMappings(scopeMap)
+
+	assert.Contains(t, wsaToSANames, "wsa1")
+	assert.Equal(t, len(wsaToSANames["wsa1"]), 1)
+}
+
 func Test_GenerateServiceAccountMappings(t *testing.T) {
 	tests := []struct {
 		name                string

@@ -233,7 +233,7 @@ func GenerateServiceAccountMappings(
 	scopeToServiceAccount := make(map[Scope]ServiceAccountName)
 	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount)
 	uniqueServiceAccounts := make(map[ServiceAccountName]*v1.ServiceAccount)
-	wsaToServiceAccountNames := make(map[string][]string)
+	wsaToServiceAccountNamesSet := make(map[string]*set.Set[string])
 
 	// Process each scope and its associated WSAs
 	for scope, wsaMap := range scopeMap {
@@ -256,13 +256,25 @@ func GenerateServiceAccountMappings(
 
 		// For each WSA, track which service accounts it maps to
 		for wsaName := range wsaMap {
-			wsaToServiceAccountNames[wsaName] = append(wsaToServiceAccountNames[wsaName], string(serviceAccountName))
+			if wsaSet, ok := wsaToServiceAccountNamesSet[wsaName]; ok {
+				wsaSet.Insert(string(serviceAccountName))
+				continue
+			}
+			newSet := set.New[string](1)
+			newSet.Insert(string(serviceAccountName))
+			wsaToServiceAccountNamesSet[wsaName] = newSet
 		}
 	}
 
 	serviceAccountsToCreate := make([]*v1.ServiceAccount, 0, len(uniqueServiceAccounts))
 	for _, sa := range uniqueServiceAccounts {
 		serviceAccountsToCreate = append(serviceAccountsToCreate, sa)
+	}
+
+	// Convert from set to slice for wsaToServiceAccountNames
+	wsaToServiceAccountNames := make(map[string][]string, len(wsaToServiceAccountNamesSet))
+	for wsa, wsaSet := range wsaToServiceAccountNamesSet {
+		wsaToServiceAccountNames[wsa] = wsaSet.Slice()
 	}
 
 	return scopeToServiceAccount, serviceAccountToWSAs, wsaToServiceAccountNames, serviceAccountsToCreate
