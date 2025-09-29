@@ -237,8 +237,9 @@ func GenerateServiceAccountMappings(
 
 	// Process each scope and its associated WSAs
 	for scope, wsaMap := range scopeMap {
-		// Generate service account name using the scope (consistent with existing pattern)
-		serviceAccountName := generateServiceAccountName(scope)
+		// Generate service account name for this WSA
+		wsaKeys := maps.Keys(wsaMap)
+		serviceAccountName := generateServiceAccountName(wsaKeys)
 
 		// Map scope to service account name
 		scopeToServiceAccount[scope] = serviceAccountName

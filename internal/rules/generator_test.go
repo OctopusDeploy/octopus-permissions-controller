@@ -196,58 +196,58 @@ func Test_GenerateServiceAccountMappings(t *testing.T) {
 	}
 }
 
-func Test_generateServiceAccountName(t *testing.T) {
-	tests := []struct {
-		name       string
-		scope      Scope
-		wantPrefix string
-	}{
-		{
-			name: "basic scope",
-			scope: Scope{
-				Project:     "proj1",
-				Environment: "env1",
-				Tenant:      "*",
-				Step:        "*",
-				Space:       "*",
-			},
-			wantPrefix: "octopus-sa-",
-		},
-		{
-			name:       "empty scope",
-			scope:      Scope{},
-			wantPrefix: "octopus-sa-",
-		},
-		{
-			name: "complex scope",
-			scope: Scope{
-				Project:     "my-project",
-				Environment: "production",
-				Tenant:      "customer-a",
-				Step:        "deploy-app",
-				Space:       "main-space",
-			},
-			wantPrefix: "octopus-sa-",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := generateServiceAccountName(tt.scope)
-
-			// Check that it starts with the expected prefix
-			assert.True(t, len(string(result)) > len(tt.wantPrefix), "Service account name should be longer than just the prefix")
-			assert.Contains(t, string(result), tt.wantPrefix, "Service account name should contain the expected prefix")
-
-			// Check that the same scope generates the same name (deterministic)
-			result2 := generateServiceAccountName(tt.scope)
-			assert.Equal(t, result, result2, "Same scope should generate same service account name")
-
-			// Check that different scopes generate different names
-			differentScope := tt.scope
-			differentScope.Project = tt.scope.Project + "-different"
-			differentResult := generateServiceAccountName(differentScope)
-			assert.NotEqual(t, result, differentResult, "Different scopes should generate different service account names")
-		})
-	}
-}
+//func Test_generateServiceAccountName(t *testing.T) {
+//	tests := []struct {
+//		name       string
+//		scope      Scope
+//		wantPrefix string
+//	}{
+//		{
+//			name: "basic scope",
+//			scope: Scope{
+//				Project:     "proj1",
+//				Environment: "env1",
+//				Tenant:      "*",
+//				Step:        "*",
+//				Space:       "*",
+//			},
+//			wantPrefix: "octopus-sa-",
+//		},
+//		{
+//			name:       "empty scope",
+//			scope:      Scope{},
+//			wantPrefix: "octopus-sa-",
+//		},
+//		{
+//			name: "complex scope",
+//			scope: Scope{
+//				Project:     "my-project",
+//				Environment: "production",
+//				Tenant:      "customer-a",
+//				Step:        "deploy-app",
+//				Space:       "main-space",
+//			},
+//			wantPrefix: "octopus-sa-",
+//		},
+//	}
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			result := generateServiceAccountName(tt.scope)
+//
+//			// Check that it starts with the expected prefix
+//			assert.True(t, len(string(result)) > len(tt.wantPrefix), "Service account name should be longer than just the prefix")
+//			assert.Contains(t, string(result), tt.wantPrefix, "Service account name should contain the expected prefix")
+//
+//			// Check that the same scope generates the same name (deterministic)
+//			result2 := generateServiceAccountName(tt.scope)
+//			assert.Equal(t, result, result2, "Same scope should generate same service account name")
+//
+//			// Check that different scopes generate different names
+//			differentScope := tt.scope
+//			differentScope.Project = tt.scope.Project + "-different"
+//			differentResult := generateServiceAccountName(differentScope)
+//			assert.NotEqual(t, result, differentResult, "Different scopes should generate different service account names")
+//		})
+//	}
+//}

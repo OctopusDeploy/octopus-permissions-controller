@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"iter"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
@@ -65,12 +67,13 @@ func (r *Resources) ensureRoles(wsaList []*v1beta1.WorkloadServiceAccount) (map[
 	var err error
 
 	for _, wsa := range wsaList {
-		ctxWithTimeout := r.getContextWithTimeout(time.Second * 30)
+		ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
 		if role, createErr := r.createRoleIfNeeded(ctxWithTimeout, wsa); createErr != nil {
 			err = multierr.Append(err, createErr)
 		} else if role.Name != "" {
 			createdRoles[wsa.Name] = role
 		}
+		cancel()
 	}
 	return createdRoles, err
 }
@@ -125,11 +128,13 @@ func (r *Resources) ensureServiceAccounts(serviceAccounts []*corev1.ServiceAccou
 	var err error
 	for _, serviceAccount := range serviceAccounts {
 		for _, namespace := range targetNamespaces {
-			ctxWithTimeout := r.getContextWithTimeout(time.Second * 30)
+			ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
 			if createErr := r.createServiceAccount(ctxWithTimeout, namespace, serviceAccount); createErr != nil {
 				err = multierr.Append(err, createErr)
+				cancel()
 				continue
 			}
+			cancel()
 		}
 	}
 
@@ -183,11 +188,12 @@ func (r *Resources) ensureRoleBindings(
 			}
 		}
 
-		ctxWithTimeout := r.getContextWithTimeout(time.Second * 30)
+		ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
 		if bindErr := r.createRoleBindingsForWSA(ctxWithTimeout, wsa, allNamespacedServiceAccounts, createdRoles); bindErr != nil {
 			logger.Error(bindErr, "failed to create role bindings for WSA", "wsa", wsa.Name)
 			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for WSA %s: %w", wsa.Name, bindErr))
 		}
+		cancel()
 	}
 
 	return err
@@ -306,10 +312,9 @@ func (r *Resources) createClusterRoleBinding(
 	return nil
 }
 
-func (r *Resources) getContextWithTimeout(timeout time.Duration) context.Context {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
-	defer cancel()
-	return ctx
+func (r *Resources) getContextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	return ctx, cancel
 }
 
 // shortHash generates a hash of a string for use in labels and names
@@ -319,8 +324,8 @@ func shortHash(value string) string {
 }
 
 // generateServiceAccountName generates a ServiceAccountName based on the given scope
-func generateServiceAccountName(scope Scope) ServiceAccountName {
-	hash := shortHash(scope.String())
+func generateServiceAccountName(wsaNames iter.Seq[string]) ServiceAccountName {
+	hash := shortHash(strings.Join(slices.Collect(wsaNames), "-"))
 	return ServiceAccountName(fmt.Sprintf("octopus-sa-%s", hash))
 }
 

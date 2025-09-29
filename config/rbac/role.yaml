@@ -4,11 +4,17 @@ kind: ClusterRole
 metadata:
   name: manager-role
 rules:
-- resources:
-  - pods
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - agent.octopus.com
@@ -48,9 +54,21 @@ rules:
   - rbac.authorization.k8s.io
   resources:
   - clusterroles
+  - roles
+  verbs:
+  - create
+  - delete
+  - escalate
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
   - clusterrolesbindings
   - rolebindings
-  - roles
   verbs:
   - create
   - delete
