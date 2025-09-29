@@ -67,37 +67,6 @@ func buildGlobalVocabulary(rules []*v1beta1.WorkloadServiceAccount) GlobalVocabu
 	return vocabulary
 }
 
-func generateAllCombinations(
-	currentDimension DimensionIndex, currentScope Scope, possibleValues [MaxDimensionIndex]set.Collection[string],
-	results map[Scope]struct{},
-) {
-	if currentDimension == MaxDimensionIndex {
-		// We've set all dimensions, save this scope
-		results[currentScope] = struct{}{}
-		return
-	}
-
-	// Try each possible value for the current dimension
-	for _, value := range possibleValues[currentDimension].Slice() {
-		newScope := currentScope
-		switch currentDimension {
-		case ProjectIndex:
-			newScope.Project = value
-		case EnvironmentIndex:
-			newScope.Environment = value
-		case TenantIndex:
-			newScope.Tenant = value
-		case StepIndex:
-			newScope.Step = value
-		case SpaceIndex:
-			newScope.Space = value
-		default: // Should not happen
-			continue
-		}
-		generateAllCombinations(currentDimension+1, newScope, possibleValues, results)
-	}
-}
-
 // computeMinimalServiceAccountScopes uses set theory to compute the minimal set of service accounts needed
 // It creates service accounts only for scope intersections where multiple WSAs could apply
 func computeMinimalServiceAccountScopes(
@@ -114,7 +83,7 @@ func computeMinimalServiceAccountScopes(
 	}
 
 	// Find all scope intersections where multiple WSAs overlap
-	scopeIntersections := findScopeIntersections(wsaList, wsaCoverageSets)
+	scopeIntersections := findScopeIntersections(wsaCoverageSets)
 
 	// Build final mapping of scopes to WSAs
 	return buildScopeToWSAMapping(scopeIntersections, wsaList)
@@ -181,9 +150,7 @@ func generateScopeCombinations(
 }
 
 // findScopeIntersections finds all scopes where multiple WSAs could apply
-func findScopeIntersections(
-	wsaList []*v1beta1.WorkloadServiceAccount, coverageSets []*set.Set[Scope],
-) map[Scope]*set.Set[int] {
+func findScopeIntersections(coverageSets []*set.Set[Scope]) map[Scope]*set.Set[int] {
 	scopeToWSAIndices := make(map[Scope]*set.Set[int])
 
 	// For each scope covered by any WSA, track which WSAs cover it

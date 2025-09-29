@@ -40,9 +40,9 @@ type Resources struct {
 	client client.Client
 }
 
-func NewResources(client client.Client) Resources {
+func NewResources(controllerClient client.Client) Resources {
 	return Resources{
-		client: client,
+		client: controllerClient,
 	}
 }
 

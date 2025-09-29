@@ -28,9 +28,8 @@ import (
 
 var _ = Describe("Pod Webhook", func() {
 	var (
-		pod       *corev1.Pod
-		podScope  rules.Scope
-		agentName rules.AgentName = "default"
+		pod      *corev1.Pod
+		podScope rules.Scope
 	)
 
 	BeforeEach(func() {
@@ -81,7 +80,7 @@ var _ = Describe("Pod Webhook", func() {
 		It("Should inject a service account", func() {
 			By("By creating a pod")
 
-			mockCall := mockEngine.On("GetServiceAccountForScope", podScope, agentName).Return(rules.ServiceAccountName("overridden"), nil)
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName("overridden"), nil)
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 
 			var actualPod corev1.Pod
@@ -92,7 +91,7 @@ var _ = Describe("Pod Webhook", func() {
 		})
 		It("Should not inject a service account", func() {
 			By("When no matching scope exists")
-			mockCall := mockEngine.On("GetServiceAccountForScope", podScope, agentName).Return(rules.ServiceAccountName(""), nil)
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName(""), nil)
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 			var actualPod corev1.Pod
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())

@@ -123,8 +123,3 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 
 	return scope
 }
-
-func getPodControllingAgentName(p *corev1.Pod) rules.AgentName {
-	namespace := p.Namespace
-	return rules.AgentName(namespace)
-}

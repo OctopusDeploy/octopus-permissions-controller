@@ -48,11 +48,11 @@ func (s *Scope) String() string {
 		s.Space)
 }
 
-func NewInMemoryEngine(targetNamespaces []string, client client.Client) InMemoryEngine {
+func NewInMemoryEngine(targetNamespaces []string, controllerClient client.Client) InMemoryEngine {
 	return InMemoryEngine{
 		scopeToSA:        make(map[Scope]ServiceAccountName),
 		targetNamespaces: targetNamespaces,
-		resources:        NewResources(client),
+		resources:        NewResources(controllerClient),
 	}
 }
 
