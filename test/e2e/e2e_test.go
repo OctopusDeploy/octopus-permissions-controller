@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/testdata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -311,29 +312,14 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("creating a WorkloadServiceAccount using kubectl apply")
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = strings.NewReader(fmt.Sprintf(`
-apiVersion: agent.octopus.com/v1beta1
-kind: WorkloadServiceAccount
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  scope:
-    projects: ["web-app", "mobile-app"]
-    environments: ["production", "staging"]
-    tenants: ["customer-a", "customer-b"]
-    steps: ["deploy-api", "deploy-frontend"]
-    spaces: ["default-space", "team-space"]
-  permissions:
-    permissions:
-    - apiGroups: [""]
-      resources: ["pods"]
-      verbs: ["get", "list"]
-    - apiGroups: ["apps"]
-      resources: ["deployments"]
-      verbs: ["get", "watch"]
-`, wsaName, testNamespace))
-			_, err := utils.Run(cmd)
+			data := testdata.E2E
+			yaml, err := data.ReadFile("e2e/simple.yaml")
+			if err != nil {
+				Fail("Failed to read testdata/simple.yaml")
+			}
+			cmd.Stdin = strings.NewReader(string(yaml))
+
+			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
 
 			By("waiting for the controller to reconcile and create ServiceAccount")
