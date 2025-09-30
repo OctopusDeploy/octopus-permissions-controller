@@ -130,6 +130,7 @@ var _ = Describe("Engine Integration Tests", func() {
 					Expect(sa.Labels).To(HaveKey(TenantKey))
 
 					// Verify annotations contain actual values (not hashes)
+					// TODO: Verify against expected scope values
 					Expect(sa.Annotations).To(HaveKey(ProjectKey))
 					Expect(sa.Annotations).To(HaveKey(EnvironmentKey))
 					Expect(sa.Annotations).To(HaveKey(TenantKey))

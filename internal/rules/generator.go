@@ -32,6 +32,9 @@ const (
 	MaxDimensionIndex // Must be last - used for various looping through dimensions
 )
 
+// GlobalVocabulary holds the set of known values for each dimension
+// Indexes correspond to DimensionIndex constants
+// e.g. [ProjectIndex] holds the set of known projects from all WSAs
 type GlobalVocabulary [MaxDimensionIndex]*set.Set[string]
 
 func NewGlobalVocabulary() GlobalVocabulary {

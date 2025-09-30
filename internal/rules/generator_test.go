@@ -16,7 +16,7 @@ type FindAllPossibleResourceScopesTest struct {
 	Want       map[Scope]map[string]v1beta1.WorkloadServiceAccount
 }
 
-func NewBasicTest(name string) FindAllPossibleResourceScopesTest {
+func NewFindAllPossibleResourceScopesTest(name string) FindAllPossibleResourceScopesTest {
 	test := FindAllPossibleResourceScopesTest{
 		Name:       name,
 		Vocabulary: GlobalVocabulary{},
@@ -67,7 +67,7 @@ func NewBasicTest(name string) FindAllPossibleResourceScopesTest {
 
 func Test_getScopesForWSAs(t *testing.T) {
 	tests := []FindAllPossibleResourceScopesTest{
-		NewBasicTest("test 1"),
+		NewFindAllPossibleResourceScopesTest("Simple Scopes and WSAs"),
 	}
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
@@ -83,7 +83,7 @@ func Test_getScopesForWSAs(t *testing.T) {
 	}
 }
 
-func Test_GenerateServiceAccountMappings_OnlyHasOneMappingPerServiceAccount(t *testing.T) {
+func Test_MultipleWSAsWithTheSameScopeOnlyCreateOneServiceAccount(t *testing.T) {
 	// This test ensures that even if multiple scopes map to the same set of WSAs,
 	// only one service account is created for that set of WSAs.
 	scopeMap := map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
