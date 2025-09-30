@@ -34,6 +34,7 @@ type InMemoryEngine struct {
 	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
 	targetNamespaces []string
 	resources        Resources
+	client           client.Client
 }
 
 func (s *Scope) IsEmpty() bool {
@@ -49,11 +50,12 @@ func (s *Scope) String() string {
 		s.Space)
 }
 
-func NewInMemoryEngine(targetNamespaces []string, controllerClient client.Client) InMemoryEngine {
+func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
 	return InMemoryEngine{
 		scopeToSA:        make(map[Scope]ServiceAccountName),
-		targetNamespaces: targetNamespaces,
+		targetNamespaces: []string{},
 		resources:        NewResources(controllerClient),
+		client:           controllerClient,
 	}
 }
 
@@ -71,6 +73,13 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Get our target namespaces
+	targetNamespaces, err := DiscoverTargetNamespaces(i.client)
+	if err != nil {
+		return fmt.Errorf("failed to discover target namespaces: %w", err)
+	}
+	i.targetNamespaces = targetNamespaces
 
 	var wsaList = slices.Collect(wsaEnumerable)
 	scopeMap, vocabulary := getScopesForWSAs(wsaList)
