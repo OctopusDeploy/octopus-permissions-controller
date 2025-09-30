@@ -10,13 +10,13 @@ import (
 	"github.com/hashicorp/go-set/v3"
 )
 
-func getScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) map[Scope]map[string]*v1beta1.WorkloadServiceAccount {
+func getScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary) {
 	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
 
 	// Use set theory to compute minimal service accounts needed
 	// Only create service accounts where multiple WSAs could apply to the same scope
-	return computeMinimalServiceAccountScopes(wsaList, vocabulary)
+	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
 
 const WildcardValue = "*"
@@ -45,6 +45,43 @@ func NewGlobalVocabulary() GlobalVocabulary {
 		set.New[string](0), // Steps
 		set.New[string](0), // Spaces
 	}
+}
+
+func (v *GlobalVocabulary) GetKnownScopeCombination(scope Scope) Scope {
+	// For each dimension, if the value is known, keep it; otherwise, set to wildcard
+	knownScope := Scope{}
+
+	if v[ProjectIndex].Contains(scope.Project) {
+		knownScope.Project = scope.Project
+	} else {
+		knownScope.Project = WildcardValue
+	}
+
+	if v[EnvironmentIndex].Contains(scope.Environment) {
+		knownScope.Environment = scope.Environment
+	} else {
+		knownScope.Environment = WildcardValue
+	}
+
+	if v[TenantIndex].Contains(scope.Tenant) {
+		knownScope.Tenant = scope.Tenant
+	} else {
+		knownScope.Tenant = WildcardValue
+	}
+
+	if v[StepIndex].Contains(scope.Step) {
+		knownScope.Step = scope.Step
+	} else {
+		knownScope.Step = WildcardValue
+	}
+
+	if v[SpaceIndex].Contains(scope.Space) {
+		knownScope.Space = scope.Space
+	} else {
+		knownScope.Space = WildcardValue
+	}
+
+	return knownScope
 }
 
 func buildGlobalVocabulary(rules []*v1beta1.WorkloadServiceAccount) GlobalVocabulary {

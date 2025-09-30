@@ -30,6 +30,7 @@ type Engine interface {
 
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName
+	vocabulary       GlobalVocabulary
 	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
 	targetNamespaces []string
 	resources        Resources
@@ -57,7 +58,8 @@ func NewInMemoryEngine(targetNamespaces []string, controllerClient client.Client
 }
 
 func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
-	if sa, ok := i.scopeToSA[scope]; ok {
+	knownScope := i.vocabulary.GetKnownScopeCombination(scope)
+	if sa, ok := i.scopeToSA[knownScope]; ok {
 		return sa, nil
 	}
 
@@ -71,7 +73,8 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	}
 
 	var wsaList = slices.Collect(wsaEnumerable)
-	scopeMap := getScopesForWSAs(wsaList)
+	scopeMap, vocabulary := getScopesForWSAs(wsaList)
+	i.vocabulary = vocabulary
 
 	// Generate service accounts
 	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := GenerateServiceAccountMappings(scopeMap)

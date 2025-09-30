@@ -71,7 +71,7 @@ func Test_getScopesForWSAs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			result := getScopesForWSAs(tt.WsaList)
+			result, _ := getScopesForWSAs(tt.WsaList)
 			// Verify we get some results
 			assert.NotEmpty(t, result, "getScopesForWSAs should return non-empty result")
 
