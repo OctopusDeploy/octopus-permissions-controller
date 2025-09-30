@@ -35,6 +35,12 @@ type WorkloadServiceAccountReconciler struct {
 	Engine rules.Engine
 }
 
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete;escalate
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch;create;update;patch;delete;escalate
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolesbindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/finalizers,verbs=update
@@ -46,30 +52,9 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	log.Info("WorkloadServiceAccount reconciliation triggered")
 
-	wsaList := &agentoctopuscomv1beta1.WorkloadServiceAccountList{}
-	if err := r.List(ctx, wsaList, client.InNamespace(req.Namespace)); err != nil {
-		log.Error(err, "failed to list WorkloadServiceAccounts")
+	if err := r.Engine.Reconcile(ctx); err != nil {
+		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccounts")
 		return ctrl.Result{}, err
-	}
-
-	log.Info("Found WSAs in namespace", "count", len(wsaList.Items))
-
-	for _, currentWSA := range wsaList.Items {
-		for _, project := range currentWSA.Spec.Scope.Projects {
-			log.Info("WSA has project scope", "wsa", currentWSA.Name, "project", project)
-		}
-		for _, environment := range currentWSA.Spec.Scope.Environments {
-			log.Info("WSA has environment scope", "wsa", currentWSA.Name, "environment", environment)
-		}
-		for _, tenant := range currentWSA.Spec.Scope.Tenants {
-			log.Info("WSA has tenant scope", "wsa", currentWSA.Name, "tenant", tenant)
-		}
-		for _, step := range currentWSA.Spec.Scope.Steps {
-			log.Info("WSA has step scope", "wsa", currentWSA.Name, "step", step)
-		}
-		for _, space := range currentWSA.Spec.Scope.Spaces {
-			log.Info("WSA has space scope", "wsa", currentWSA.Name, "space", space)
-		}
 	}
 
 	log.Info("Successfully reconciled WorkloadServiceAccounts")

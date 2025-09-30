@@ -1,7 +1,12 @@
 package rules
 
 import (
+	"context"
+	"fmt"
+	"slices"
+
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type AgentName string
@@ -18,46 +23,76 @@ type Scope struct {
 	Space       string `json:"space"`
 }
 
-type Rule struct {
-	Permissions v1beta1.WorkloadServiceAccountPermissions `json:"permissions"`
-}
-
 type Engine interface {
-	GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error)
-	AddScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error
-	RemoveScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error
+	GetServiceAccountForScope(scope Scope) (ServiceAccountName, error)
+	Reconcile(ctx context.Context) error
 }
 
 type InMemoryEngine struct {
-	rules map[AgentName]map[Scope]ServiceAccountName
-	// client kubernetes.Interface
+	scopeToSA        map[Scope]ServiceAccountName
+	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
+	targetNamespaces []string
+	resources        Resources
 }
 
 func (s *Scope) IsEmpty() bool {
 	return s.Project == "" && s.Environment == "" && s.Tenant == "" && s.Step == "" && s.Space == ""
 }
 
-func NewInMemoryEngine() InMemoryEngine {
+func (s *Scope) String() string {
+	return fmt.Sprintf("projects=%s,environments=%s,tenants=%s,steps=%s,spaces=%s",
+		s.Project,
+		s.Environment,
+		s.Tenant,
+		s.Step,
+		s.Space)
+}
+
+func NewInMemoryEngine(targetNamespaces []string, controllerClient client.Client) InMemoryEngine {
 	return InMemoryEngine{
-		rules: make(map[AgentName]map[Scope]ServiceAccountName),
+		scopeToSA:        make(map[Scope]ServiceAccountName),
+		targetNamespaces: targetNamespaces,
+		resources:        NewResources(controllerClient),
 	}
 }
 
-func (i InMemoryEngine) GetServiceAccountForScope(scope Scope, agentName AgentName) (ServiceAccountName, error) {
-	if agentRules, ok := i.rules[agentName]; ok {
-		if sa, ok := agentRules[scope]; ok {
-			return sa, nil
-		}
+func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
+	if sa, ok := i.scopeToSA[scope]; ok {
+		return sa, nil
 	}
+
 	return "", nil
 }
 
-func (i InMemoryEngine) AddScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error {
-	// TODO: Implement me
-	return nil
-}
+func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
+	wsaEnumerable, err := i.resources.getWorkloadServiceAccounts(ctx)
+	if err != nil {
+		return err
+	}
 
-func (i InMemoryEngine) RemoveScopeRuleset(scope Scope, rule Rule, targetNamespace Namespace) error {
-	// TODO: Implement me
+	var wsaList = slices.Collect(wsaEnumerable)
+	scopeMap := getScopesForWSAs(wsaList)
+
+	// Generate service accounts
+	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+	i.scopeToSA = scopeToSaNameMap
+	i.saToWsaMap = saToWsaMap
+
+	createdRoles, err := i.resources.ensureRoles(wsaList)
+	if err != nil {
+		return fmt.Errorf("failed to ensure roles: %w", err)
+	}
+
+	err = i.resources.ensureServiceAccounts(uniqueServiceAccounts, i.targetNamespaces)
+	if err != nil {
+		return fmt.Errorf("failed to ensure service accounts: %w", err)
+	}
+
+	// For each WSA, bind the roles or created roles to the service accounts in each target namespace
+	if bindErr := i.resources.ensureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
+		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
+	}
+
 	return nil
 }

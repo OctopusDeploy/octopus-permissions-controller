@@ -2,6 +2,7 @@ apiVersion: agent.octopus.com/v1beta1
 kind: WorkloadServiceAccount
 metadata:
   name: test-wsa
+  namespace: default
 spec:
   scope:
     projects: ["test-project"]

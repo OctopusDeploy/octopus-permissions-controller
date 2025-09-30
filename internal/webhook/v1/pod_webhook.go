@@ -78,13 +78,12 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 	podlog.Info("Getting scope for pod", "name", pod.GetName())
 
 	scope := getPodScope(pod)
-	agent := getPodControllingAgentName(pod)
 
 	if scope.IsEmpty() {
 		return nil
 	}
 
-	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope, agent)
+	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope)
 	if err == nil && serviceAccountName != "" {
 		podlog.Info("Setting service account for pod", "name", pod.GetName(), "originalServiceAccount", pod.Spec.ServiceAccountName, "newServiceAccount", serviceAccountName)
 		pod.Spec.ServiceAccountName = string(serviceAccountName)
@@ -123,9 +122,4 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 	}
 
 	return scope
-}
-
-func getPodControllingAgentName(p *corev1.Pod) rules.AgentName {
-	namespace := p.Namespace
-	return rules.AgentName(namespace)
 }
