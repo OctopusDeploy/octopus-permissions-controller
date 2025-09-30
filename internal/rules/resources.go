@@ -148,7 +148,7 @@ func (r *Resources) createServiceAccount(
 	logger := log.FromContext(ctx).WithName("createServiceAccount")
 
 	serviceAccount := templateServiceAccount.DeepCopy()
-	serviceAccount.ObjectMeta.Namespace = namespace
+	serviceAccount.ObjectMeta.Namespace = namespace //nolint:staticcheck // The namespace must be set in the ObjectMeta
 
 	err := r.client.Create(ctx, serviceAccount)
 	if err != nil {
