@@ -55,6 +55,7 @@ func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
 	return InMemoryEngine{
 		scopeToSA:        make(map[Scope]ServiceAccountName),
 		targetNamespaces: []string{},
+		lookupNamespaces: true,
 		resources:        NewResources(controllerClient),
 		client:           controllerClient,
 	}
