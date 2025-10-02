@@ -28,13 +28,33 @@ type Engine interface {
 	Reconcile(ctx context.Context) error
 }
 
+// TODO: workshop my terrible naming
+//
+// type NamespaceDiscoverer interface {
+//     DiscoverTargetNamespaces(ctx context.Context) ([]string, error)
+// }
+//
+// type ScopeAnalyser interface {
+//     AnalyseWorkloadServiceAccounts(wsaList []*v1beta1.WorkloadServiceAccount) (ScopeAnalysisResult, error)
+// }
+//
+// type ServiceAccountGenerator interface {
+//     GenerateServiceAccountMappings(scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount) GenerationResult
+// }
+//
+// type ResourceOrchestrator interface {
+//     EnsureRoles(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error)
+//     EnsureServiceAccounts(ctx context.Context, accounts []*v1.ServiceAccount, namespaces []string) error
+//     EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, roles map[string]rbacv1.Role, accountMappings map[string][]string, namespaces []string) error
+// }
+
 type InMemoryEngine struct {
-	scopeToSA        map[Scope]ServiceAccountName
-	vocabulary       GlobalVocabulary
-	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
-	targetNamespaces []string
-	lookupNamespaces bool
-	resources        Resources
+	scopeToSA        map[Scope]ServiceAccountName                                      // move to ReconciliationState
+	vocabulary       GlobalVocabulary                                                  // move to ReconciliationState
+	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount // move to ReconciliationState
+	targetNamespaces []string                                                          // move to NamespaceConfig
+	lookupNamespaces bool                                                              // move to NamespaceConfig
+	resources        Resources                                                         // REFACTOR: Extract to ResourceOrchestrator interface
 	client           client.Client
 }
 
@@ -81,12 +101,14 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountN
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
+	// Extract to -> dataRetriever.GetWorkloadServiceAccounts(ctx)
 	wsaEnumerable, err := i.resources.getWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Get our target namespaces
+	// Extract to -> namespaceDiscoverer.DiscoverTargetNamespaces(ctx)
+	// Q: why does this mutate i.targetNamespaces
 	if i.lookupNamespaces {
 		targetNamespaces, err := DiscoverTargetNamespaces(i.client)
 		if err != nil {
@@ -95,13 +117,16 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 		i.targetNamespaces = targetNamespaces
 	}
 
+	// Extract to -> scopeAnalyser.AnalyseScopes(wsaList)
 	var wsaList = slices.Collect(wsaEnumerable)
 	scopeMap, vocabulary := getScopesForWSAs(wsaList)
 	i.vocabulary = vocabulary
 
-	// Generate service accounts
+	// Extract to -> serviceAccountGenerator.GenerateMappings(scopeMap)
+	// maybe overkill
 	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := GenerateServiceAccountMappings(scopeMap)
 
+	// concurrency issues with doing this here ?
 	i.scopeToSA = scopeToSaNameMap
 	i.saToWsaMap = saToWsaMap
 
@@ -115,7 +140,7 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 		return fmt.Errorf("failed to ensure service accounts: %w", err)
 	}
 
-	// For each WSA, bind the roles or created roles to the service accounts in each target namespace
+	// what happens if this fails ? is there rollback or can we make it atomic?
 	if bindErr := i.resources.ensureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
 		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
 	}
