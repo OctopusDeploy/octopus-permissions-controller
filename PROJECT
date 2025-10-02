@@ -6,6 +6,8 @@ cliVersion: 4.7.1
 domain: agent.octopus.com
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v1-alpha: {}
 projectName: octopus-permissions-controller
 repo: github.com/octopusdeploy/octopus-permissions-controller
 resources:
