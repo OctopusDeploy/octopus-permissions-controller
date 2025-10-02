@@ -1,0 +1,7 @@
+apiVersion: v2
+name: octopus-permissions-controller
+description: A Helm chart to distribute the project octopus-permissions-controller
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+icon: "https://example.com/icon.png"
