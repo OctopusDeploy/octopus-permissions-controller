@@ -74,7 +74,7 @@ var _ = Describe("Engine Integration Tests", func() {
 		}
 
 		// Initialize engine
-		engine = NewInMemoryEngine(targetNamespaces, k8sClient)
+		engine = NewInMemoryEngineWithNamespaces(k8sClient, targetNamespaces)
 	})
 
 	AfterEach(func() {

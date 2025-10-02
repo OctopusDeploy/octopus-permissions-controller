@@ -30,9 +30,12 @@ type Engine interface {
 
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName
+	vocabulary       GlobalVocabulary
 	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
 	targetNamespaces []string
+	lookupNamespaces bool
 	resources        Resources
+	client           client.Client
 }
 
 func (s *Scope) IsEmpty() bool {
@@ -48,16 +51,29 @@ func (s *Scope) String() string {
 		s.Space)
 }
 
-func NewInMemoryEngine(targetNamespaces []string, controllerClient client.Client) InMemoryEngine {
+func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
+	return InMemoryEngine{
+		scopeToSA:        make(map[Scope]ServiceAccountName),
+		targetNamespaces: []string{},
+		lookupNamespaces: true,
+		resources:        NewResources(controllerClient),
+		client:           controllerClient,
+	}
+}
+
+func NewInMemoryEngineWithNamespaces(controllerClient client.Client, targetNamespaces []string) InMemoryEngine {
 	return InMemoryEngine{
 		scopeToSA:        make(map[Scope]ServiceAccountName),
 		targetNamespaces: targetNamespaces,
+		lookupNamespaces: len(targetNamespaces) == 0,
 		resources:        NewResources(controllerClient),
+		client:           controllerClient,
 	}
 }
 
 func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
-	if sa, ok := i.scopeToSA[scope]; ok {
+	knownScope := i.vocabulary.GetKnownScopeCombination(scope)
+	if sa, ok := i.scopeToSA[knownScope]; ok {
 		return sa, nil
 	}
 
@@ -70,8 +86,18 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 		return err
 	}
 
+	// Get our target namespaces
+	if i.lookupNamespaces {
+		targetNamespaces, err := DiscoverTargetNamespaces(i.client)
+		if err != nil {
+			return fmt.Errorf("failed to discover target namespaces: %w", err)
+		}
+		i.targetNamespaces = targetNamespaces
+	}
+
 	var wsaList = slices.Collect(wsaEnumerable)
-	scopeMap := getScopesForWSAs(wsaList)
+	scopeMap, vocabulary := getScopesForWSAs(wsaList)
+	i.vocabulary = vocabulary
 
 	// Generate service accounts
 	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := GenerateServiceAccountMappings(scopeMap)
