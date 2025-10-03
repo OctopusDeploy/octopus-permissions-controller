@@ -260,8 +260,8 @@ var _ = Describe("Manager", Ordered, func() {
 					g.Expect(output).To(Equal("Succeeded"), "curl pod in wrong status")
 				}
 				Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
+			})
 
-<<<<<<< HEAD
 			By("getting the metrics by checking curl-metrics logs")
 			verifyMetricsAvailable := func(g Gomega) {
 				metricsOutput, err := getMetricsOutput()
@@ -270,14 +270,6 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
-=======
-				By("getting the metrics by checking curl-metrics logs")
-				metricsOutput := getMetricsOutput()
-				Expect(metricsOutput).To(ContainSubstring(
-					"controller_runtime_reconcile_total",
-				))
-			})
->>>>>>> tmp-original-03-10-25-14-27
 		})
 
 		It("should provisioned cert-manager", func() {
@@ -320,17 +312,6 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-<<<<<<< HEAD
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
-=======
 		It("should create ServiceAccount and roles when WorkloadServiceAccount is created", func() {
 			wsaName := "test-wsa"
 			testNamespace := "default"
@@ -362,7 +343,6 @@ var _ = Describe("Manager", Ordered, func() {
 			cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
 			_, _ = utils.Run(cmd)
 		})
->>>>>>> tmp-original-03-10-25-14-27
 	})
 })
 

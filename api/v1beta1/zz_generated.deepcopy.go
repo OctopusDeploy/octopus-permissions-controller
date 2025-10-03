@@ -21,11 +21,8 @@ limitations under the License.
 package v1beta1
 
 import (
-<<<<<<< HEAD
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
-=======
-	"k8s.io/api/rbac/v1"
->>>>>>> tmp-original-03-10-25-14-27
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -93,17 +90,17 @@ func (in *WorkloadServiceAccountPermissions) DeepCopyInto(out *WorkloadServiceAc
 	*out = *in
 	if in.ClusterRoles != nil {
 		in, out := &in.ClusterRoles, &out.ClusterRoles
-		*out = make([]v1.RoleRef, len(*in))
+		*out = make([]rbacv1.RoleRef, len(*in))
 		copy(*out, *in)
 	}
 	if in.Roles != nil {
 		in, out := &in.Roles, &out.Roles
-		*out = make([]v1.RoleRef, len(*in))
+		*out = make([]rbacv1.RoleRef, len(*in))
 		copy(*out, *in)
 	}
 	if in.Permissions != nil {
 		in, out := &in.Permissions, &out.Permissions
-		*out = make([]v1.PolicyRule, len(*in))
+		*out = make([]rbacv1.PolicyRule, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

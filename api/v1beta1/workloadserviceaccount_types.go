@@ -36,7 +36,6 @@ type WorkloadServiceAccountSpec struct {
 
 // WorkloadServiceAccountStatus defines the observed state of WorkloadServiceAccount.
 type WorkloadServiceAccountStatus struct {
-<<<<<<< HEAD
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -55,9 +54,8 @@ type WorkloadServiceAccountStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-=======
-	ServiceAccountName string `json:"serviceAccountName"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	ServiceAccountName string             `json:"serviceAccountName"`
 }
 
 // WorkloadServiceAccountScope defines the octopus scope for the WorkloadServiceAccount
@@ -90,7 +88,6 @@ type WorkloadServiceAccountPermissions struct {
 	// A role will be created with the specified permissions
 	// +optional
 	Permissions []v1.PolicyRule `json:"permissions,omitempty"`
->>>>>>> tmp-original-03-10-25-14-27
 }
 
 // +kubebuilder:object:root=true
