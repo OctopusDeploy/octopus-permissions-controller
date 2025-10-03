@@ -48,6 +48,7 @@ type Engine interface {
 //     EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, roles map[string]rbacv1.Role, accountMappings map[string][]string, namespaces []string) error
 // }
 
+// should we separate out this interface before it gets too big?
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName                                      // move to ReconciliationState
 	vocabulary       GlobalVocabulary                                                  // move to ReconciliationState
