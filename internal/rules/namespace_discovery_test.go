@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,7 +75,8 @@ func TestDiscoverTargetNamespaces(t *testing.T) {
 				Build()
 
 			// Test the function
-			result, err := DiscoverTargetNamespaces(fakeClient)
+			service := NamespaceDiscoveryService{}
+			result, err := service.DiscoverTargetNamespaces(context.Background(), fakeClient)
 
 			// Assertions
 			assert.NoError(t, err)

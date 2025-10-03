@@ -4,17 +4,18 @@ import (
 	"context"
 
 	appsv1 "k8s.io/api/apps/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var discoveryLog = ctrl.Log.WithName("namespace_discovery")
+type NamespaceDiscovery interface {
+	DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error)
+}
 
-// DiscoverTargetNamespaces finds namespaces containing Octopus Tentacle deployments
-// these namespaces are used for creating the service accounts for use by pods deployed by Tentacle those namespaces
-func DiscoverTargetNamespaces(k8sClient client.Client) ([]string, error) {
-	ctx := context.Background()
+type NamespaceDiscoveryService struct{}
 
+func (NamespaceDiscoveryService) DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error) {
+	discoveryLog := log.FromContext(ctx, "component", "namespace-discovery")
 	var deployments appsv1.DeploymentList
 	err := k8sClient.List(ctx, &deployments, client.MatchingLabels{
 		"app.kubernetes.io/name": "octopus-agent",
