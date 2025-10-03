@@ -24,7 +24,9 @@ type Scope struct {
 }
 
 type Engine interface {
-	GetServiceAccountForScope(scope Scope) (ServiceAccountName, error)
+	ScopeComputation
+	ResourceManagement
+	NamespaceDiscovery
 	Reconcile(ctx context.Context) error
 }
 
@@ -36,6 +38,9 @@ type InMemoryEngine struct {
 	lookupNamespaces bool
 	resources        Resources
 	client           client.Client
+	ScopeComputation
+	ResourceManagement
+	NamespaceDiscovery
 }
 
 func (s *Scope) IsEmpty() bool {
@@ -53,11 +58,14 @@ func (s *Scope) String() string {
 
 func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
 	return InMemoryEngine{
-		scopeToSA:        make(map[Scope]ServiceAccountName),
-		targetNamespaces: []string{},
-		lookupNamespaces: true,
-		resources:        NewResources(controllerClient),
-		client:           controllerClient,
+		scopeToSA:          make(map[Scope]ServiceAccountName),
+		targetNamespaces:   []string{},
+		lookupNamespaces:   true,
+		resources:          NewResources(controllerClient),
+		client:             controllerClient,
+		ResourceManagement: ResourceManagementService{},
+		NamespaceDiscovery: NamespaceDiscoveryService{},
+		ScopeComputation:   ScopeComputationService{},
 	}
 }
 
@@ -88,7 +96,7 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 
 	// Get our target namespaces
 	if i.lookupNamespaces {
-		targetNamespaces, err := DiscoverTargetNamespaces(i.client)
+		targetNamespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
 		if err != nil {
 			return fmt.Errorf("failed to discover target namespaces: %w", err)
 		}
