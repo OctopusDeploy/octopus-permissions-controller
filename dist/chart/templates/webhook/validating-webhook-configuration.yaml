@@ -1,0 +1,28 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+    annotations:
+        {{- if .Values.certManager.enable }}
+        cert-manager.io/inject-ca-from: opc-system/opc-serving-cert
+        {{- end }}
+    name: opc-validating-webhook-configuration
+webhooks:
+    - admissionReviewVersions:
+        - v1
+      clientConfig:
+        service:
+            name: opc-webhook-service
+            namespace: opc-system
+            path: /validate-agent-octopus-com-v1beta1-workloadserviceaccount
+      failurePolicy: Fail
+      name: vworkloadserviceaccount-v1beta1.kb.io
+      rules:
+        - apiGroups:
+            - agent.octopus.com
+          apiVersions:
+            - v1beta1
+          operations:
+            - CREATE
+          resources:
+            - workloadserviceaccounts
+      sideEffects: None
