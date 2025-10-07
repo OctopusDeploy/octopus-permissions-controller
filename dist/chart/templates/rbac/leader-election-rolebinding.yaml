@@ -5,7 +5,7 @@ metadata:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/name: octopus-permissions-controller
     name: opc-leader-election-rolebinding
-    namespace: opc-system
+    namespace: {{ .Release.Namespace }}
 roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: Role
@@ -13,4 +13,4 @@ roleRef:
 subjects:
     - kind: ServiceAccount
       name: opc-controller-manager
-      namespace: opc-system
+      namespace: {{ .Release.Namespace }}

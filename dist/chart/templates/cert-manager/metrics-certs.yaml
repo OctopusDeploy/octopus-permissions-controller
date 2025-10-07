@@ -6,7 +6,7 @@ metadata:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/name: octopus-permissions-controller
     name: opc-metrics-certs
-    namespace: opc-system
+    namespace: {{ .Release.Namespace }}
 spec:
     dnsNames:
         - {{ include "chart.serviceName" (dict "suffix" "controller-manager-metrics-service" "context" .) }}.{{ include "chart.namespaceName" . }}.svc

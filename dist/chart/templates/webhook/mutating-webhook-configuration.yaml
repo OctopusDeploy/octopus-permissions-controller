@@ -3,7 +3,7 @@ kind: MutatingWebhookConfiguration
 metadata:
     annotations:
         {{- if .Values.certManager.enable }}
-        cert-manager.io/inject-ca-from: opc-system/opc-serving-cert
+        cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/opc-serving-cert
         {{- end }}
     name: opc-mutating-webhook-configuration
 webhooks:
@@ -12,7 +12,7 @@ webhooks:
       clientConfig:
         service:
             name: opc-webhook-service
-            namespace: opc-system
+            namespace: {{ .Release.Namespace }}
             path: /mutate--v1-pod
       failurePolicy: Ignore
       name: mpod-v1.kb.io

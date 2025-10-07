@@ -6,11 +6,11 @@ metadata:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/name: octopus-permissions-controller
     name: opc-serving-cert
-    namespace: opc-system
+    namespace: {{ .Release.Namespace }}
 spec:
     dnsNames:
-        - opc-webhook-service.opc-system.svc
-        - opc-webhook-service.opc-system.svc.cluster.local
+        - opc-webhook-service.{{ .Release.Namespace }}.svc
+        - opc-webhook-service.{{ .Release.Namespace }}.svc.cluster.local
     issuerRef:
         kind: Issuer
         name: opc-selfsigned-issuer

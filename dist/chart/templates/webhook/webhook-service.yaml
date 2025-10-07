@@ -5,7 +5,7 @@ metadata:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/name: octopus-permissions-controller
     name: opc-webhook-service
-    namespace: opc-system
+    namespace: {{ .Release.Namespace }}
 spec:
     ports:
         - port: 443

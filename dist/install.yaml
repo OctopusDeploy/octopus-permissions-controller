@@ -5,7 +5,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
     control-plane: controller-manager
-  name: opc-system
+  name: octopus-permissions-controller-system
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -205,7 +205,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-controller-manager
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -214,7 +214,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-leader-election-role
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 rules:
 - apiGroups:
   - ""
@@ -434,7 +434,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-leader-election-rolebinding
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -442,7 +442,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: opc-controller-manager
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -458,7 +458,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: opc-controller-manager
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -471,7 +471,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: opc-controller-manager
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 ---
 apiVersion: v1
 kind: Service
@@ -481,7 +481,7 @@ metadata:
     app.kubernetes.io/name: octopus-permissions-controller
     control-plane: controller-manager
   name: opc-metrics-service
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   ports:
   - name: https
@@ -499,7 +499,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-webhook-service
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   ports:
   - port: 443
@@ -517,7 +517,7 @@ metadata:
     app.kubernetes.io/name: octopus-permissions-controller
     control-plane: controller-manager
   name: opc-controller-manager
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   replicas: 1
   selector:
@@ -593,7 +593,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-metrics-certs
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   dnsNames:
   - SERVICE_NAME.SERVICE_NAMESPACE.svc
@@ -610,11 +610,11 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-serving-cert
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   dnsNames:
-  - opc-webhook-service.opc-system.svc
-  - opc-webhook-service.opc-system.svc.cluster.local
+  - opc-webhook-service.octopus-permissions-controller-system.svc
+  - opc-webhook-service.octopus-permissions-controller-system.svc.cluster.local
   issuerRef:
     kind: Issuer
     name: opc-selfsigned-issuer
@@ -627,7 +627,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: octopus-permissions-controller
   name: opc-selfsigned-issuer
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   selfSigned: {}
 ---
@@ -639,7 +639,7 @@ metadata:
     app.kubernetes.io/name: octopus-permissions-controller
     control-plane: controller-manager
   name: opc-controller-manager-metrics-monitor
-  namespace: opc-system
+  namespace: octopus-permissions-controller-system
 spec:
   endpoints:
   - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -657,7 +657,7 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   annotations:
-    cert-manager.io/inject-ca-from: opc-system/opc-serving-cert
+    cert-manager.io/inject-ca-from: octopus-permissions-controller-system/opc-serving-cert
   name: opc-mutating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
@@ -665,7 +665,7 @@ webhooks:
   clientConfig:
     service:
       name: opc-webhook-service
-      namespace: opc-system
+      namespace: octopus-permissions-controller-system
       path: /mutate--v1-pod
   failurePolicy: Ignore
   name: mpod-v1.kb.io
@@ -685,7 +685,7 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   annotations:
-    cert-manager.io/inject-ca-from: opc-system/opc-serving-cert
+    cert-manager.io/inject-ca-from: octopus-permissions-controller-system/opc-serving-cert
   name: opc-validating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
@@ -693,7 +693,7 @@ webhooks:
   clientConfig:
     service:
       name: opc-webhook-service
-      namespace: opc-system
+      namespace: octopus-permissions-controller-system
       path: /validate-agent-octopus-com-v1beta1-workloadserviceaccount
   failurePolicy: Fail
   name: vworkloadserviceaccount-v1beta1.kb.io

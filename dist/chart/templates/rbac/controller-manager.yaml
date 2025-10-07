@@ -5,4 +5,4 @@ metadata:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/name: octopus-permissions-controller
     name: opc-controller-manager
-    namespace: opc-system
+    namespace: {{ .Release.Namespace }}

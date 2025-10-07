@@ -10,5 +10,5 @@ roleRef:
 subjects:
     - kind: ServiceAccount
       name: opc-controller-manager
-      namespace: opc-system
+      namespace: {{ .Release.Namespace }}
 {{- end }}
