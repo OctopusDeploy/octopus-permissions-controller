@@ -631,28 +631,6 @@ metadata:
 spec:
   selfSigned: {}
 ---
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: octopus-permissions-controller
-    control-plane: controller-manager
-  name: opc-controller-manager-metrics-monitor
-  namespace: octopus-permissions-controller-system
-spec:
-  endpoints:
-  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-    path: /metrics
-    port: https
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: octopus-permissions-controller
-      control-plane: controller-manager
----
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
