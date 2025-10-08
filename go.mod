@@ -3,7 +3,6 @@ module github.com/octopusdeploy/octopus-permissions-controller
 go 1.24.0
 
 require (
-	github.com/brianvoe/gofakeit/v7 v7.7.3
 	github.com/hashicorp/go-set/v3 v3.0.1
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1

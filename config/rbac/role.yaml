@@ -19,6 +19,7 @@ rules:
 - apiGroups:
   - agent.octopus.com
   resources:
+  - clusterworkloadserviceaccounts
   - workloadserviceaccounts
   verbs:
   - create
@@ -31,12 +32,14 @@ rules:
 - apiGroups:
   - agent.octopus.com
   resources:
+  - clusterworkloadserviceaccounts/finalizers
   - workloadserviceaccounts/finalizers
   verbs:
   - update
 - apiGroups:
   - agent.octopus.com
   resources:
+  - clusterworkloadserviceaccounts/status
   - workloadserviceaccounts/status
   verbs:
   - get
