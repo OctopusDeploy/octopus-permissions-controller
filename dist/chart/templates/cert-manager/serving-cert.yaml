@@ -1,0 +1,18 @@
+{{- if .Values.certManager.enable }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+    labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: octopus-permissions-controller
+    name: opc-serving-cert
+    namespace: {{ .Release.Namespace }}
+spec:
+    dnsNames:
+        - opc-webhook-service.{{ .Release.Namespace }}.svc
+        - opc-webhook-service.{{ .Release.Namespace }}.svc.cluster.local
+    issuerRef:
+        kind: Issuer
+        name: opc-selfsigned-issuer
+    secretName: webhook-server-cert
+{{- end }}

@@ -1,0 +1,687 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+    control-plane: controller-manager
+  name: octopus-permissions-controller-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: workloadserviceaccounts.agent.octopus.com
+spec:
+  group: agent.octopus.com
+  names:
+    kind: WorkloadServiceAccount
+    listKind: WorkloadServiceAccountList
+    plural: workloadserviceaccounts
+    singular: workloadserviceaccount
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: WorkloadServiceAccount is the Schema for the workloadserviceaccounts
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of WorkloadServiceAccount
+            properties:
+              permissions:
+                description: Permissions defines the permissions for the WorkloadServiceAccount.
+                properties:
+                  clusterRoles:
+                    items:
+                      description: RoleRef contains information that points to the
+                        role being used
+                      properties:
+                        apiGroup:
+                          description: APIGroup is the group for the resource being
+                            referenced
+                          type: string
+                        kind:
+                          description: Kind is the type of resource being referenced
+                          type: string
+                        name:
+                          description: Name is the name of resource being referenced
+                          type: string
+                      required:
+                      - apiGroup
+                      - kind
+                      - name
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    type: array
+                  permissions:
+                    description: |-
+                      Allows users to specify permissions, rather than roles
+                      A role will be created with the specified permissions
+                    items:
+                      description: |-
+                        PolicyRule holds information that describes a policy rule, but does not contain information
+                        about who the rule applies to or which namespace the rule applies to.
+                      properties:
+                        apiGroups:
+                          description: |-
+                            APIGroups is the name of the APIGroup that contains the resources.  If multiple API groups are specified, any action requested against one of
+                            the enumerated resources in any API group will be allowed. "" represents the core API group and "*" represents all API groups.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        nonResourceURLs:
+                          description: |-
+                            NonResourceURLs is a set of partial urls that a user should have access to.  *s are allowed, but only as the full, final step in the path
+                            Since non-resource URLs are not namespaced, this field is only applicable for ClusterRoles referenced from a ClusterRoleBinding.
+                            Rules can either apply to API resources (such as "pods" or "secrets") or non-resource URL paths (such as "/api"),  but not both.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        resourceNames:
+                          description: ResourceNames is an optional white list of
+                            names that the rule applies to.  An empty set means that
+                            everything is allowed.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        resources:
+                          description: Resources is a list of resources this rule
+                            applies to. '*' represents all resources.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        verbs:
+                          description: Verbs is a list of Verbs that apply to ALL
+                            the ResourceKinds contained in this rule. '*' represents
+                            all verbs.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - verbs
+                      type: object
+                    type: array
+                  roles:
+                    items:
+                      description: RoleRef contains information that points to the
+                        role being used
+                      properties:
+                        apiGroup:
+                          description: APIGroup is the group for the resource being
+                            referenced
+                          type: string
+                        kind:
+                          description: Kind is the type of resource being referenced
+                          type: string
+                        name:
+                          description: Name is the name of resource being referenced
+                          type: string
+                      required:
+                      - apiGroup
+                      - kind
+                      - name
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    type: array
+                type: object
+              scope:
+                description: Scope defines the scope of the WorkloadServiceAccount.
+                properties:
+                  environments:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
+                  projects:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
+                  spaces:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
+                  steps:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
+                  tenants:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
+                type: object
+            required:
+            - permissions
+            - scope
+            type: object
+          status:
+            description: status defines the observed state of WorkloadServiceAccount
+            properties:
+              serviceAccountName:
+                type: string
+            required:
+            - serviceAccountName
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-controller-manager
+  namespace: octopus-permissions-controller-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-leader-election-role
+  namespace: octopus-permissions-controller-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opc-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  - roles
+  verbs:
+  - bind
+  - create
+  - delete
+  - escalate
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolesbindings
+  - rolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opc-metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opc-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-workloadserviceaccount-admin-role
+rules:
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts
+  verbs:
+  - '*'
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-workloadserviceaccount-editor-role
+rules:
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-workloadserviceaccount-viewer-role
+rules:
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - agent.octopus.com
+  resources:
+  - workloadserviceaccounts/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-leader-election-rolebinding
+  namespace: octopus-permissions-controller-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: opc-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: opc-controller-manager
+  namespace: octopus-permissions-controller-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opc-manager-role
+subjects:
+- kind: ServiceAccount
+  name: opc-controller-manager
+  namespace: octopus-permissions-controller-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opc-metrics-auth-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opc-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: opc-controller-manager
+  namespace: octopus-permissions-controller-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+    control-plane: controller-manager
+  name: opc-metrics-service
+  namespace: octopus-permissions-controller-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app.kubernetes.io/name: octopus-permissions-controller
+    control-plane: controller-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-webhook-service
+  namespace: octopus-permissions-controller-system
+spec:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    app.kubernetes.io/name: octopus-permissions-controller
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+    control-plane: controller-manager
+  name: opc-controller-manager
+  namespace: octopus-permissions-controller-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: octopus-permissions-controller
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        app.kubernetes.io/name: octopus-permissions-controller
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --metrics-bind-address=:8443
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+        command:
+        - /manager
+        image: octopusdeploy/octopus-permissions-controller:v0.0.1
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-certs
+          readOnly: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: opc-controller-manager
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: webhook-certs
+        secret:
+          secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-metrics-certs
+  namespace: octopus-permissions-controller-system
+spec:
+  dnsNames:
+  - SERVICE_NAME.SERVICE_NAMESPACE.svc
+  - SERVICE_NAME.SERVICE_NAMESPACE.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: opc-selfsigned-issuer
+  secretName: metrics-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-serving-cert
+  namespace: octopus-permissions-controller-system
+spec:
+  dnsNames:
+  - opc-webhook-service.octopus-permissions-controller-system.svc
+  - opc-webhook-service.octopus-permissions-controller-system.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: opc-selfsigned-issuer
+  secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: octopus-permissions-controller
+  name: opc-selfsigned-issuer
+  namespace: octopus-permissions-controller-system
+spec:
+  selfSigned: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: octopus-permissions-controller-system/opc-serving-cert
+  name: opc-mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: opc-webhook-service
+      namespace: octopus-permissions-controller-system
+      path: /mutate--v1-pod
+  failurePolicy: Ignore
+  name: mpod-v1.kb.io
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pods
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: octopus-permissions-controller-system/opc-serving-cert
+  name: opc-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: opc-webhook-service
+      namespace: octopus-permissions-controller-system
+      path: /validate-agent-octopus-com-v1beta1-workloadserviceaccount
+  failurePolicy: Fail
+  name: vworkloadserviceaccount-v1beta1.kb.io
+  rules:
+  - apiGroups:
+    - agent.octopus.com
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    resources:
+    - workloadserviceaccounts
+  sideEffects: None
