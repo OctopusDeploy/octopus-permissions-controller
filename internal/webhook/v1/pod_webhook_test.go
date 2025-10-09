@@ -81,22 +81,28 @@ var _ = Describe("Pod Webhook", func() {
 			By("By creating a pod")
 
 			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName("overridden"), nil)
+
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 
 			var actualPod corev1.Pod
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
 			Expect(actualPod.Spec.ServiceAccountName).To(Equal("overridden"))
 			mockEngine.AssertExpectations(GinkgoT())
+
 			mockCall.Unset()
 		})
 		It("Should not inject a service account", func() {
 			By("When no matching scope exists")
+
 			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName(""), nil)
+
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+
 			var actualPod corev1.Pod
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
 			Expect(actualPod.Spec.ServiceAccountName).To(Equal("not-overridden"))
 			mockEngine.AssertExpectations(GinkgoT())
+
 			mockCall.Unset()
 		})
 	})

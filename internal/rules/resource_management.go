@@ -2,11 +2,8 @@ package rules
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"iter"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
@@ -19,34 +16,31 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Constants for metadata keys (used in both labels and annotations)
-const (
-	MetadataNamespace = "agent.octopus.com"
-	PermissionsKey    = MetadataNamespace + "/permissions"
-	ProjectKey        = MetadataNamespace + "/project"
-	EnvironmentKey    = MetadataNamespace + "/environment"
-	TenantKey         = MetadataNamespace + "/tenant"
-	StepKey           = MetadataNamespace + "/step"
-	SpaceKey          = MetadataNamespace + "/space"
-)
-
 // serviceAccountInfo tracks a service account name and namespace
 type serviceAccountInfo struct {
 	name      string
 	namespace string
 }
 
-type Resources struct {
+// ResourceManagement defines the interface for creating and managing Kubernetes resources
+type ResourceManagement interface {
+	GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error)
+	EnsureRoles(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error)
+	EnsureServiceAccounts(ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error
+	EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role, wsaToServiceAccounts map[string][]string, targetNamespaces []string) error
+}
+
+type ResourceManagementService struct {
 	client client.Client
 }
 
-func NewResources(controllerClient client.Client) Resources {
-	return Resources{
-		client: controllerClient,
+func NewResourceManagementService(newClient client.Client) ResourceManagementService {
+	return ResourceManagementService{
+		client: newClient,
 	}
 }
 
-func (r *Resources) getWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
+func (r ResourceManagementService) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
 	wsaList := &v1beta1.WorkloadServiceAccountList{}
 	err := r.client.List(ctx, wsaList)
 	if err != nil {
@@ -62,7 +56,9 @@ func (r *Resources) getWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v
 	}, nil
 }
 
-func (r *Resources) ensureRoles(wsaList []*v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error) {
+func (r ResourceManagementService) EnsureRoles(
+	ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount,
+) (map[string]rbacv1.Role, error) {
 	createdRoles := make(map[string]rbacv1.Role)
 	var err error
 
@@ -78,7 +74,70 @@ func (r *Resources) ensureRoles(wsaList []*v1beta1.WorkloadServiceAccount) (map[
 	return createdRoles, err
 }
 
-func (r *Resources) createRoleIfNeeded(ctx context.Context, wsa *v1beta1.WorkloadServiceAccount) (rbacv1.Role, error) {
+// EnsureServiceAccounts creates service accounts for all scopes in all target namespaces
+func (r ResourceManagementService) EnsureServiceAccounts(
+	ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string,
+) error {
+	var err error
+	for _, serviceAccount := range serviceAccounts {
+		for _, namespace := range targetNamespaces {
+			ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
+			if createErr := r.createServiceAccount(ctxWithTimeout, namespace, serviceAccount); createErr != nil {
+				err = multierr.Append(err, createErr)
+				cancel()
+				continue
+			}
+			cancel()
+		}
+	}
+
+	return err
+}
+
+// EnsureRoleBindings creates role bindings to connect service accounts with roles for all WSAs
+func (r ResourceManagementService) EnsureRoleBindings(
+	ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role,
+	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+) error {
+	logger := log.FromContext(ctx).WithName("ensureRoleBindings")
+	var err error
+
+	// Loop over WSAs and create role bindings for each
+	for _, wsa := range wsaList {
+		serviceAccounts, exists := wsaToServiceAccounts[wsa.Name]
+		if !exists || len(serviceAccounts) == 0 {
+			continue
+		}
+
+		var allNamespacedServiceAccounts []serviceAccountInfo
+		for _, account := range serviceAccounts {
+			for _, namespace := range targetNamespaces {
+				allNamespacedServiceAccounts = append(allNamespacedServiceAccounts, serviceAccountInfo{
+					name:      account,
+					namespace: namespace,
+				})
+			}
+		}
+
+		ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
+		if bindErr := r.createRoleBindingsForWSA(ctxWithTimeout, wsa, allNamespacedServiceAccounts, createdRoles); bindErr != nil {
+			logger.Error(bindErr, "failed to create role bindings for WSA", "wsa", wsa.Name)
+			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for WSA %s: %w", wsa.Name, bindErr))
+		}
+		cancel()
+	}
+
+	return err
+}
+
+// Helper methods for ResourceManagementService
+
+func (r ResourceManagementService) getContextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	return ctx, cancel
+}
+
+func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, wsa *v1beta1.WorkloadServiceAccount) (rbacv1.Role, error) {
 	logger := log.FromContext(ctx).WithName("createRoleIfNeeded")
 
 	if len(wsa.Spec.Permissions.Permissions) == 0 {
@@ -123,26 +182,8 @@ func (r *Resources) createRoleIfNeeded(ctx context.Context, wsa *v1beta1.Workloa
 	return role, nil
 }
 
-// ensureServiceAccounts creates service accounts for all scopes in all target namespaces
-func (r *Resources) ensureServiceAccounts(serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error {
-	var err error
-	for _, serviceAccount := range serviceAccounts {
-		for _, namespace := range targetNamespaces {
-			ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
-			if createErr := r.createServiceAccount(ctxWithTimeout, namespace, serviceAccount); createErr != nil {
-				err = multierr.Append(err, createErr)
-				cancel()
-				continue
-			}
-			cancel()
-		}
-	}
-
-	return err
-}
-
 // createServiceAccount deep copies a template service account, sets the namespace, and creates the service account
-func (r *Resources) createServiceAccount(
+func (r ResourceManagementService) createServiceAccount(
 	ctx context.Context, namespace string, templateServiceAccount *corev1.ServiceAccount,
 ) error {
 	logger := log.FromContext(ctx).WithName("createServiceAccount")
@@ -163,44 +204,8 @@ func (r *Resources) createServiceAccount(
 	return nil
 }
 
-// ensureRoleBindings creates role bindings to connect service accounts with roles for all WSAs
-func (r *Resources) ensureRoleBindings(
-	ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role,
-	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
-) error {
-	logger := log.FromContext(ctx).WithName("ensureRoleBindings")
-	var err error
-
-	// Loop over WSAs and create role bindings for each
-	for _, wsa := range wsaList {
-		serviceAccounts, exists := wsaToServiceAccounts[wsa.Name]
-		if !exists || len(serviceAccounts) == 0 {
-			continue
-		}
-
-		var allNamespacedServiceAccounts []serviceAccountInfo
-		for _, account := range serviceAccounts {
-			for _, namespace := range targetNamespaces {
-				allNamespacedServiceAccounts = append(allNamespacedServiceAccounts, serviceAccountInfo{
-					name:      account,
-					namespace: namespace,
-				})
-			}
-		}
-
-		ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
-		if bindErr := r.createRoleBindingsForWSA(ctxWithTimeout, wsa, allNamespacedServiceAccounts, createdRoles); bindErr != nil {
-			logger.Error(bindErr, "failed to create role bindings for WSA", "wsa", wsa.Name)
-			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for WSA %s: %w", wsa.Name, bindErr))
-		}
-		cancel()
-	}
-
-	return err
-}
-
 // createRoleBindingsForWSA creates all role bindings for a WSA with all its service accounts as subjects
-func (r *Resources) createRoleBindingsForWSA(
+func (r ResourceManagementService) createRoleBindingsForWSA(
 	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, serviceAccounts []serviceAccountInfo,
 	createdRoles map[string]rbacv1.Role,
 ) error {
@@ -250,7 +255,7 @@ func (r *Resources) createRoleBindingsForWSA(
 	return err
 }
 
-func (r *Resources) createRoleBinding(
+func (r ResourceManagementService) createRoleBinding(
 	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
 ) error {
 	logger := log.FromContext(ctx).WithName("createRoleBinding")
@@ -281,7 +286,7 @@ func (r *Resources) createRoleBinding(
 	return nil
 }
 
-func (r *Resources) createClusterRoleBinding(
+func (r ResourceManagementService) createClusterRoleBinding(
 	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
 ) error {
 	logger := log.FromContext(ctx).WithName("createClusterRoleBinding")
@@ -310,70 +315,4 @@ func (r *Resources) createClusterRoleBinding(
 
 	logger.Info("Created ClusterRoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
 	return nil
-}
-
-func (r *Resources) getContextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	return ctx, cancel
-}
-
-// shortHash generates a hash of a string for use in labels and names
-func shortHash(value string) string {
-	hash := sha256.Sum256([]byte(value))
-	return fmt.Sprintf("%x", hash)[:32] // Use first 32 characters (128 bits)
-}
-
-// generateServiceAccountName generates a ServiceAccountName based on the given scope
-func generateServiceAccountName(wsaNames iter.Seq[string]) ServiceAccountName {
-	hash := shortHash(strings.Join(slices.Collect(wsaNames), "-"))
-	return ServiceAccountName(fmt.Sprintf("octopus-sa-%s", hash))
-}
-
-// generateServiceAccountLabels generates the expected labels for a ServiceAccount based on scope
-func generateServiceAccountLabels(scope Scope) map[string]string {
-	labels := map[string]string{
-		PermissionsKey: "enabled",
-	}
-
-	// Hash values for labels to keep them under 63 characters
-	if scope.Project != "" {
-		labels[ProjectKey] = shortHash(scope.Project)
-	}
-	if scope.Environment != "" {
-		labels[EnvironmentKey] = shortHash(scope.Environment)
-	}
-	if scope.Tenant != "" {
-		labels[TenantKey] = shortHash(scope.Tenant)
-	}
-	if scope.Step != "" {
-		labels[StepKey] = shortHash(scope.Step)
-	}
-	if scope.Space != "" {
-		labels[SpaceKey] = shortHash(scope.Space)
-	}
-
-	return labels
-}
-
-// generateExpectedAnnotations generates the expected annotations for a ServiceAccount
-func generateExpectedAnnotations(scope Scope) map[string]string {
-	annotations := make(map[string]string)
-
-	if scope.Project != "" {
-		annotations[ProjectKey] = scope.Project
-	}
-	if scope.Environment != "" {
-		annotations[EnvironmentKey] = scope.Environment
-	}
-	if scope.Tenant != "" {
-		annotations[TenantKey] = scope.Tenant
-	}
-	if scope.Step != "" {
-		annotations[StepKey] = scope.Step
-	}
-	if scope.Space != "" {
-		annotations[SpaceKey] = scope.Space
-	}
-
-	return annotations
 }

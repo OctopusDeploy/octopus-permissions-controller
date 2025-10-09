@@ -45,7 +45,7 @@ var podlog = logf.Log.WithName("pod-resource")
 func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&corev1.Pod{}).
 		WithDefaulter(&PodCustomDefaulter{
-			engine,
+			engine: engine,
 		}).
 		Complete()
 }
