@@ -20,17 +20,20 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"iter"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,16 +62,62 @@ type MockEngine struct {
 	mock.Mock
 }
 
-func (m *MockEngine) GetServiceAccountForScope(
-	scope rules.Scope,
-) (rules.ServiceAccountName, error) {
-	args := m.Called(scope)
+func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope, vocabulary rules.GlobalVocabulary, scopeToSA map[rules.Scope]rules.ServiceAccountName) (rules.ServiceAccountName, error) {
+	args := m.Called(scope, vocabulary, scopeToSA)
 	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
+}
+
+func (m *MockEngine) GetVocabulary() rules.GlobalVocabulary {
+	args := m.Called()
+	return args.Get(0).(rules.GlobalVocabulary)
+}
+
+func (m *MockEngine) GetScopeToServiceAccountMap() map[rules.Scope]rules.ServiceAccountName {
+	args := m.Called()
+	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)
 }
 
 func (m *MockEngine) Reconcile(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
+}
+
+// ScopeComputation interface methods (embedded in Engine interface)
+func (m *MockEngine) ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[rules.Scope]map[string]*v1beta1.WorkloadServiceAccount, rules.GlobalVocabulary) {
+	args := m.Called(wsaList)
+	return args.Get(0).(map[rules.Scope]map[string]*v1beta1.WorkloadServiceAccount), args.Get(1).(rules.GlobalVocabulary)
+}
+
+func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[string]*v1beta1.WorkloadServiceAccount) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount, map[string][]string, []*corev1.ServiceAccount) {
+	args := m.Called(scopeMap)
+	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount), args.Get(2).(map[string][]string), args.Get(3).([]*corev1.ServiceAccount)
+}
+
+// ResourceManagement interface methods
+func (m *MockEngine) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*v1beta1.WorkloadServiceAccount]), args.Error(1)
+}
+
+func (m *MockEngine) EnsureRoles(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error) {
+	args := m.Called(ctx, wsaList)
+	return args.Get(0).(map[string]rbacv1.Role), args.Error(1)
+}
+
+func (m *MockEngine) EnsureServiceAccounts(ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error {
+	args := m.Called(ctx, serviceAccounts, targetNamespaces)
+	return args.Error(0)
+}
+
+func (m *MockEngine) EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role, wsaToServiceAccounts map[string][]string, targetNamespaces []string) error {
+	args := m.Called(ctx, wsaList, createdRoles, wsaToServiceAccounts, targetNamespaces)
+	return args.Error(0)
+}
+
+// NamespaceDiscovery interface methods
+func (m *MockEngine) DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error) {
+	args := m.Called(ctx, k8sClient)
+	return args.Get(0).([]string), args.Error(1)
 }
 
 func TestAPIs(t *testing.T) {

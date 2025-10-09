@@ -26,7 +26,10 @@ type Scope struct {
 type Engine interface {
 	ResourceManagement
 	NamespaceDiscovery
+	ScopeComputation
 	Reconcile(ctx context.Context) error
+	GetVocabulary() GlobalVocabulary
+	GetScopeToServiceAccountMap() map[Scope]ServiceAccountName
 }
 
 type InMemoryEngine struct {
@@ -78,8 +81,12 @@ func NewInMemoryEngineWithNamespaces(controllerClient client.Client, targetNames
 	}
 }
 
-func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
-	return i.ScopeComputation.GetServiceAccountForScope(scope, i.vocabulary, i.scopeToSA)
+func (i *InMemoryEngine) GetVocabulary() GlobalVocabulary {
+	return i.vocabulary
+}
+
+func (i *InMemoryEngine) GetScopeToServiceAccountMap() map[Scope]ServiceAccountName {
+	return i.scopeToSA
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
