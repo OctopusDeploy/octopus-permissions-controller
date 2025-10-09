@@ -28,6 +28,7 @@ type Engine interface {
 	NamespaceDiscovery
 	ScopeComputation
 	Reconcile(ctx context.Context) error
+	// TODO: figure out the best way to retrieve this for the ScopeComputation.GetServiceACcountForScope inputs
 	GetVocabulary() GlobalVocabulary
 	GetScopeToServiceAccountMap() map[Scope]ServiceAccountName
 }
@@ -90,14 +91,14 @@ func (i *InMemoryEngine) GetScopeToServiceAccountMap() map[Scope]ServiceAccountN
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
-	wsaEnumerable, err := i.ResourceManagement.GetWorkloadServiceAccounts(ctx)
+	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Get our target namespaces
 	if i.lookupNamespaces {
-		targetNamespaces, err := i.NamespaceDiscovery.DiscoverTargetNamespaces(ctx, i.client)
+		targetNamespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
 		if err != nil {
 			return fmt.Errorf("failed to discover target namespaces: %w", err)
 		}
@@ -105,27 +106,27 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	}
 
 	var wsaList = slices.Collect(wsaEnumerable)
-	scopeMap, vocabulary := i.ScopeComputation.ComputeScopesForWSAs(wsaList)
+	scopeMap, vocabulary := i.ComputeScopesForWSAs(wsaList)
 	i.vocabulary = vocabulary
 
 	// Generate service accounts
-	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := i.ScopeComputation.GenerateServiceAccountMappings(scopeMap)
+	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := i.GenerateServiceAccountMappings(scopeMap)
 
 	i.scopeToSA = scopeToSaNameMap
 	i.saToWsaMap = saToWsaMap
 
-	createdRoles, err := i.ResourceManagement.EnsureRoles(ctx, wsaList)
+	createdRoles, err := i.EnsureRoles(ctx, wsaList)
 	if err != nil {
 		return fmt.Errorf("failed to ensure roles: %w", err)
 	}
 
-	err = i.ResourceManagement.EnsureServiceAccounts(ctx, uniqueServiceAccounts, i.targetNamespaces)
+	err = i.EnsureServiceAccounts(ctx, uniqueServiceAccounts, i.targetNamespaces)
 	if err != nil {
 		return fmt.Errorf("failed to ensure service accounts: %w", err)
 	}
 
 	// For each WSA, bind the roles or created roles to the service accounts in each target namespace
-	if bindErr := i.ResourceManagement.EnsureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
+	if bindErr := i.EnsureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
 		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
 	}
 

@@ -34,9 +34,9 @@ type ResourceManagementService struct {
 	client client.Client
 }
 
-func NewResourceManagementService(client client.Client) ResourceManagementService {
+func NewResourceManagementService(newClient client.Client) ResourceManagementService {
 	return ResourceManagementService{
-		client: client,
+		client: newClient,
 	}
 }
 
@@ -316,4 +316,3 @@ func (r ResourceManagementService) createClusterRoleBinding(
 	logger.Info("Created ClusterRoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
 	return nil
 }
-
