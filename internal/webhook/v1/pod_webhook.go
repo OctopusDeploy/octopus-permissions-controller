@@ -83,7 +83,7 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		return nil
 	}
 
-	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope, d.engine.GetVocabulary(), d.engine.GetScopeToServiceAccountMap())
+	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope)
 	if err == nil && serviceAccountName != "" {
 		podlog.Info("Setting service account for pod", "name", pod.GetName(), "originalServiceAccount", pod.Spec.ServiceAccountName, "newServiceAccount", serviceAccountName)
 		pod.Spec.ServiceAccountName = string(serviceAccountName)

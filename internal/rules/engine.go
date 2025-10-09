@@ -28,9 +28,6 @@ type Engine interface {
 	NamespaceDiscovery
 	ScopeComputation
 	Reconcile(ctx context.Context) error
-	// TODO: figure out the best way to retrieve this for the ScopeComputation.GetServiceACcountForScope inputs
-	GetVocabulary() GlobalVocabulary
-	GetScopeToServiceAccountMap() map[Scope]ServiceAccountName
 }
 
 type InMemoryEngine struct {
@@ -59,35 +56,29 @@ func (s *Scope) String() string {
 }
 
 func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
-	return InMemoryEngine{
+	engine := InMemoryEngine{
 		scopeToSA:          make(map[Scope]ServiceAccountName),
 		targetNamespaces:   []string{},
 		lookupNamespaces:   true,
 		client:             controllerClient,
-		ScopeComputation:   ScopeComputationService{},
 		ResourceManagement: NewResourceManagementService(controllerClient),
 		NamespaceDiscovery: NamespaceDiscoveryService{},
 	}
+	engine.ScopeComputation = NewScopeComputationService(&engine.vocabulary, &engine.scopeToSA)
+	return engine
 }
 
 func NewInMemoryEngineWithNamespaces(controllerClient client.Client, targetNamespaces []string) InMemoryEngine {
-	return InMemoryEngine{
+	engine := InMemoryEngine{
 		scopeToSA:          make(map[Scope]ServiceAccountName),
 		targetNamespaces:   targetNamespaces,
 		lookupNamespaces:   len(targetNamespaces) == 0,
 		client:             controllerClient,
-		ScopeComputation:   ScopeComputationService{},
 		ResourceManagement: NewResourceManagementService(controllerClient),
 		NamespaceDiscovery: NamespaceDiscoveryService{},
 	}
-}
-
-func (i *InMemoryEngine) GetVocabulary() GlobalVocabulary {
-	return i.vocabulary
-}
-
-func (i *InMemoryEngine) GetScopeToServiceAccountMap() map[Scope]ServiceAccountName {
-	return i.scopeToSA
+	engine.ScopeComputation = NewScopeComputationService(&engine.vocabulary, &engine.scopeToSA)
+	return engine
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {

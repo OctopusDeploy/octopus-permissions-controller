@@ -62,19 +62,9 @@ type MockEngine struct {
 	mock.Mock
 }
 
-func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope, vocabulary rules.GlobalVocabulary, scopeToSA map[rules.Scope]rules.ServiceAccountName) (rules.ServiceAccountName, error) {
-	args := m.Called(scope, vocabulary, scopeToSA)
+func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope) (rules.ServiceAccountName, error) {
+	args := m.Called(scope)
 	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
-}
-
-func (m *MockEngine) GetVocabulary() rules.GlobalVocabulary {
-	args := m.Called()
-	return args.Get(0).(rules.GlobalVocabulary)
-}
-
-func (m *MockEngine) GetScopeToServiceAccountMap() map[rules.Scope]rules.ServiceAccountName {
-	args := m.Called()
-	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)
 }
 
 func (m *MockEngine) Reconcile(ctx context.Context) error {
@@ -114,7 +104,6 @@ func (m *MockEngine) EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.
 	return args.Error(0)
 }
 
-// NamespaceDiscovery interface methods
 func (m *MockEngine) DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error) {
 	args := m.Called(ctx, k8sClient)
 	return args.Get(0).([]string), args.Error(1)

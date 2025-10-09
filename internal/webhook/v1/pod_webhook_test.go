@@ -80,15 +80,7 @@ var _ = Describe("Pod Webhook", func() {
 		It("Should inject a service account", func() {
 			By("By creating a pod")
 
-			// Set up mock expectations for all method calls
-			vocabulary := rules.GlobalVocabulary{}
-			scopeMap := map[rules.Scope]rules.ServiceAccountName{
-				podScope: rules.ServiceAccountName("overridden"),
-			}
-
-			vocabCall := mockEngine.On("GetVocabulary").Return(vocabulary)
-			scopeMapCall := mockEngine.On("GetScopeToServiceAccountMap").Return(scopeMap)
-			mockCall := mockEngine.On("GetServiceAccountForScope", podScope, vocabulary, scopeMap).Return(rules.ServiceAccountName("overridden"), nil)
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName("overridden"), nil)
 
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 
@@ -98,19 +90,11 @@ var _ = Describe("Pod Webhook", func() {
 			mockEngine.AssertExpectations(GinkgoT())
 
 			mockCall.Unset()
-			vocabCall.Unset()
-			scopeMapCall.Unset()
 		})
 		It("Should not inject a service account", func() {
 			By("When no matching scope exists")
 
-			// Set up mock expectations for all method calls
-			vocabulary := rules.GlobalVocabulary{}
-			scopeMap := map[rules.Scope]rules.ServiceAccountName{} // Empty map - no matching scope
-
-			vocabCall := mockEngine.On("GetVocabulary").Return(vocabulary)
-			scopeMapCall := mockEngine.On("GetScopeToServiceAccountMap").Return(scopeMap)
-			mockCall := mockEngine.On("GetServiceAccountForScope", podScope, vocabulary, scopeMap).Return(rules.ServiceAccountName(""), nil)
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName(""), nil)
 
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 
@@ -120,8 +104,6 @@ var _ = Describe("Pod Webhook", func() {
 			mockEngine.AssertExpectations(GinkgoT())
 
 			mockCall.Unset()
-			vocabCall.Unset()
-			scopeMapCall.Unset()
 		})
 	})
 })

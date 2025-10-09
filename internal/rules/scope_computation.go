@@ -11,7 +11,7 @@ import (
 
 // ScopeComputation defines the interface for computing scopes and service account mappings
 type ScopeComputation interface {
-	GetServiceAccountForScope(scope Scope, vocabulary GlobalVocabulary, scopeToSA map[Scope]ServiceAccountName) (ServiceAccountName, error)
+	GetServiceAccountForScope(scope Scope) (ServiceAccountName, error)
 	ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary)
 	GenerateServiceAccountMappings(scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount) (
 		map[Scope]ServiceAccountName,
@@ -21,18 +21,28 @@ type ScopeComputation interface {
 	)
 }
 
-type ScopeComputationService struct{}
+type ScopeComputationService struct {
+	vocabulary *GlobalVocabulary
+	scopeToSA  *map[Scope]ServiceAccountName
+}
 
-func (s ScopeComputationService) GetServiceAccountForScope(scope Scope, vocabulary GlobalVocabulary, scopeToSA map[Scope]ServiceAccountName) (ServiceAccountName, error) {
-	knownScope := vocabulary.GetKnownScopeCombination(scope)
-	if sa, ok := scopeToSA[knownScope]; ok {
+func NewScopeComputationService(vocabulary *GlobalVocabulary, scopeToSA *map[Scope]ServiceAccountName) ScopeComputationService {
+	return ScopeComputationService{
+		vocabulary: vocabulary,
+		scopeToSA:  scopeToSA,
+	}
+}
+
+func (s ScopeComputationService) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
+	knownScope := (*s.vocabulary).GetKnownScopeCombination(scope)
+	if sa, ok := (*s.scopeToSA)[knownScope]; ok {
 		return sa, nil
 	}
 
 	return "", nil
 }
 
-func (ScopeComputationService) ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary) {
+func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary) {
 	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
 
@@ -41,7 +51,7 @@ func (ScopeComputationService) ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadS
 	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
 
-func (ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount, map[string][]string, []*corev1.ServiceAccount) {
+func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount, map[string][]string, []*corev1.ServiceAccount) {
 	scopeToServiceAccount := make(map[Scope]ServiceAccountName)
 	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount)
 	uniqueServiceAccounts := make(map[ServiceAccountName]*corev1.ServiceAccount)
