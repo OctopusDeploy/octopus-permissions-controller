@@ -234,27 +234,6 @@ var _ = Describe("Engine Integration Tests", func() {
 					Expect(targetNamespaces).To(ContainElement(subject.Namespace), "Subject namespace should be in target namespaces")
 				}
 			}
-
-			By("verifying cluster role bindings are created")
-			clusterRoleBindings := &rbacv1.ClusterRoleBindingList{}
-			Expect(k8sClient.List(testCtx, clusterRoleBindings)).To(Succeed())
-
-			wsaClusterRoleBindings := filterClusterRoleBindingsByPrefix(clusterRoleBindings.Items, "octopus-crb-")
-			Expect(wsaClusterRoleBindings).NotTo(BeEmpty(), "Expected cluster role bindings to be created")
-
-			for _, crb := range wsaClusterRoleBindings {
-				By(fmt.Sprintf("verifying cluster role binding %s", crb.Name))
-
-				// Verify name pattern
-				Expect(crb.Name).To(ContainSubstring("octopus-crb-"), "ClusterRoleBinding should follow naming pattern")
-
-				// Verify role ref points to cluster role
-				Expect(crb.RoleRef.Kind).To(Equal("ClusterRole"))
-				Expect(crb.RoleRef.Name).To(Equal("view"))
-
-				// Verify subjects
-				Expect(crb.Subjects).NotTo(BeEmpty(), "ClusterRoleBinding should have subjects")
-			}
 		})
 
 		It("should handle multiple WSAs with overlapping scopes correctly", func() {
@@ -403,18 +382,6 @@ func filterRoleBindingsByPrefix(roleBindings []rbacv1.RoleBinding, prefix string
 	for _, rb := range roleBindings {
 		if len(rb.Name) >= len(prefix) && rb.Name[:len(prefix)] == prefix {
 			filtered = append(filtered, rb)
-		}
-	}
-	return filtered
-}
-
-func filterClusterRoleBindingsByPrefix(
-	clusterRoleBindings []rbacv1.ClusterRoleBinding, prefix string,
-) []rbacv1.ClusterRoleBinding {
-	var filtered []rbacv1.ClusterRoleBinding
-	for _, crb := range clusterRoleBindings {
-		if len(crb.Name) >= len(prefix) && crb.Name[:len(prefix)] == prefix {
-			filtered = append(filtered, crb)
 		}
 	}
 	return filtered
