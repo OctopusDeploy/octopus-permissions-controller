@@ -387,6 +387,19 @@ func filterRoleBindingsByPrefix(roleBindings []rbacv1.RoleBinding, prefix string
 	return filtered
 }
 
+//nolint:unused
+func filterClusterRoleBindingsByPrefix(
+	clusterRoleBindings []rbacv1.ClusterRoleBinding, prefix string,
+) []rbacv1.ClusterRoleBinding {
+	var filtered []rbacv1.ClusterRoleBinding
+	for _, crb := range clusterRoleBindings {
+		if len(crb.Name) >= len(prefix) && crb.Name[:len(prefix)] == prefix {
+			filtered = append(filtered, crb)
+		}
+	}
+	return filtered
+}
+
 func deleteAll(objs ...client.Object) {
 	ctx := context.Background()
 	clientGo, err := kubernetes.NewForConfig(testEnv.Config)

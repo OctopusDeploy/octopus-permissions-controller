@@ -286,6 +286,7 @@ func (r ResourceManagementService) createRoleBinding(
 	return nil
 }
 
+//nolint:unused
 func (r ResourceManagementService) createClusterRoleBinding(
 	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
 ) error {
