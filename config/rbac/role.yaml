@@ -56,13 +56,11 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
-  - clusterroles
-  - roles
+  - clusterrolebindings
+  - rolebindings
   verbs:
-  - bind
   - create
   - delete
-  - escalate
   - get
   - list
   - patch
@@ -71,11 +69,13 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
-  - clusterrolesbindings
-  - rolebindings
+  - clusterroles
+  - roles
   verbs:
+  - bind
   - create
   - delete
+  - escalate
   - get
   - list
   - patch
