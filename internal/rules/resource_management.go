@@ -244,9 +244,9 @@ func (r ResourceManagementService) createRoleBindingsForWSA(
 		}
 	}
 
-	// Create cluster role bindings for cluster roles
+	// Create role bindings for cluster roles
 	for _, roleRef := range wsa.Spec.Permissions.ClusterRoles {
-		if bindErr := r.createClusterRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
 			err = multierr.Append(err, bindErr)
 		}
 	}
@@ -286,6 +286,7 @@ func (r ResourceManagementService) createRoleBinding(
 	return nil
 }
 
+//nolint:unused
 func (r ResourceManagementService) createClusterRoleBinding(
 	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
 ) error {
