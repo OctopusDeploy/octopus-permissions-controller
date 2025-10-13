@@ -3,7 +3,6 @@ package rules
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -103,11 +102,11 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	}
 
 	// Convert both types to WSAResource interface
-	var allResources []WSAResource
-	for _, wsa := range slices.Collect(wsaEnumerable) {
+	allResources := make([]WSAResource, 0)
+	for wsa := range wsaEnumerable {
 		allResources = append(allResources, NewWSAResource(wsa))
 	}
-	for _, cwsa := range slices.Collect(cwsaEnumerable) {
+	for cwsa := range cwsaEnumerable {
 		allResources = append(allResources, NewClusterWSAResource(cwsa))
 	}
 
