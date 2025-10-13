@@ -71,7 +71,13 @@ func Test_getScopesForWSAs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			result, _ := getScopesForWSAs(tt.WsaList)
+			// Convert WSA pointers to WSAResource interface
+			resources := make([]WSAResource, len(tt.WsaList))
+			for i, wsa := range tt.WsaList {
+				resources[i] = NewWSAResource(wsa)
+			}
+
+			result, _ := getScopesForWSAs(resources)
 			// Verify we get some results
 			assert.NotEmpty(t, result, "getScopesForWSAs should return non-empty result")
 
@@ -86,16 +92,15 @@ func Test_getScopesForWSAs(t *testing.T) {
 func Test_MultipleWSAsWithTheSameScopeOnlyCreateOneServiceAccount(t *testing.T) {
 	// This test ensures that even if multiple scopes map to the same set of WSAs,
 	// only one service account is created for that set of WSAs.
-	scopeMap := map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+	wsa1 := &v1beta1.WorkloadServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
+	}
+	scopeMap := map[Scope]map[string]WSAResource{
 		{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-			"wsa1": &v1beta1.WorkloadServiceAccount{
-				ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-			},
+			"wsa1": NewWSAResource(wsa1),
 		},
 		{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-			"wsa1": &v1beta1.WorkloadServiceAccount{
-				ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-			},
+			"wsa1": NewWSAResource(wsa1),
 		},
 	}
 	_, _, wsaToSANames, _ := GenerateServiceAccountMappings(scopeMap)
@@ -105,19 +110,20 @@ func Test_MultipleWSAsWithTheSameScopeOnlyCreateOneServiceAccount(t *testing.T) 
 }
 
 func Test_GenerateServiceAccountMappings(t *testing.T) {
+	wsa1 := &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1"}}
+	wsa2 := &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2"}}
+
 	tests := []struct {
 		name                string
-		scopeMap            map[Scope]map[string]*v1beta1.WorkloadServiceAccount
+		scopeMap            map[Scope]map[string]WSAResource
 		wantScopes          int
 		wantServiceAccounts int
 	}{
 		{
 			name: "single scope with one WSA",
-			scopeMap: map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+			scopeMap: map[Scope]map[string]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
-						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
+					"wsa1": NewWSAResource(wsa1),
 				},
 			},
 			wantScopes:          1,
@@ -125,19 +131,13 @@ func Test_GenerateServiceAccountMappings(t *testing.T) {
 		},
 		{
 			name: "multiple scopes with overlapping WSAs",
-			scopeMap: map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+			scopeMap: map[Scope]map[string]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
-						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
-					"wsa2": &v1beta1.WorkloadServiceAccount{
-						ObjectMeta: metav1.ObjectMeta{Name: "wsa2"},
-					},
+					"wsa1": NewWSAResource(wsa1),
+					"wsa2": NewWSAResource(wsa2),
 				},
 				{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
-						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
+					"wsa1": NewWSAResource(wsa1),
 				},
 			},
 			wantScopes:          2,
@@ -145,11 +145,11 @@ func Test_GenerateServiceAccountMappings(t *testing.T) {
 		},
 		{
 			name: "identical scopes (should create one service account)",
-			scopeMap: map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+			scopeMap: map[Scope]map[string]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
+					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
+					}),
 				},
 			},
 			wantScopes:          1,
@@ -157,7 +157,7 @@ func Test_GenerateServiceAccountMappings(t *testing.T) {
 		},
 		{
 			name:                "empty scope map",
-			scopeMap:            map[Scope]map[string]*v1beta1.WorkloadServiceAccount{},
+			scopeMap:            map[Scope]map[string]WSAResource{},
 			wantScopes:          0,
 			wantServiceAccounts: 0,
 		},

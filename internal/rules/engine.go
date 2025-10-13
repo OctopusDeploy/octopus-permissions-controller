@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -33,7 +32,7 @@ type Engine interface {
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName
 	vocabulary       GlobalVocabulary
-	saToWsaMap       map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount
+	saToWsaMap       map[ServiceAccountName]map[string]WSAResource
 	targetNamespaces []string
 	lookupNamespaces bool
 	client           client.Client
@@ -82,7 +81,14 @@ func NewInMemoryEngineWithNamespaces(controllerClient client.Client, targetNames
 }
 
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
+	// Fetch WorkloadServiceAccounts
 	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Fetch ClusterWorkloadServiceAccounts
+	cwsaEnumerable, err := i.GetClusterWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return err
 	}
@@ -96,8 +102,16 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 		i.targetNamespaces = targetNamespaces
 	}
 
-	var wsaList = slices.Collect(wsaEnumerable)
-	scopeMap, vocabulary := i.ComputeScopesForWSAs(wsaList)
+	// Convert both types to WSAResource interface
+	var allResources []WSAResource
+	for _, wsa := range slices.Collect(wsaEnumerable) {
+		allResources = append(allResources, NewWSAResource(wsa))
+	}
+	for _, cwsa := range slices.Collect(cwsaEnumerable) {
+		allResources = append(allResources, NewClusterWSAResource(cwsa))
+	}
+
+	scopeMap, vocabulary := i.ComputeScopesForWSAs(allResources)
 	i.vocabulary = vocabulary
 
 	// Generate service accounts
@@ -106,7 +120,7 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	i.scopeToSA = scopeToSaNameMap
 	i.saToWsaMap = saToWsaMap
 
-	createdRoles, err := i.EnsureRoles(ctx, wsaList)
+	createdRoles, err := i.EnsureRoles(ctx, allResources)
 	if err != nil {
 		return fmt.Errorf("failed to ensure roles: %w", err)
 	}
@@ -117,7 +131,7 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	}
 
 	// For each WSA, bind the roles or created roles to the service accounts in each target namespace
-	if bindErr := i.EnsureRoleBindings(ctx, wsaList, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
+	if bindErr := i.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
 		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
 	}
 

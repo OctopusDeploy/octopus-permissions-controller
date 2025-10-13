@@ -73,14 +73,14 @@ func (m *MockEngine) Reconcile(ctx context.Context) error {
 }
 
 // ScopeComputation interface methods (embedded in Engine interface)
-func (m *MockEngine) ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[rules.Scope]map[string]*v1beta1.WorkloadServiceAccount, rules.GlobalVocabulary) {
+func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
 	args := m.Called(wsaList)
-	return args.Get(0).(map[rules.Scope]map[string]*v1beta1.WorkloadServiceAccount), args.Get(1).(rules.GlobalVocabulary)
+	return args.Get(0).(map[rules.Scope]map[string]rules.WSAResource), args.Get(1).(rules.GlobalVocabulary)
 }
 
-func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[string]*v1beta1.WorkloadServiceAccount) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount, map[string][]string, []*corev1.ServiceAccount) {
+func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[string]rules.WSAResource) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
 	args := m.Called(scopeMap)
-	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount), args.Get(2).(map[string][]string), args.Get(3).([]*corev1.ServiceAccount)
+	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[string]rules.WSAResource), args.Get(2).(map[string][]string), args.Get(3).([]*corev1.ServiceAccount)
 }
 
 // ResourceManagement interface methods
@@ -89,18 +89,30 @@ func (m *MockEngine) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*
 	return args.Get(0).(iter.Seq[*v1beta1.WorkloadServiceAccount]), args.Error(1)
 }
 
-func (m *MockEngine) EnsureRoles(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error) {
-	args := m.Called(ctx, wsaList)
+func (m *MockEngine) GetClusterWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.ClusterWorkloadServiceAccount], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*v1beta1.ClusterWorkloadServiceAccount]), args.Error(1)
+}
+
+func (m *MockEngine) EnsureRoles(
+	ctx context.Context, resources []rules.WSAResource,
+) (map[string]rbacv1.Role, error) {
+	args := m.Called(ctx, resources)
 	return args.Get(0).(map[string]rbacv1.Role), args.Error(1)
 }
 
-func (m *MockEngine) EnsureServiceAccounts(ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error {
+func (m *MockEngine) EnsureServiceAccounts(
+	ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string,
+) error {
 	args := m.Called(ctx, serviceAccounts, targetNamespaces)
 	return args.Error(0)
 }
 
-func (m *MockEngine) EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role, wsaToServiceAccounts map[string][]string, targetNamespaces []string) error {
-	args := m.Called(ctx, wsaList, createdRoles, wsaToServiceAccounts, targetNamespaces)
+func (m *MockEngine) EnsureRoleBindings(
+	ctx context.Context, resources []rules.WSAResource, createdRoles map[string]rbacv1.Role,
+	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+) error {
+	args := m.Called(ctx, resources, createdRoles, wsaToServiceAccounts, targetNamespaces)
 	return args.Error(0)
 }
 
