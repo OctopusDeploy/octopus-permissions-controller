@@ -215,9 +215,12 @@ var _ = Describe("Engine Integration Tests", func() {
 			roleBindings := &rbacv1.RoleBindingList{}
 			Expect(k8sClient.List(testCtx, roleBindings, client.InNamespace(testNamespace))).To(Succeed())
 
-			// Should have role bindings for inline permissions and role references
+			// Should have role bindings for inline permissions, role references, and cluster roles
 			wsaRoleBindings := filterRoleBindingsByPrefix(roleBindings.Items, "octopus-rb-")
 			Expect(wsaRoleBindings).NotTo(BeEmpty(), "Expected role bindings to be created")
+
+			// Track the role references we find to ensure cluster roles are bound as role bindings
+			var foundRoleRefs []rbacv1.RoleRef
 
 			for _, rb := range wsaRoleBindings {
 				By(fmt.Sprintf("verifying role binding %s", rb.Name))
@@ -228,12 +231,32 @@ var _ = Describe("Engine Integration Tests", func() {
 				// Verify subjects include service accounts from all target namespaces
 				Expect(rb.Subjects).NotTo(BeEmpty(), "RoleBinding should have subjects")
 
+				foundRoleRefs = append(foundRoleRefs, rb.RoleRef)
+
 				for _, subject := range rb.Subjects {
 					Expect(subject.Kind).To(Equal("ServiceAccount"), "Subject should be ServiceAccount")
 					Expect(subject.Name).To(ContainSubstring("octopus-sa-"), "Subject name should match service account pattern")
 					Expect(targetNamespaces).To(ContainElement(subject.Namespace), "Subject namespace should be in target namespaces")
 				}
 			}
+
+			By("verifying cluster roles are bound as role bindings")
+			for _, clusterRoleRef := range wsa.Spec.Permissions.ClusterRoles {
+				found := false
+				for _, foundRef := range foundRoleRefs {
+					if foundRef.Kind == clusterRoleRef.Kind &&
+						foundRef.Name == clusterRoleRef.Name &&
+						foundRef.APIGroup == clusterRoleRef.APIGroup {
+						found = true
+						Expect(foundRef.Kind).To(Equal("ClusterRole"),
+							"ClusterRole should be referenced in RoleBinding")
+						break
+					}
+				}
+				Expect(found).To(BeTrue(),
+					fmt.Sprintf("ClusterRole %s should be bound via RoleBinding", clusterRoleRef.Name))
+			}
+
 		})
 
 		It("should handle multiple WSAs with overlapping scopes correctly", func() {
