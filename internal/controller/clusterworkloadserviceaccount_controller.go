@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -71,7 +72,7 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		// Uncomment the following line adding a pointer to an instance of the controlled resource as an argument
-		// For().
+		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}).
 		Named("clusterworkloadserviceaccount").
 		Complete(r)
 }
