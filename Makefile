@@ -86,6 +86,35 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 	KIND_CLUSTER=$(KIND_CLUSTER) go test ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
+.PHONY: setup-debug-env
+setup-debug-env: setup-test-e2e manifests generate
+	@echo "Installing cert-manager into Kind cluster..."
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+
+	@echo "Waiting for cert-manager to be ready..."
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager
+
+	@echo "Applying controller configuration with cert manager..."
+	$(KUSTOMIZE) build config/default | $(KUBECTL) --context kind-$(KIND_CLUSTER) apply -f -
+
+	@echo "Waiting for certificates to be ready..."
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) wait --for=condition=Ready --timeout=300s certificate/serving-cert -n octopus-permissions-controller-system || true
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) wait --for=condition=Ready --timeout=300s certificate/metrics-certs -n octopus-permissions-controller-system || true
+
+	# Create certificates directory and extract TLS certificates
+	@echo "Extracting certificates to ./certificates directory..."
+	@mkdir -p certificates
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) get secret webhook-server-cert -n octopus-permissions-controller-system -o jsonpath='{.data.tls\.crt}' | base64 --decode > certificates/tls.crt || echo "Warning: webhook-server-cert not found"
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) get secret webhook-server-cert -n octopus-permissions-controller-system -o jsonpath='{.data.tls\.key}' | base64 --decode > certificates/tls.key || echo "Warning: webhook-server-cert not found"
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) get secret metrics-server-cert -n octopus-permissions-controller-system -o jsonpath='{.data.tls\.crt}' | base64 --decode > certificates/metrics-tls.crt || echo "Warning: metrics-server-cert not found"
+	$(KUBECTL) --context kind-$(KIND_CLUSTER) get secret metrics-server-cert -n octopus-permissions-controller-system -o jsonpath='{.data.tls\.key}' | base64 --decode > certificates/metrics-tls.key || echo "Warning: metrics-server-cert not found"
+
+	@echo "Kind cluster: $(KIND_CLUSTER)"
+	@echo "Namespace: octopus-permissions-controller-system"
+
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
