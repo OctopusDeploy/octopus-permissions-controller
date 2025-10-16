@@ -97,7 +97,7 @@ install-cert-manager: setup-test-e2e
 	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager
 
 .PHONY: setup-debug-env
-setup-debug-env: setup-test-e2e manifests generate install-cert-manager certs
+setup-debug-env: setup-test-e2e manifests generate install-cert-manager certs install
 
 	@echo "Waiting for certificates to be ready..."
 	$(KUBECTL) wait --for=condition=Ready --timeout=300s certificate/opc-serving-cert -n octopus-permissions-controller-system || true
