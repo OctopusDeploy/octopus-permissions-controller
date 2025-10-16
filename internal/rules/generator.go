@@ -8,14 +8,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/hashicorp/go-set/v3"
 )
 
-func getScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary) {
+func getScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary) {
 	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
 
@@ -89,11 +88,11 @@ func (v *GlobalVocabulary) GetKnownScopeCombination(scope Scope) Scope {
 	return knownScope
 }
 
-func buildGlobalVocabulary(rules []*v1beta1.WorkloadServiceAccount) GlobalVocabulary {
+func buildGlobalVocabulary(resources []WSAResource) GlobalVocabulary {
 	vocabulary := NewGlobalVocabulary()
 
-	for _, rule := range rules {
-		scope := rule.Spec.Scope
+	for _, resource := range resources {
+		scope := resource.GetScope()
 
 		// Add all values from each dimension to our vocabulary
 		addAllValuesToVocabulary := func(dimensionIndex DimensionIndex, values []string) {
@@ -115,10 +114,10 @@ func buildGlobalVocabulary(rules []*v1beta1.WorkloadServiceAccount) GlobalVocabu
 // computeMinimalServiceAccountScopes uses set theory to compute the minimal set of service accounts needed
 // It creates service accounts only for scope intersections where multiple WSAs could apply
 func computeMinimalServiceAccountScopes(
-	wsaList []*v1beta1.WorkloadServiceAccount, vocabulary GlobalVocabulary,
-) map[Scope]map[string]*v1beta1.WorkloadServiceAccount {
+	wsaList []WSAResource, vocabulary GlobalVocabulary,
+) map[Scope]map[string]WSAResource {
 	if len(wsaList) == 0 {
-		return make(map[Scope]map[string]*v1beta1.WorkloadServiceAccount)
+		return make(map[Scope]map[string]WSAResource)
 	}
 
 	// Create sets for each WSA representing all scopes it covers
@@ -135,11 +134,11 @@ func computeMinimalServiceAccountScopes(
 }
 
 // computeWSACoverage calculates all scopes that a WSA covers using set operations
-func computeWSACoverage(wsa *v1beta1.WorkloadServiceAccount, vocabulary GlobalVocabulary) *set.Set[Scope] {
+func computeWSACoverage(resource WSAResource, vocabulary GlobalVocabulary) *set.Set[Scope] {
 	// For each dimension, determine the set of values this WSA covers
 	dimensionCoverage := [MaxDimensionIndex]*set.Set[string]{}
 
-	scope := wsa.Spec.Scope
+	scope := resource.GetScope()
 	scopeSlices := [MaxDimensionIndex][]string{
 		scope.Projects,
 		scope.Environments,
@@ -213,17 +212,17 @@ func findScopeIntersections(coverageSets []*set.Set[Scope]) map[Scope]*set.Set[i
 
 // buildScopeToWSAMapping builds the final mapping from intersections
 func buildScopeToWSAMapping(
-	scopeIntersections map[Scope]*set.Set[int], wsaList []*v1beta1.WorkloadServiceAccount,
-) map[Scope]map[string]*v1beta1.WorkloadServiceAccount {
-	result := make(map[Scope]map[string]*v1beta1.WorkloadServiceAccount)
+	scopeIntersections map[Scope]*set.Set[int], wsaList []WSAResource,
+) map[Scope]map[string]WSAResource {
+	result := make(map[Scope]map[string]WSAResource)
 
 	for scope, wsaIndices := range scopeIntersections {
 		// Only create service accounts for scopes with at least one WSA
 		if wsaIndices.Size() > 0 {
-			wsaMap := make(map[string]*v1beta1.WorkloadServiceAccount)
+			wsaMap := make(map[string]WSAResource)
 			for _, wsaIndex := range wsaIndices.Slice() {
-				wsa := wsaList[wsaIndex]
-				wsaMap[wsa.Name] = wsa
+				resource := wsaList[wsaIndex]
+				wsaMap[resource.GetName()] = resource
 			}
 			result[scope] = wsaMap
 		}
@@ -235,15 +234,15 @@ func buildScopeToWSAMapping(
 // GenerateServiceAccountMappings processes the scope map and generates the required mappings
 // for service account creation and management.
 func GenerateServiceAccountMappings(
-	scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount,
+	scopeMap map[Scope]map[string]WSAResource,
 ) (
 	map[Scope]ServiceAccountName,
-	map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount,
+	map[ServiceAccountName]map[string]WSAResource,
 	map[string][]string,
 	[]*v1.ServiceAccount,
 ) {
 	scopeToServiceAccount := make(map[Scope]ServiceAccountName)
-	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount)
+	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]WSAResource)
 	uniqueServiceAccounts := make(map[ServiceAccountName]*v1.ServiceAccount)
 	wsaToServiceAccountNamesSet := make(map[string]*set.Set[string])
 
