@@ -25,9 +25,15 @@ type serviceAccountInfo struct {
 // ResourceManagement defines the interface for creating and managing Kubernetes resources
 type ResourceManagement interface {
 	GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error)
-	EnsureRoles(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount) (map[string]rbacv1.Role, error)
-	EnsureServiceAccounts(ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error
-	EnsureRoleBindings(ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role, wsaToServiceAccounts map[string][]string, targetNamespaces []string) error
+	GetClusterWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.ClusterWorkloadServiceAccount], error)
+	EnsureRoles(ctx context.Context, resources []WSAResource) (map[string]rbacv1.Role, error)
+	EnsureServiceAccounts(
+		ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string,
+	) error
+	EnsureRoleBindings(
+		ctx context.Context, resources []WSAResource, createdRoles map[string]rbacv1.Role,
+		wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+	) error
 }
 
 type ResourceManagementService struct {
@@ -56,18 +62,34 @@ func (r ResourceManagementService) GetWorkloadServiceAccounts(ctx context.Contex
 	}, nil
 }
 
+func (r ResourceManagementService) GetClusterWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.ClusterWorkloadServiceAccount], error) {
+	cwsaList := &v1beta1.ClusterWorkloadServiceAccountList{}
+	err := r.client.List(ctx, cwsaList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cluster workload service accounts: %w", err)
+	}
+
+	return func(yield func(*v1beta1.ClusterWorkloadServiceAccount) bool) {
+		for _, v := range cwsaList.Items {
+			if !yield(&v) {
+				return
+			}
+		}
+	}, nil
+}
+
 func (r ResourceManagementService) EnsureRoles(
-	ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount,
+	ctx context.Context, resources []WSAResource,
 ) (map[string]rbacv1.Role, error) {
 	createdRoles := make(map[string]rbacv1.Role)
 	var err error
 
-	for _, wsa := range wsaList {
+	for _, resource := range resources {
 		ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
-		if role, createErr := r.createRoleIfNeeded(ctxWithTimeout, wsa); createErr != nil {
+		if role, createErr := r.createRoleIfNeeded(ctxWithTimeout, resource); createErr != nil {
 			err = multierr.Append(err, createErr)
 		} else if role.Name != "" {
-			createdRoles[wsa.Name] = role
+			createdRoles[resource.GetName()] = role
 		}
 		cancel()
 	}
@@ -96,15 +118,15 @@ func (r ResourceManagementService) EnsureServiceAccounts(
 
 // EnsureRoleBindings creates role bindings to connect service accounts with roles for all WSAs
 func (r ResourceManagementService) EnsureRoleBindings(
-	ctx context.Context, wsaList []*v1beta1.WorkloadServiceAccount, createdRoles map[string]rbacv1.Role,
+	ctx context.Context, resources []WSAResource, createdRoles map[string]rbacv1.Role,
 	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
 ) error {
 	logger := log.FromContext(ctx).WithName("ensureRoleBindings")
 	var err error
 
-	// Loop over WSAs and create role bindings for each
-	for _, wsa := range wsaList {
-		serviceAccounts, exists := wsaToServiceAccounts[wsa.Name]
+	// Loop over resources and create role bindings for each
+	for _, resource := range resources {
+		serviceAccounts, exists := wsaToServiceAccounts[resource.GetName()]
 		if !exists || len(serviceAccounts) == 0 {
 			continue
 		}
@@ -120,9 +142,9 @@ func (r ResourceManagementService) EnsureRoleBindings(
 		}
 
 		ctxWithTimeout, cancel := r.getContextWithTimeout(time.Second * 30)
-		if bindErr := r.createRoleBindingsForWSA(ctxWithTimeout, wsa, allNamespacedServiceAccounts, createdRoles); bindErr != nil {
-			logger.Error(bindErr, "failed to create role bindings for WSA", "wsa", wsa.Name)
-			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for WSA %s: %w", wsa.Name, bindErr))
+		if bindErr := r.createRoleBindingsForResource(ctxWithTimeout, resource, allNamespacedServiceAccounts, createdRoles); bindErr != nil {
+			logger.Error(bindErr, "failed to create role bindings for resource", "name", resource.GetName())
+			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for resource %s: %w", resource.GetName(), bindErr))
 		}
 		cancel()
 	}
@@ -137,14 +159,19 @@ func (r ResourceManagementService) getContextWithTimeout(timeout time.Duration) 
 	return ctx, cancel
 }
 
-func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, wsa *v1beta1.WorkloadServiceAccount) (rbacv1.Role, error) {
+func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, resource WSAResource) (rbacv1.Role, error) {
 	logger := log.FromContext(ctx).WithName("createRoleIfNeeded")
 
-	if len(wsa.Spec.Permissions.Permissions) == 0 {
+	permissions := resource.GetPermissionRules()
+	if len(permissions) == 0 {
 		return rbacv1.Role{}, nil
 	}
-	permissions := wsa.Spec.Permissions.Permissions
-	namespace := wsa.GetNamespace()
+
+	namespace := resource.GetNamespace()
+	// Cluster-scoped resources create ClusterRoles not Roles
+	if resource.IsClusterScoped() {
+		return rbacv1.Role{}, nil
+	}
 
 	// Generate a role name based on permissions hash to ensure uniqueness
 	permissionsHash := shortHash(fmt.Sprintf("%+v", permissions))
@@ -204,15 +231,15 @@ func (r ResourceManagementService) createServiceAccount(
 	return nil
 }
 
-// createRoleBindingsForWSA creates all role bindings for a WSA with all its service accounts as subjects
-func (r ResourceManagementService) createRoleBindingsForWSA(
-	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, serviceAccounts []serviceAccountInfo,
+// createRoleBindingsForResource creates all role bindings for a resource with all its service accounts as subjects
+func (r ResourceManagementService) createRoleBindingsForResource(
+	ctx context.Context, resource WSAResource, serviceAccounts []serviceAccountInfo,
 	createdRoles map[string]rbacv1.Role,
 ) error {
-	logger := log.FromContext(ctx).WithName("createRoleBindingsForWSA")
+	logger := log.FromContext(ctx).WithName("createRoleBindingsForResource")
 	var err error
 
-	// Create subjects from all service accounts for this WSA
+	// Create subjects from all service accounts for this resource
 	subjects := make([]rbacv1.Subject, len(serviceAccounts))
 	for i, sa := range serviceAccounts {
 		subjects[i] = rbacv1.Subject{
@@ -222,46 +249,51 @@ func (r ResourceManagementService) createRoleBindingsForWSA(
 		}
 	}
 
-	// WSA namespace is where role bindings will be created
-	wsaNamespace := wsa.GetNamespace()
-
-	// Create role bindings for explicit roles
-	for _, roleRef := range wsa.Spec.Permissions.Roles {
-		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+	// Create role bindings for explicit roles (only for namespace-scoped resources)
+	for _, roleRef := range resource.GetRoles() {
+		if bindErr := r.createRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
 			err = multierr.Append(err, bindErr)
 		}
 	}
 
 	// Create role binding for inline permissions (if role was created)
-	if createdRole, exists := createdRoles[wsa.Name]; exists {
+	if createdRole, exists := createdRoles[resource.GetName()]; exists {
 		roleRef := rbacv1.RoleRef{
 			Kind:     "Role",
 			Name:     createdRole.Name,
 			APIGroup: "rbac.authorization.k8s.io",
 		}
-		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
+		if bindErr := r.createRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
 			err = multierr.Append(err, bindErr)
 		}
 	}
 
-	// Create role bindings for cluster roles
-	for _, roleRef := range wsa.Spec.Permissions.ClusterRoles {
-		if bindErr := r.createRoleBinding(ctx, wsa, roleRef, subjects); bindErr != nil {
-			err = multierr.Append(err, bindErr)
+	// Create bindings for cluster roles
+	// For cluster-scoped resources, create ClusterRoleBindings
+	// For namespace-scoped resources, create RoleBindings that reference ClusterRoles
+	for _, roleRef := range resource.GetClusterRoles() {
+		if resource.IsClusterScoped() {
+			if bindErr := r.createClusterRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
+				err = multierr.Append(err, bindErr)
+			}
+		} else {
+			if bindErr := r.createRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
+				err = multierr.Append(err, bindErr)
+			}
 		}
 	}
 
-	logger.Info("Created role bindings for WSA", "wsa", wsa.Name, "namespace", wsaNamespace, "serviceAccounts", len(serviceAccounts))
+	logger.Info("Created role bindings for resource", "name", resource.GetName(), "namespace", resource.GetNamespace(), "serviceAccounts", len(serviceAccounts))
 	return err
 }
 
 func (r ResourceManagementService) createRoleBinding(
-	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
+	ctx context.Context, resource WSAResource, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
 ) error {
 	logger := log.FromContext(ctx).WithName("createRoleBinding")
 
-	name := fmt.Sprintf("octopus-rb-%s", shortHash(fmt.Sprintf("%s-%s", wsa.Name, roleRef.Name)))
-	namespace := wsa.GetNamespace()
+	name := fmt.Sprintf("octopus-rb-%s", shortHash(fmt.Sprintf("%s-%s", resource.GetName(), roleRef.Name)))
+	namespace := resource.GetNamespace()
 
 	roleBinding := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -282,19 +314,17 @@ func (r ResourceManagementService) createRoleBinding(
 		return fmt.Errorf("failed to create RoleBinding %s in namespace %s: %w", name, namespace, err)
 	}
 
-	logger.Info("Created RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
+	logger.Info("Created RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "resource", resource.GetName())
 	return nil
 }
 
-//nolint:unused
 func (r ResourceManagementService) createClusterRoleBinding(
-	ctx context.Context, wsa *v1beta1.WorkloadServiceAccount, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
+	ctx context.Context, resource WSAResource, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject,
 ) error {
 	logger := log.FromContext(ctx).WithName("createClusterRoleBinding")
 
-	// TODO: This is non-namespaced, check the name is unique across the cluster
-	name := fmt.Sprintf("octopus-crb-%s", shortHash(fmt.Sprintf("%s-%s", wsa.Name, roleRef.Name)))
-	namespace := wsa.GetNamespace()
+	// ClusterRoleBindings are non-namespaced, so we use resource name to ensure uniqueness
+	name := fmt.Sprintf("octopus-crb-%s", shortHash(fmt.Sprintf("%s-%s", resource.GetName(), roleRef.Name)))
 
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -308,12 +338,12 @@ func (r ResourceManagementService) createClusterRoleBinding(
 	err := r.client.Create(ctx, clusterRoleBinding)
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			logger.Info("ClusterRoleBinding already exists", "name", name, "namespace", namespace)
+			logger.Info("ClusterRoleBinding already exists", "name", name)
 			return nil
 		}
-		return fmt.Errorf("failed to create ClusterRoleBinding %s in namespace %s: %w", name, namespace, err)
+		return fmt.Errorf("failed to create ClusterRoleBinding %s: %w", name, err)
 	}
 
-	logger.Info("Created ClusterRoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "wsa", wsa.Name)
+	logger.Info("Created ClusterRoleBinding", "name", name, "roleRef", roleRef.Name, "resource", resource.GetName())
 	return nil
 }

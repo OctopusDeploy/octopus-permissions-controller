@@ -36,7 +36,19 @@ type WorkloadServiceAccountSpec struct {
 
 // WorkloadServiceAccountStatus defines the observed state of WorkloadServiceAccount.
 type WorkloadServiceAccountStatus struct {
-	ServiceAccountName string `json:"serviceAccountName"`
+	// conditions represent the current state of the ClusterWorkloadServiceAccount resource.
+	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
+	//
+	// Standard condition types include:
+	// - "Available": the resource is fully functional
+	// - "Progressing": the resource is being created or updated
+	// - "Degraded": the resource failed to reach or maintain its desired state
+	//
+	// The status of each condition is one of True, False, or Unknown.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // WorkloadServiceAccountScope defines the octopus scope for the WorkloadServiceAccount
@@ -73,6 +85,7 @@ type WorkloadServiceAccountPermissions struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=wsa
 
 // WorkloadServiceAccount is the Schema for the workloadserviceaccounts API
 type WorkloadServiceAccount struct {

@@ -19,6 +19,7 @@ rules:
 - apiGroups:
   - agent.octopus.com
   resources:
+  - clusterworkloadserviceaccounts
   - workloadserviceaccounts
   verbs:
   - create
@@ -31,12 +32,14 @@ rules:
 - apiGroups:
   - agent.octopus.com
   resources:
+  - clusterworkloadserviceaccounts/finalizers
   - workloadserviceaccounts/finalizers
   verbs:
   - update
 - apiGroups:
   - agent.octopus.com
   resources:
+  - clusterworkloadserviceaccounts/status
   - workloadserviceaccounts/status
   verbs:
   - get
@@ -53,13 +56,11 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
-  - clusterroles
-  - roles
+  - clusterrolebindings
+  - rolebindings
   verbs:
-  - bind
   - create
   - delete
-  - escalate
   - get
   - list
   - patch
@@ -68,11 +69,13 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
-  - clusterrolesbindings
-  - rolebindings
+  - clusterroles
+  - roles
   verbs:
+  - bind
   - create
   - delete
+  - escalate
   - get
   - list
   - patch
