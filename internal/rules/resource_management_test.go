@@ -268,7 +268,12 @@ func TestResourceManagementService_EnsureRoles(t *testing.T) {
 				Build()
 
 			service := NewResourceManagementService(fakeClient)
-			createdRoles, err := service.EnsureRoles(context.Background(), tt.wsaList)
+			// Convert tt.wsaList to []WSAResource
+			wsaResources := make([]WSAResource, len(tt.wsaList))
+			for i, wsa := range tt.wsaList {
+				wsaResources[i] = NewWSAResource(wsa)
+			}
+			createdRoles, err := service.EnsureRoles(context.Background(), wsaResources)
 
 			if tt.expectedError {
 				assert.Error(t, err)
@@ -656,7 +661,12 @@ func TestResourceManagementService_EnsureRoleBindings(t *testing.T) {
 			initialCount := len(initialList.Items)
 
 			service := NewResourceManagementService(fakeClient)
-			err = service.EnsureRoleBindings(context.Background(), tt.wsaList, tt.createdRoles, tt.wsaToServiceAccounts, tt.targetNamespaces)
+
+			wsaResources := make([]WSAResource, len(tt.wsaList))
+			for i, wsa := range tt.wsaList {
+				wsaResources[i] = NewWSAResource(wsa)
+			}
+			err = service.EnsureRoleBindings(context.Background(), wsaResources, tt.createdRoles, tt.wsaToServiceAccounts, tt.targetNamespaces)
 
 			if tt.expectedError {
 				assert.Error(t, err)
@@ -802,7 +812,7 @@ func TestResourceManagementService_createRoleIfNeeded(t *testing.T) {
 				Build()
 
 			service := NewResourceManagementService(fakeClient)
-			role, err := service.createRoleIfNeeded(context.Background(), tt.wsa)
+			role, err := service.createRoleIfNeeded(context.Background(), NewWSAResource(tt.wsa))
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -1010,7 +1020,7 @@ func TestResourceManagementService_createRoleBinding(t *testing.T) {
 			initialCount := len(initialList.Items)
 
 			service := NewResourceManagementService(fakeClient)
-			err = service.createRoleBinding(context.Background(), tt.wsa, tt.roleRef, tt.subjects)
+			err = service.createRoleBinding(context.Background(), NewWSAResource(tt.wsa), tt.roleRef, tt.subjects)
 
 			if tt.expectError {
 				assert.Error(t, err)
