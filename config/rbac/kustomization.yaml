@@ -22,6 +22,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the octopus-permissions-controller itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- clusterworkloadserviceaccount_admin_role.yaml
+- clusterworkloadserviceaccount_editor_role.yaml
+- clusterworkloadserviceaccount_viewer_role.yaml
 - workloadserviceaccount_admin_role.yaml
 - workloadserviceaccount_editor_role.yaml
 - workloadserviceaccount_viewer_role.yaml

@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/agent.octopus.com_workloadserviceaccounts.yaml
+- bases/agent.octopus.com_clusterworkloadserviceaccounts.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

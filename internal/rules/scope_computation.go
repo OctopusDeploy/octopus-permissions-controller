@@ -3,7 +3,6 @@ package rules
 import (
 	"maps"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/hashicorp/go-set/v3"
@@ -12,10 +11,10 @@ import (
 // ScopeComputation defines the interface for computing scopes and service account mappings
 type ScopeComputation interface {
 	GetServiceAccountForScope(scope Scope) (ServiceAccountName, error)
-	ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary)
-	GenerateServiceAccountMappings(scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount) (
+	ComputeScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary)
+	GenerateServiceAccountMappings(scopeMap map[Scope]map[string]WSAResource) (
 		map[Scope]ServiceAccountName,
-		map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount,
+		map[ServiceAccountName]map[string]WSAResource,
 		map[string][]string,
 		[]*corev1.ServiceAccount,
 	)
@@ -42,7 +41,7 @@ func (s ScopeComputationService) GetServiceAccountForScope(scope Scope) (Service
 	return "", nil
 }
 
-func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []*v1beta1.WorkloadServiceAccount) (map[Scope]map[string]*v1beta1.WorkloadServiceAccount, GlobalVocabulary) {
+func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary) {
 	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
 
@@ -51,9 +50,9 @@ func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []*v1beta1.Workloa
 	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
 
-func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[string]*v1beta1.WorkloadServiceAccount) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount, map[string][]string, []*corev1.ServiceAccount) {
+func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[string]WSAResource) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[string]WSAResource, map[string][]string, []*corev1.ServiceAccount) {
 	scopeToServiceAccount := make(map[Scope]ServiceAccountName)
-	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]*v1beta1.WorkloadServiceAccount)
+	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]WSAResource)
 	uniqueServiceAccounts := make(map[ServiceAccountName]*corev1.ServiceAccount)
 	wsaToServiceAccountNamesSet := make(map[string]*set.Set[string])
 
