@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -208,10 +209,14 @@ func main() {
 	// Create the rules engine instance
 	engine := rules.NewInMemoryEngine(mgr.GetClient())
 
+	// Create metrics collector instance
+	metricsCollector := metrics.NewMetricsCollector(mgr.GetClient())
+
 	if err := (&controller.WorkloadServiceAccountReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Engine: &engine,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		Engine:           &engine,
+		MetricsCollector: metricsCollector,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WorkloadServiceAccount")
 		os.Exit(1)
@@ -231,9 +236,10 @@ func main() {
 		}
 	}
 	if err := (&controller.ClusterWorkloadServiceAccountReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Engine: &engine,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		Engine:           &engine,
+		MetricsCollector: metricsCollector,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterWorkloadServiceAccount")
 		os.Exit(1)

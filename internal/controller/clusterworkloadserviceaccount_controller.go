@@ -18,8 +18,10 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -30,8 +32,9 @@ import (
 // ClusterWorkloadServiceAccountReconciler reconciles a ClusterWorkloadServiceAccount object
 type ClusterWorkloadServiceAccountReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Engine rules.Engine
+	Scheme           *runtime.Scheme
+	Engine           rules.Engine
+	MetricsCollector *metrics.MetricsCollector
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
@@ -56,14 +59,38 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	ctx context.Context, req ctrl.Request,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	startTime := time.Now()
+	controllerType := "clusterworkloadserviceaccount"
 
 	log.Info("ClusterWorkloadServiceAccount reconciliation triggered")
 
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		result := "success"
+		if err := recover(); err != nil {
+			result = "error"
+			panic(err) // Re-panic to maintain original behavior
+		}
+		metrics.ObserveReconciliationDuration(controllerType, result, duration)
+	}()
+
+	var reconcileResult string = "success"
+
 	if err := r.Engine.Reconcile(ctx); err != nil {
 		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccounts")
+		reconcileResult = "error"
+		metrics.IncRequestsServed(controllerType, reconcileResult)
+		metrics.ObserveReconciliationDuration(controllerType, reconcileResult, time.Since(startTime).Seconds())
 		return ctrl.Result{}, err
 	}
 
+	if r.MetricsCollector != nil {
+		if err := r.MetricsCollector.CollectResourceMetrics(ctx); err != nil {
+			log.Error(err, "failed to collect resource metrics")
+		}
+	}
+
+	metrics.IncRequestsServed(controllerType, reconcileResult)
 	log.Info("Successfully reconciled ClusterWorkloadServiceAccounts")
 	return ctrl.Result{}, nil
 }
