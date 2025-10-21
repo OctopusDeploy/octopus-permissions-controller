@@ -30,7 +30,7 @@ type Engine interface {
 
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName
-	vocabulary       GlobalVocabulary
+	vocabulary       *GlobalVocabulary
 	saToWsaMap       map[ServiceAccountName]map[string]WSAResource
 	targetNamespaces []string
 	lookupNamespaces bool
@@ -59,10 +59,12 @@ func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
 		targetNamespaces:   []string{},
 		lookupNamespaces:   true,
 		client:             controllerClient,
+		vocabulary:         &GlobalVocabulary{},
+		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
 		ResourceManagement: NewResourceManagementService(controllerClient),
 		NamespaceDiscovery: NamespaceDiscoveryService{},
 	}
-	engine.ScopeComputation = NewScopeComputationService(&engine.vocabulary, &engine.scopeToSA)
+	engine.ScopeComputation = NewScopeComputationService(engine.vocabulary, &engine.scopeToSA)
 	return engine
 }
 
@@ -72,10 +74,12 @@ func NewInMemoryEngineWithNamespaces(controllerClient client.Client, targetNames
 		targetNamespaces:   targetNamespaces,
 		lookupNamespaces:   len(targetNamespaces) == 0,
 		client:             controllerClient,
+		vocabulary:         &GlobalVocabulary{},
+		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
 		ResourceManagement: NewResourceManagementService(controllerClient),
 		NamespaceDiscovery: NamespaceDiscoveryService{},
 	}
-	engine.ScopeComputation = NewScopeComputationService(&engine.vocabulary, &engine.scopeToSA)
+	engine.ScopeComputation = NewScopeComputationService(engine.vocabulary, &engine.scopeToSA)
 	return engine
 }
 
@@ -111,13 +115,19 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	}
 
 	scopeMap, vocabulary := i.ComputeScopesForWSAs(allResources)
-	i.vocabulary = vocabulary
+	for idx, vocab := range vocabulary {
+		i.vocabulary[idx] = vocab
+	}
 
 	// Generate service accounts
 	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := i.GenerateServiceAccountMappings(scopeMap)
 
-	i.scopeToSA = scopeToSaNameMap
-	i.saToWsaMap = saToWsaMap
+	for scope, sa := range scopeToSaNameMap {
+		i.scopeToSA[scope] = sa
+	}
+	for sa, wsa := range saToWsaMap {
+		i.saToWsaMap[sa] = wsa
+	}
 
 	createdRoles, err := i.EnsureRoles(ctx, allResources)
 	if err != nil {
