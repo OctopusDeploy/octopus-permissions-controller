@@ -115,9 +115,7 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	}
 
 	scopeMap, vocabulary := i.ComputeScopesForWSAs(allResources)
-	for idx, vocab := range vocabulary {
-		i.vocabulary[idx] = vocab
-	}
+	*i.vocabulary = vocabulary
 
 	// Generate service accounts
 	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := i.GenerateServiceAccountMappings(scopeMap)
