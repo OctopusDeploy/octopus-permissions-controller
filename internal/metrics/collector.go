@@ -14,9 +14,9 @@ type MetricsCollector struct {
 	client client.Client
 }
 
-func NewMetricsCollector(client client.Client) *MetricsCollector {
+func NewMetricsCollector(cli client.Client) *MetricsCollector {
 	return &MetricsCollector{
-		client: client,
+		client: cli,
 	}
 }
 

@@ -29,6 +29,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const ERROR = "error"
+
 // ClusterWorkloadServiceAccountReconciler reconciles a ClusterWorkloadServiceAccount object
 type ClusterWorkloadServiceAccountReconciler struct {
 	client.Client
@@ -68,17 +70,17 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 		duration := time.Since(startTime).Seconds()
 		result := "success"
 		if err := recover(); err != nil {
-			result = "error"
+			result = ERROR
 			panic(err) // Re-panic to maintain original behavior
 		}
 		metrics.ObserveReconciliationDuration(controllerType, result, duration)
 	}()
 
-	var reconcileResult string = "success"
+	var reconcileResult = "success"
 
 	if err := r.Engine.Reconcile(ctx); err != nil {
 		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccounts")
-		reconcileResult = "error"
+		reconcileResult = ERROR
 		metrics.IncRequestsServed(controllerType, reconcileResult)
 		metrics.ObserveReconciliationDuration(controllerType, reconcileResult, time.Since(startTime).Seconds())
 		return ctrl.Result{}, err
