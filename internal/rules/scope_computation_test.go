@@ -80,20 +80,20 @@ func TestScopeComputationService_GetServiceAccountForScope(t *testing.T) {
 func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 	tests := []struct {
 		name               string
-		wsaList            []*v1beta1.WorkloadServiceAccount
+		wsaList            []WSAResource
 		expectedScopeCount int
 		minExpectedScopes  int
 	}{
 		{
 			name:               "empty WSA list should return empty result",
-			wsaList:            []*v1beta1.WorkloadServiceAccount{},
+			wsaList:            []WSAResource{},
 			expectedScopeCount: 0,
 			minExpectedScopes:  0,
 		},
 		{
 			name: "single WSA should generate scopes",
-			wsaList: []*v1beta1.WorkloadServiceAccount{
-				{
+			wsaList: []WSAResource{
+				NewWSAResource(&v1beta1.WorkloadServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
 					Spec: v1beta1.WorkloadServiceAccountSpec{
 						Scope: v1beta1.WorkloadServiceAccountScope{
@@ -101,15 +101,15 @@ func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 							Environments: []string{"env1"},
 						},
 					},
-				},
+				}),
 			},
 			expectedScopeCount: -1,
 			minExpectedScopes:  1,
 		},
 		{
 			name: "multiple WSAs with overlapping scopes",
-			wsaList: []*v1beta1.WorkloadServiceAccount{
-				{
+			wsaList: []WSAResource{
+				NewWSAResource(&v1beta1.WorkloadServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
 					Spec: v1beta1.WorkloadServiceAccountSpec{
 						Scope: v1beta1.WorkloadServiceAccountScope{
@@ -117,8 +117,8 @@ func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 							Environments: []string{"env1"},
 						},
 					},
-				},
-				{
+				}),
+				NewWSAResource(&v1beta1.WorkloadServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{Name: "wsa2"},
 					Spec: v1beta1.WorkloadServiceAccountSpec{
 						Scope: v1beta1.WorkloadServiceAccountScope{
@@ -126,20 +126,20 @@ func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 							Environments: []string{"env2"},
 						},
 					},
-				},
+				}),
 			},
 			expectedScopeCount: -1,
 			minExpectedScopes:  1,
 		},
 		{
 			name: "WSA with empty scope (wildcard)",
-			wsaList: []*v1beta1.WorkloadServiceAccount{
-				{
+			wsaList: []WSAResource{
+				NewWSAResource(&v1beta1.WorkloadServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{Name: "wsa-wildcard"},
 					Spec: v1beta1.WorkloadServiceAccountSpec{
 						Scope: v1beta1.WorkloadServiceAccountScope{},
 					},
-				},
+				}),
 			},
 			expectedScopeCount: -1,
 			minExpectedScopes:  1,
@@ -165,7 +165,7 @@ func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 				for wsaName, wsa := range wsaMap {
 					found := false
 					for _, originalWSA := range tt.wsaList {
-						if originalWSA.Name == wsaName && originalWSA == wsa {
+						if originalWSA.GetName() == wsaName && originalWSA == wsa {
 							found = true
 							break
 						}
@@ -177,7 +177,7 @@ func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 			if len(tt.wsaList) > 0 {
 				hasActualScopes := false
 				for _, wsa := range tt.wsaList {
-					scope := wsa.Spec.Scope
+					scope := wsa.GetScope()
 					if len(scope.Projects) > 0 || len(scope.Environments) > 0 || len(scope.Tenants) > 0 || len(scope.Steps) > 0 || len(scope.Spaces) > 0 {
 						hasActualScopes = true
 						break
@@ -202,25 +202,25 @@ func TestScopeComputationService_ComputeScopesForWSAs(t *testing.T) {
 func TestScopeComputationService_GenerateServiceAccountMappings(t *testing.T) {
 	tests := []struct {
 		name                string
-		scopeMap            map[Scope]map[string]*v1beta1.WorkloadServiceAccount
+		scopeMap            map[Scope]map[string]WSAResource
 		wantScopeCount      int
 		wantSACount         int
 		wantWSAMappingCount int
 	}{
 		{
 			name:                "empty scope map should return empty mappings",
-			scopeMap:            map[Scope]map[string]*v1beta1.WorkloadServiceAccount{},
+			scopeMap:            map[Scope]map[string]WSAResource{},
 			wantScopeCount:      0,
 			wantSACount:         0,
 			wantWSAMappingCount: 0,
 		},
 		{
 			name: "single scope with one WSA",
-			scopeMap: map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+			scopeMap: map[Scope]map[string]WSAResource{
 				{Project: "project1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
+					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
+					}),
 				},
 			},
 			wantScopeCount:      1,
@@ -229,16 +229,16 @@ func TestScopeComputationService_GenerateServiceAccountMappings(t *testing.T) {
 		},
 		{
 			name: "multiple scopes with different WSAs",
-			scopeMap: map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+			scopeMap: map[Scope]map[string]WSAResource{
 				{Project: "project1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
+					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
+					}),
 				},
 				{Project: "project2", Environment: "env2", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa2": &v1beta1.WorkloadServiceAccount{
+					"wsa2": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa2"},
-					},
+					}),
 				},
 			},
 			wantScopeCount:      2,
@@ -247,19 +247,19 @@ func TestScopeComputationService_GenerateServiceAccountMappings(t *testing.T) {
 		},
 		{
 			name: "multiple scopes with overlapping WSAs",
-			scopeMap: map[Scope]map[string]*v1beta1.WorkloadServiceAccount{
+			scopeMap: map[Scope]map[string]WSAResource{
 				{Project: "project1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
+					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
-					"wsa2": &v1beta1.WorkloadServiceAccount{
+					}),
+					"wsa2": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa2"},
-					},
+					}),
 				},
 				{Project: "project2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": &v1beta1.WorkloadServiceAccount{
+					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-					},
+					}),
 				},
 			},
 			wantScopeCount:      2,
@@ -329,8 +329,8 @@ func TestScopeComputationService_GenerateServiceAccountMappings(t *testing.T) {
 }
 
 func TestScopeComputationService_Integration(t *testing.T) {
-	wsaList := []*v1beta1.WorkloadServiceAccount{
-		{
+	wsaList := []WSAResource{
+		NewWSAResource(&v1beta1.WorkloadServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
 			Spec: v1beta1.WorkloadServiceAccountSpec{
 				Scope: v1beta1.WorkloadServiceAccountScope{
@@ -338,8 +338,8 @@ func TestScopeComputationService_Integration(t *testing.T) {
 					Environments: []string{"env1"},
 				},
 			},
-		},
-		{
+		}),
+		NewWSAResource(&v1beta1.WorkloadServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{Name: "wsa2"},
 			Spec: v1beta1.WorkloadServiceAccountSpec{
 				Scope: v1beta1.WorkloadServiceAccountScope{
@@ -347,7 +347,7 @@ func TestScopeComputationService_Integration(t *testing.T) {
 					Environments: []string{"env2"},
 				},
 			},
-		},
+		}),
 	}
 
 	service := NewScopeComputationService(nil, nil)
@@ -378,9 +378,9 @@ func TestScopeComputationService_Integration(t *testing.T) {
 	}
 
 	for _, wsa := range wsaList {
-		saNames, exists := wsaToSANames[wsa.Name]
-		assert.True(t, exists, "WSA %s should be mapped to service accounts", wsa.Name)
-		assert.NotEmpty(t, saNames, "WSA %s should have at least one service account", wsa.Name)
+		saNames, exists := wsaToSANames[wsa.GetName()]
+		assert.True(t, exists, "WSA %s should be mapped to service accounts", wsa.GetName())
+		assert.NotEmpty(t, saNames, "WSA %s should have at least one service account", wsa.GetName())
 	}
 
 	for sa, wsaMap := range saToWSAMap {
