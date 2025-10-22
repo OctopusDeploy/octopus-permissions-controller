@@ -7,9 +7,6 @@ controllerManager:
     tag: latest
     pullPolicy: IfNotPresent
 
-  # Environment variables
-  env: []
-
   # Pod-level security settings
   podSecurityContext:
     runAsNonRoot: true
