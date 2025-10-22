@@ -1,5 +1,5 @@
 # Comprehensive test file for all Octopus metrics
-# This file creates resources to test all OCTOPUS_ metrics
+# This file creates resources to test all octopus_ metrics
 
 ---
 # Test WSA resources (namespace-scoped)

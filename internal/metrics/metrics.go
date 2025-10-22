@@ -9,7 +9,7 @@ var (
 	// WSA and CWSA metrics
 	wsaTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_wsa_total",
+			Name: "octopus_wsa_total",
 			Help: "Total number of WorkloadServiceAccounts",
 		},
 		[]string{"namespace"},
@@ -17,7 +17,7 @@ var (
 
 	cwsaTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_cwsa_total",
+			Name: "octopus_cwsa_total",
 			Help: "Total number of ClusterWorkloadServiceAccounts",
 		},
 	)
@@ -25,7 +25,7 @@ var (
 	// ServiceAccount metrics
 	serviceAccountsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_service_accounts_total",
+			Name: "octopus_service_accounts_total",
 			Help: "Total number of Service Accounts managed by Octopus",
 		},
 		[]string{"namespace"},
@@ -34,7 +34,7 @@ var (
 	// Role metrics
 	rolesTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_roles_total",
+			Name: "octopus_roles_total",
 			Help: "Total number of Roles managed by Octopus",
 		},
 		[]string{"namespace"},
@@ -42,7 +42,7 @@ var (
 
 	clusterRolesTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_cluster_roles_total",
+			Name: "octopus_cluster_roles_total",
 			Help: "Total number of ClusterRoles managed by Octopus",
 		},
 	)
@@ -50,7 +50,7 @@ var (
 	// RoleBinding metrics
 	roleBindingsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_role_bindings_total",
+			Name: "octopus_role_bindings_total",
 			Help: "Total number of RoleBindings managed by Octopus",
 		},
 		[]string{"namespace"},
@@ -58,7 +58,7 @@ var (
 
 	clusterRoleBindingsTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_cluster_role_bindings_total",
+			Name: "octopus_cluster_role_bindings_total",
 			Help: "Total number of ClusterRoleBindings managed by Octopus",
 		},
 	)
@@ -66,42 +66,42 @@ var (
 	// Scope metrics
 	distinctScopesTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_distinct_scopes_total",
+			Name: "octopus_distinct_scopes_total",
 			Help: "Total number of distinct scopes",
 		},
 	)
 
 	scopesWithProjectsTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_scopes_with_projects_total",
+			Name: "octopus_scopes_with_projects_total",
 			Help: "Number of scopes with Project defined",
 		},
 	)
 
 	scopesWithEnvironmentsTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_scopes_with_environments_total",
+			Name: "octopus_scopes_with_environments_total",
 			Help: "Number of scopes with Environment defined",
 		},
 	)
 
 	scopesWithTenantsTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_scopes_with_tenants_total",
+			Name: "octopus_scopes_with_tenants_total",
 			Help: "Number of scopes with Tenant defined",
 		},
 	)
 
 	scopesWithStepsTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_scopes_with_steps_total",
+			Name: "octopus_scopes_with_steps_total",
 			Help: "Number of scopes with Step defined",
 		},
 	)
 
 	scopesWithSpacesTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_scopes_with_spaces_total",
+			Name: "octopus_scopes_with_spaces_total",
 			Help: "Number of scopes with Space defined",
 		},
 	)
@@ -109,7 +109,7 @@ var (
 	// Agent metrics
 	watchedAgentsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_watched_agents_total",
+			Name: "octopus_watched_agents_total",
 			Help: "Number of watched agents",
 		},
 		[]string{"agent_type"},
@@ -118,7 +118,7 @@ var (
 	// Request metrics
 	requestsServedTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "OCTOPUS_requests_served_total",
+			Name: "octopus_requests_served_total",
 			Help: "Total number of reconciliation requests served",
 		},
 		[]string{"controller_type", "result"},
@@ -126,7 +126,7 @@ var (
 
 	requestsScopeMatchedTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "OCTOPUS_requests_scope_matched_total",
+			Name: "octopus_requests_scope_matched_total",
 			Help: "Number of requests where the scope matched",
 		},
 		[]string{"controller_type"},
@@ -134,7 +134,7 @@ var (
 
 	requestsScopeNotMatchedTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "OCTOPUS_requests_scope_not_matched_total",
+			Name: "octopus_requests_scope_not_matched_total",
 			Help: "Number of requests where the scope didn't match",
 		},
 		[]string{"controller_type"},
@@ -142,7 +142,7 @@ var (
 
 	reconciliationDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "OCTOPUS_reconciliation_duration_seconds",
+			Name:    "octopus_reconciliation_duration_seconds",
 			Help:    "Time taken to complete a reconciliation request",
 			Buckets: prometheus.DefBuckets,
 		},
@@ -152,7 +152,7 @@ var (
 	// Version information metric
 	versionInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "OCTOPUS_version_info",
+			Name: "octopus_version_info",
 			Help: "Version information about the Octopus Permissions Controller",
 		},
 		[]string{"version"},

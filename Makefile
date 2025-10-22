@@ -93,7 +93,7 @@ test-metrics: ## Deploy test resources and display comprehensive metrics validat
 	@echo "ClusterRoleBindings with label: $$($(KUBECTL) get clusterrolebindings -l 'agent.octopus.com/permissions=enabled' --no-headers 2>/dev/null | wc -l | tr -d ' ')"
 	@echo ""
 	@echo "=== OCTOPUS METRICS (sorted) ==="
-	@curl -s http://localhost:8443/metrics 2>/dev/null | grep "OCTOPUS_" | sort || echo "Error: Controller not running on localhost:8443 or metrics not available"
+	@curl -s http://localhost:8443/metrics 2>/dev/null | grep "octopus_" | sort || echo "Error: Controller not running on localhost:8443 or metrics not available"
 	@echo ""
 	@echo "=== Cleanup Test Resources ==="
 	@echo "To clean up test resources, run: make clean-test-metrics"
