@@ -229,11 +229,6 @@ func isOctopusManaged(labels map[string]string) bool {
 	if labels == nil {
 		return false
 	}
-	managedBy, exists := labels["app.kubernetes.io/managed-by"]
-	if exists && managedBy == "octopus-permissions-controller" {
-		return true
-	}
-	// Check for octopus-specific labels
-	_, octopusLabel := labels["octopus.com/managed"]
-	return octopusLabel
+	permissions, exists := labels["agent.octopus.com/permissions"]
+	return exists && permissions == "enabled"
 }
