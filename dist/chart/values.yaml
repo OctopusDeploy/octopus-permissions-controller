@@ -24,6 +24,13 @@ controllerManager:
             - ALL
     readOnlyRootFilesystem: true
 
+  # Target namespaces for the controller to create service accounts in - comma-separated
+  # overrides targetNamespaceRegex
+  targetNamespaces: ""
+
+  # Target namespace regex - defaults to "octopus-(agent|worker)-.*"
+  targetNamespaceRegex: ""
+
   # Resource limits and requests
   resources:
     limits:

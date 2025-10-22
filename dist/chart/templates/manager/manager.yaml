@@ -31,6 +31,21 @@ spec:
                     {{- end }}
                   command:
                     - /manager
+                  {{- if (or .Values.controllerManager.env .Values.controllerManager.targetNamespaceRegex .Values.controllerManager.targetNamespaces) }}
+                  env:
+                  {{- range .Values.controllerManager.env }}
+                    - name: {{ .name }}
+                      value: {{ .value | quote }}
+                  {{- end }}
+                  {{- if .Values.controllerManager.targetNamespaceRegex }}
+                    - name: TARGET_NAMESPACE_REGEX
+                      value: {{ .Values.controllerManager.targetNamespaceRegex | quote }}
+                  {{- end }}
+                  {{- if .Values.controllerManager.targetNamespaces }}
+                    - name: TARGET_NAMESPACES
+                      value: {{ .Values.controllerManager.targetNamespaces | quote }}
+                  {{- end }}
+                  {{- end }}
                   image: "{{ .Values.controllerManager.image.repository }}:{{ .Values.controllerManager.image.tag }}"
                   livenessProbe:
                     httpGet:
