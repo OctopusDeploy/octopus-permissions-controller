@@ -21,6 +21,8 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -46,8 +48,9 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme                = runtime.NewScheme()
+	setupLog              = ctrl.Log.WithName("setup")
+	DefaultNamespaceRegex = regexp.MustCompile("octopus-(agent|worker)-.*")
 )
 
 func init() {
@@ -205,8 +208,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Check configuration for namespace filtering
+	var targetNamespaces []string
+	var targetNamespaceRegex *regexp.Regexp
+
+	if os.Getenv("TARGET_NAMESPACES") != "" {
+		targetNamespaces = strings.Split(os.Getenv("TARGET_NAMESPACES"), ",")
+	}
+
+	if os.Getenv("TARGET_NAMESPACE_REGEX") != "" {
+		targetNamespaceRegex, err = regexp.Compile(os.Getenv("TARGET_NAMESPACE_REGEX"))
+		if err != nil {
+			setupLog.Error(err, "unable to compile TARGET_NAMESPACE_REGEX, using default")
+			targetNamespaceRegex = DefaultNamespaceRegex
+		}
+	}
+
+	var engine rules.InMemoryEngine
+	if len(targetNamespaces) > 0 {
+		engine = rules.NewInMemoryEngineWithNamespaces(mgr.GetClient(), targetNamespaces)
+	} else {
+		engine = rules.NewInMemoryEngine(mgr.GetClient(), targetNamespaceRegex)
+	}
+
 	// Create the rules engine instance
-	engine := rules.NewInMemoryEngine(mgr.GetClient())
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),

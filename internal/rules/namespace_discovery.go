@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"regexp"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -12,9 +13,13 @@ type NamespaceDiscovery interface {
 	DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error)
 }
 
-type NamespaceDiscoveryService struct{}
+type NamespaceDiscoveryService struct {
+	TargetNamespaceRegex *regexp.Regexp
+}
 
-func (NamespaceDiscoveryService) DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error) {
+func (nds NamespaceDiscoveryService) DiscoverTargetNamespaces(
+	ctx context.Context, k8sClient client.Client,
+) ([]string, error) {
 	discoveryLog := log.FromContext(ctx, "component", "namespace-discovery")
 	var deployments appsv1.DeploymentList
 	err := k8sClient.List(ctx, &deployments, client.MatchingLabels{
@@ -32,7 +37,11 @@ func (NamespaceDiscoveryService) DiscoverTargetNamespaces(ctx context.Context, k
 
 	namespaces := make([]string, 0, len(namespaceSet))
 	for namespace := range namespaceSet {
-		namespaces = append(namespaces, namespace)
+		if nds.TargetNamespaceRegex.MatchString(namespace) {
+			namespaces = append(namespaces, namespace)
+		} else {
+			discoveryLog.Info("Discovered namespace, but did not match TARGET_NAMESPACE_REGEX", "namespace", namespace, "regex", nds.TargetNamespaceRegex.String())
+		}
 	}
 
 	// Use default namespace as fallback for local testing if no tentacle deployments found
