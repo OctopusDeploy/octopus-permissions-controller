@@ -61,6 +61,49 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
+.PHONY: test-metrics
+test-metrics: ## Deploy test resources and display comprehensive metrics validation
+	@echo "=== Deploying Test Resources for Metrics Validation ==="
+	$(KUBECTL) apply -f config/samples/test-all-metrics.yaml
+	@echo ""
+	@echo "=== Forcing Reconciliation on All Resources ==="
+	@echo "Triggering WSA reconciliations..."
+	@for resource in $$($(KUBECTL) get wsa -A --no-headers | awk '{print $$1"/"$$2}'); do \
+		ns=$$(echo $$resource | cut -d'/' -f1); \
+		name=$$(echo $$resource | cut -d'/' -f2); \
+		echo "  Annotating WSA $$name in namespace $$ns"; \
+		$(KUBECTL) annotate wsa $$name -n $$ns test-reconcile="$$(date)" --overwrite >/dev/null 2>&1; \
+	done
+	@echo "Triggering CWSA reconciliations..."
+	@for cwsa in $$($(KUBECTL) get cwsa --no-headers | awk '{print $$1}'); do \
+		echo "  Annotating CWSA $$cwsa"; \
+		$(KUBECTL) annotate cwsa $$cwsa test-reconcile="$$(date)" --overwrite >/dev/null 2>&1; \
+	done
+	@echo ""
+	@echo "=== Waiting for Reconciliation to Complete ==="
+	@sleep 5
+	@echo ""
+	@echo "=== Current Resource Counts (with Octopus labels) ==="
+	@echo "WSA Resources: $$($(KUBECTL) get wsa -A --no-headers | wc -l | tr -d ' ')"
+	@echo "CWSA Resources: $$($(KUBECTL) get cwsa --no-headers | wc -l | tr -d ' ')"
+	@echo "ServiceAccounts with label: $$($(KUBECTL) get serviceaccounts -A -l 'agent.octopus.com/permissions=enabled' --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+	@echo "Roles with label: $$($(KUBECTL) get roles -A -l 'agent.octopus.com/permissions=enabled' --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+	@echo "RoleBindings with label: $$($(KUBECTL) get rolebindings -A -l 'agent.octopus.com/permissions=enabled' --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+	@echo "ClusterRoles with label: $$($(KUBECTL) get clusterroles -l 'agent.octopus.com/permissions=enabled' --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+	@echo "ClusterRoleBindings with label: $$($(KUBECTL) get clusterrolebindings -l 'agent.octopus.com/permissions=enabled' --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+	@echo ""
+	@echo "=== OCTOPUS METRICS (sorted) ==="
+	@curl -s http://localhost:8443/metrics 2>/dev/null | grep "OCTOPUS_" | sort || echo "Error: Controller not running on localhost:8443 or metrics not available"
+	@echo ""
+	@echo "=== Cleanup Test Resources ==="
+	@echo "To clean up test resources, run: make clean-test-metrics"
+
+.PHONY: clean-test-metrics
+clean-test-metrics: ## Clean up metrics test resources
+	@echo "=== Cleaning up Metrics Test Resources ==="
+	$(KUBECTL) delete -f config/samples/test-all-metrics.yaml --ignore-not-found=true
+	@echo "Metrics test resources cleaned up successfully"
+
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:

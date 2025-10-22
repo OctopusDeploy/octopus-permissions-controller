@@ -23,6 +23,12 @@ func NewMetricsCollector(cli client.Client) *MetricsCollector {
 func (mc *MetricsCollector) CollectResourceMetrics(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
+	// Collect scope metrics from user-defined WSA/CWSA resources
+	if err := mc.collectScopeMetricsFromResources(ctx); err != nil {
+		logger.Error(err, "Failed to collect scope metrics from resources")
+		return err
+	}
+
 	if err := mc.collectWSAMetrics(ctx); err != nil {
 		logger.Error(err, "Failed to collect WSA metrics")
 		return err
@@ -175,25 +181,60 @@ type Scope struct {
 	Space       string `json:"space"`
 }
 
-func (mc *MetricsCollector) CollectScopeMetrics(scopes []Scope) {
-	distinctScopes := len(scopes)
-	SetDistinctScopesTotal(float64(distinctScopes))
+// collectScopeMetricsFromResources collects scope metrics from user-defined WSA/CWSA resources
+func (mc *MetricsCollector) collectScopeMetricsFromResources(ctx context.Context) error {
+	// Collect WSA resources
+	wsaList := &v1beta1.WorkloadServiceAccountList{}
+	if err := mc.client.List(ctx, wsaList); err != nil {
+		return err
+	}
+
+	// Collect CWSA resources
+	cwsaList := &v1beta1.ClusterWorkloadServiceAccountList{}
+	if err := mc.client.List(ctx, cwsaList); err != nil {
+		return err
+	}
+
+	// Count total distinct user-defined resources
+	totalResources := len(wsaList.Items) + len(cwsaList.Items)
+	SetDistinctScopesTotal(float64(totalResources))
 
 	var withProjects, withEnvironments, withTenants, withSteps, withSpaces int
-	for _, scope := range scopes {
-		if scope.Project != "" {
+
+	// Process WSA resources
+	for _, wsa := range wsaList.Items {
+		if len(wsa.Spec.Scope.Projects) > 0 {
 			withProjects++
 		}
-		if scope.Environment != "" {
+		if len(wsa.Spec.Scope.Environments) > 0 {
 			withEnvironments++
 		}
-		if scope.Tenant != "" {
+		if len(wsa.Spec.Scope.Tenants) > 0 {
 			withTenants++
 		}
-		if scope.Step != "" {
+		if len(wsa.Spec.Scope.Steps) > 0 {
 			withSteps++
 		}
-		if scope.Space != "" {
+		if len(wsa.Spec.Scope.Spaces) > 0 {
+			withSpaces++
+		}
+	}
+
+	// Process CWSA resources
+	for _, cwsa := range cwsaList.Items {
+		if len(cwsa.Spec.Scope.Projects) > 0 {
+			withProjects++
+		}
+		if len(cwsa.Spec.Scope.Environments) > 0 {
+			withEnvironments++
+		}
+		if len(cwsa.Spec.Scope.Tenants) > 0 {
+			withTenants++
+		}
+		if len(cwsa.Spec.Scope.Steps) > 0 {
+			withSteps++
+		}
+		if len(cwsa.Spec.Scope.Spaces) > 0 {
 			withSpaces++
 		}
 	}
@@ -203,24 +244,16 @@ func (mc *MetricsCollector) CollectScopeMetrics(scopes []Scope) {
 	SetScopesWithTenantsTotal(float64(withTenants))
 	SetScopesWithStepsTotal(float64(withSteps))
 	SetScopesWithSpacesTotal(float64(withSpaces))
+
+	return nil
 }
 
-func (mc *MetricsCollector) TrackScopeMatching(controllerType string, matchedScopesCount int, totalWSAResources int) {
+func (mc *MetricsCollector) TrackScopeMatching(controllerType string, matchedScopesCount int) {
 
-	matchedScopes := matchedScopesCount
-
-	if matchedScopes > 0 {
-		// Increment matched scopes count
-		for i := 0; i < matchedScopes; i++ {
-			IncRequestsScopeMatched(controllerType)
-		}
-	}
-
-	unmatchedCount := totalWSAResources - matchedScopes
-	if unmatchedCount > 0 {
-		for i := 0; i < unmatchedCount; i++ {
-			IncRequestsScopeNotMatched(controllerType)
-		}
+	if matchedScopesCount > 0 {
+		IncRequestsScopeMatched(controllerType)
+	} else {
+		IncRequestsScopeNotMatched(controllerType)
 	}
 }
 

@@ -1,0 +1,51 @@
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: octopus-permissions-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: wsa-test-multiple-1
+  namespace: default
+spec:
+  scope:
+    spaces:
+    - default
+    projects:
+    - project-1
+  permissions:
+    permissions:
+      - verbs:
+          - GET
+          - LIST
+          - CREATE
+        apiGroups:
+          - ""
+        resources:
+          - configmaps
+          - secrets
+---
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: octopus-permissions-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: wsa-test-multiple-2
+  namespace: kube-system
+spec:
+  scope:
+    spaces:
+    - default
+    environments:
+    - production
+    tenants:
+    - tenant-1
+  permissions:
+    permissions:
+      - verbs:
+          - GET
+          - LIST
+        apiGroups:
+          - apps
+        resources:
+          - deployments
