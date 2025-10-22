@@ -50,7 +50,7 @@ import (
 var (
 	scheme                = runtime.NewScheme()
 	setupLog              = ctrl.Log.WithName("setup")
-	DefaultNamespaceRegex = regexp.MustCompile("octopus-(agent|worker)-.*")
+	defaultNamespaceRegex = regexp.MustCompile("octopus-(agent|worker)-.*")
 )
 
 func init() {
@@ -220,8 +220,11 @@ func main() {
 		targetNamespaceRegex, err = regexp.Compile(os.Getenv("TARGET_NAMESPACE_REGEX"))
 		if err != nil {
 			setupLog.Error(err, "unable to compile TARGET_NAMESPACE_REGEX, using default")
-			targetNamespaceRegex = DefaultNamespaceRegex
 		}
+	}
+
+	if targetNamespaceRegex == nil {
+		targetNamespaceRegex = defaultNamespaceRegex
 	}
 
 	var engine rules.InMemoryEngine
