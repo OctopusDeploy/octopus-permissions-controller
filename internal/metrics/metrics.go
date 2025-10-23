@@ -261,8 +261,3 @@ func IncRequestsScopeNotMatched(controllerType string) {
 func ObserveReconciliationDuration(controllerType, result string, duration float64) {
 	reconciliationDurationSeconds.WithLabelValues(controllerType, result).Observe(duration)
 }
-
-// SetVersionInfo sets the version information metric
-func SetVersionInfo(version string) {
-	versionInfo.WithLabelValues(version).Set(1)
-}
