@@ -57,17 +57,7 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	log.Info("WorkloadServiceAccount reconciliation triggered")
 
-	defer func() {
-		duration := time.Since(startTime).Seconds()
-		result := "success"
-		if err := recover(); err != nil {
-			result = ERROR
-			panic(err) // Re-panic to maintain original behavior
-		}
-		metrics.ObserveReconciliationDuration(controllerType, result, duration)
-	}()
-
-	var reconcileResult = "success"
+	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
 
 	if err := r.Engine.Reconcile(ctx); err != nil {
 		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccounts")

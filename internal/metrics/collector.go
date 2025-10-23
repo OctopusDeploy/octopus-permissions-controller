@@ -76,7 +76,8 @@ func (mc *MetricsCollector) collectWSAMetrics(ctx context.Context) error {
 }
 
 func (mc *MetricsCollector) collectCWSAMetrics(ctx context.Context) error {
-	cwsaList := &v1beta1.ClusterWorkloadServiceAccountList{}
+	mc.engine.
+		cwsaList := &v1beta1.ClusterWorkloadServiceAccountList{}
 	if err := mc.client.List(ctx, cwsaList); err != nil {
 		return err
 	}

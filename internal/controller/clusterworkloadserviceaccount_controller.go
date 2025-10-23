@@ -66,33 +66,8 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 
 	log.Info("ClusterWorkloadServiceAccount reconciliation triggered")
 
-	defer func() {
-		duration := time.Since(startTime).Seconds()
-		result := "success"
-		if err := recover(); err != nil {
-			result = ERROR
-			panic(err) // Re-panic to maintain original behavior
-		}
-		metrics.ObserveReconciliationDuration(controllerType, result, duration)
-	}()
+	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
 
-	var reconcileResult = "success"
-
-	if err := r.Engine.Reconcile(ctx); err != nil {
-		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccounts")
-		reconcileResult = ERROR
-		metrics.IncRequestsServed(controllerType, reconcileResult)
-		metrics.ObserveReconciliationDuration(controllerType, reconcileResult, time.Since(startTime).Seconds())
-		return ctrl.Result{}, err
-	}
-
-	if r.MetricsCollector != nil {
-		if err := r.MetricsCollector.CollectResourceMetrics(ctx); err != nil {
-			log.Error(err, "failed to collect resource metrics")
-		}
-	}
-
-	metrics.IncRequestsServed(controllerType, reconcileResult)
 	log.Info("Successfully reconciled ClusterWorkloadServiceAccounts")
 	return ctrl.Result{}, nil
 }

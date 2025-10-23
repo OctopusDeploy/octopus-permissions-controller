@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -260,4 +262,15 @@ func IncRequestsScopeNotMatched(controllerType string) {
 
 func ObserveReconciliationDuration(controllerType, result string, duration float64) {
 	reconciliationDurationSeconds.WithLabelValues(controllerType, result).Observe(duration)
+}
+
+func RecordReconciliationDurationFunc(controllerType string, startTime time.Time) {
+	duration := time.Since(startTime).Seconds()
+	if err := recover(); err != nil {
+		ObserveReconciliationDuration(controllerType, "error", duration)
+		IncRequestsServed(controllerType, "error")
+		panic(err) // Re-panic to maintain original behavior
+	}
+	IncRequestsServed(controllerType, "success")
+	ObserveReconciliationDuration(controllerType, "success", duration)
 }
