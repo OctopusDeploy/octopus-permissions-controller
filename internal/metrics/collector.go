@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type MetricsCollector struct {
 	client client.Client
+	engine rules.Engine
 }
 
 func NewMetricsCollector(cli client.Client) *MetricsCollector {
@@ -58,14 +58,14 @@ func (mc *MetricsCollector) CollectResourceMetrics(ctx context.Context) error {
 }
 
 func (mc *MetricsCollector) collectWSAMetrics(ctx context.Context) error {
-	wsaList := &v1beta1.WorkloadServiceAccountList{}
-	if err := mc.client.List(ctx, wsaList); err != nil {
+	wsaEnumerable, err := mc.engine.GetWorkloadServiceAccounts(ctx)
+	if err != nil {
 		return err
 	}
 
 	namespaceCounts := make(map[string]int)
-	for _, wsa := range wsaList.Items {
-		namespaceCounts[wsa.Namespace]++
+	for wsa := range wsaEnumerable {
+		namespaceCounts[wsa.GetNamespace()]++
 	}
 
 	for namespace, count := range namespaceCounts {
@@ -76,27 +76,29 @@ func (mc *MetricsCollector) collectWSAMetrics(ctx context.Context) error {
 }
 
 func (mc *MetricsCollector) collectCWSAMetrics(ctx context.Context) error {
-	mc.engine.
-		cwsaList := &v1beta1.ClusterWorkloadServiceAccountList{}
-	if err := mc.client.List(ctx, cwsaList); err != nil {
+	cwsaEnumerable, err := mc.engine.GetClusterWorkloadServiceAccounts(ctx)
+	if err != nil {
 		return err
 	}
 
-	SetCWSATotal(float64(len(cwsaList.Items)))
+	count := 0
+	for range cwsaEnumerable {
+		count++
+	}
+
+	SetCWSATotal(float64(count))
 	return nil
 }
 
 func (mc *MetricsCollector) collectServiceAccountMetrics(ctx context.Context) error {
-	saList := &corev1.ServiceAccountList{}
-	if err := mc.client.List(ctx, saList); err != nil {
+	saEnumerable, err := mc.engine.GetServiceAccounts(ctx)
+	if err != nil {
 		return err
 	}
 
 	namespaceCounts := make(map[string]int)
-	for _, sa := range saList.Items {
-		if isOctopusManaged(sa.Labels) {
-			namespaceCounts[sa.Namespace]++
-		}
+	for sa := range saEnumerable {
+		namespaceCounts[sa.Namespace]++
 	}
 
 	for namespace, count := range namespaceCounts {
@@ -107,33 +109,28 @@ func (mc *MetricsCollector) collectServiceAccountMetrics(ctx context.Context) er
 }
 
 func (mc *MetricsCollector) collectRoleMetrics(ctx context.Context) error {
-
-	roleList := &rbacv1.RoleList{}
-	if err := mc.client.List(ctx, roleList); err != nil {
+	roleEnumerable, err := mc.engine.GetRoles(ctx)
+	if err != nil {
 		return err
 	}
 
 	namespaceCounts := make(map[string]int)
-	for _, role := range roleList.Items {
-		if isOctopusManaged(role.Labels) {
-			namespaceCounts[role.Namespace]++
-		}
+	for role := range roleEnumerable {
+		namespaceCounts[role.Namespace]++
 	}
 
 	for namespace, count := range namespaceCounts {
 		SetRolesTotal(namespace, float64(count))
 	}
 
-	clusterRoleList := &rbacv1.ClusterRoleList{}
-	if err := mc.client.List(ctx, clusterRoleList); err != nil {
+	clusterRoleEnumerable, err := mc.engine.GetClusterRoles(ctx)
+	if err != nil {
 		return err
 	}
 
 	clusterRoleCount := 0
-	for _, clusterRole := range clusterRoleList.Items {
-		if isOctopusManaged(clusterRole.Labels) {
-			clusterRoleCount++
-		}
+	for range clusterRoleEnumerable {
+		clusterRoleCount++
 	}
 
 	SetClusterRolesTotal(float64(clusterRoleCount))
@@ -142,32 +139,28 @@ func (mc *MetricsCollector) collectRoleMetrics(ctx context.Context) error {
 
 func (mc *MetricsCollector) collectRoleBindingMetrics(ctx context.Context) error {
 
-	roleBindingList := &rbacv1.RoleBindingList{}
-	if err := mc.client.List(ctx, roleBindingList); err != nil {
+	roleBindingEnumerable, err := mc.engine.GetRoleBindings(ctx)
+	if err != nil {
 		return err
 	}
 
 	namespaceCounts := make(map[string]int)
-	for _, rb := range roleBindingList.Items {
-		if isOctopusManaged(rb.Labels) {
-			namespaceCounts[rb.Namespace]++
-		}
+	for rb := range roleBindingEnumerable {
+		namespaceCounts[rb.Namespace]++
 	}
 
 	for namespace, count := range namespaceCounts {
 		SetRoleBindingsTotal(namespace, float64(count))
 	}
 
-	clusterRoleBindingList := &rbacv1.ClusterRoleBindingList{}
-	if err := mc.client.List(ctx, clusterRoleBindingList); err != nil {
+	clusterRoleBindingEnumerable, err := mc.engine.GetClusterRoleBindings(ctx)
+	if err != nil {
 		return err
 	}
 
 	clusterRoleBindingCount := 0
-	for _, crb := range clusterRoleBindingList.Items {
-		if isOctopusManaged(crb.Labels) {
-			clusterRoleBindingCount++
-		}
+	for range clusterRoleBindingEnumerable {
+		clusterRoleBindingCount++
 	}
 
 	SetClusterRoleBindingsTotal(float64(clusterRoleBindingCount))
@@ -256,13 +249,4 @@ func (mc *MetricsCollector) TrackScopeMatching(controllerType string, matchedSco
 	} else {
 		IncRequestsScopeNotMatched(controllerType)
 	}
-}
-
-// isOctopusManaged checks if a resource is managed by the Octopus controller
-func isOctopusManaged(labels map[string]string) bool {
-	if labels == nil {
-		return false
-	}
-	permissions, exists := labels["agent.octopus.com/permissions"]
-	return exists && permissions == "enabled"
 }

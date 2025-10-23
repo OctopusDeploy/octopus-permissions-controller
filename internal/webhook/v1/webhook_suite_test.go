@@ -94,6 +94,31 @@ func (m *MockEngine) GetClusterWorkloadServiceAccounts(ctx context.Context) (ite
 	return args.Get(0).(iter.Seq[*v1beta1.ClusterWorkloadServiceAccount]), args.Error(1)
 }
 
+func (m *MockEngine) GetServiceAccounts(ctx context.Context) (iter.Seq[*corev1.ServiceAccount], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*corev1.ServiceAccount]), args.Error(1)
+}
+
+func (m *MockEngine) GetRoles(ctx context.Context) (iter.Seq[*rbacv1.Role], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*rbacv1.Role]), args.Error(1)
+}
+
+func (m *MockEngine) GetClusterRoles(ctx context.Context) (iter.Seq[*rbacv1.ClusterRole], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*rbacv1.ClusterRole]), args.Error(1)
+}
+
+func (m *MockEngine) GetRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.RoleBinding], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*rbacv1.RoleBinding]), args.Error(1)
+}
+
+func (m *MockEngine) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.ClusterRoleBinding], error) {
+	args := m.Called(ctx)
+	return args.Get(0).(iter.Seq[*rbacv1.ClusterRoleBinding]), args.Error(1)
+}
+
 func (m *MockEngine) EnsureRoles(
 	ctx context.Context, resources []rules.WSAResource,
 ) (map[string]rbacv1.Role, error) {

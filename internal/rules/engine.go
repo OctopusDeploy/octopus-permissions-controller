@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -142,13 +141,6 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	if bindErr := i.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
 		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
 	}
-
-	metricsCollector := metrics.NewMetricsCollector(i.client)
-	// Track scope matching - this provides metrics for requests where scope matched vs didn't match
-	metricsCollector.TrackScopeMatching("engine", len(scopeMap))
-
-	// Count watched agents (resources that are being managed)
-	metrics.SetWatchedAgentsTotal("workloadserviceaccount", float64(len(allResources)))
 
 	return nil
 }
