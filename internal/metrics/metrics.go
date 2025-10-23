@@ -109,10 +109,10 @@ var (
 	)
 
 	// Agent metrics
-	watchedAgentsTotal = prometheus.NewGaugeVec(
+	discoveredAgentsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "octopus_watched_agents_total",
-			Help: "Number of watched agents",
+			Name: "octopus_discovered_agents_total",
+			Help: "Number of discovered agents",
 		},
 		[]string{"agent_type"},
 	)
@@ -176,7 +176,7 @@ func init() {
 		scopesWithTenantsTotal,
 		scopesWithStepsTotal,
 		scopesWithSpacesTotal,
-		watchedAgentsTotal,
+		discoveredAgentsTotal,
 		requestsServedTotal,
 		requestsScopeMatchedTotal,
 		requestsScopeNotMatchedTotal,
@@ -243,8 +243,8 @@ func SetScopesWithSpacesTotal(count float64) {
 }
 
 // Agent metrics functions
-func SetWatchedAgentsTotal(agentType string, count float64) {
-	watchedAgentsTotal.WithLabelValues(agentType).Set(count)
+func SetDiscoveredAgentsTotal(agentType string, count float64) {
+	discoveredAgentsTotal.WithLabelValues(agentType).Set(count)
 }
 
 // Request metrics functions
