@@ -2,7 +2,7 @@
   <configuration default="false" name="go build github.com/octopusdeploy/octopus-permissions-controller/cmd" type="GoApplicationRunConfiguration" factoryName="Go Application" nameIsGenerated="true">
     <module name="octopus-permissions-controller" />
     <working_directory value="$PROJECT_DIR$" />
-    <parameters value="--webhook-cert-path ./certificates --metrics-bind-address=&quot;:8443&quot; --metrics-secure=false" />
+    <parameters value="--webhook-cert-path ./certificates --metrics-bind-address=&quot;:8444&quot; --metrics-secure=false" />
     <kind value="PACKAGE" />
     <package value="github.com/octopusdeploy/octopus-permissions-controller/cmd" />
     <directory value="$PROJECT_DIR$" />
