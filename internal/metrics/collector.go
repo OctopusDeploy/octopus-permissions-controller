@@ -167,13 +167,6 @@ func (mc *MetricsCollector) collectRoleBindingMetrics(ctx context.Context) error
 	return nil
 }
 
-type Scope struct {
-	Project     string `json:"project"`
-	Environment string `json:"environment"`
-	Tenant      string `json:"tenant"`
-	Step        string `json:"step"`
-	Space       string `json:"space"`
-}
 
 // collectScopeMetricsFromResources collects scope metrics from user-defined WSA/CWSA resources
 func (mc *MetricsCollector) collectScopeMetricsFromResources(ctx context.Context) error {
