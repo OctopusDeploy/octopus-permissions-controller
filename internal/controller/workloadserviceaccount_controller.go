@@ -59,22 +59,6 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
 
-	if err := r.Engine.Reconcile(ctx); err != nil {
-		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccounts")
-		reconcileResult = "error"
-		metrics.IncRequestsServed(controllerType, reconcileResult)
-		metrics.ObserveReconciliationDuration(controllerType, reconcileResult, time.Since(startTime).Seconds())
-		return ctrl.Result{}, err
-	}
-
-	// Collect metrics after successful reconciliation
-	if r.MetricsCollector != nil {
-		if err := r.MetricsCollector.CollectResourceMetrics(ctx); err != nil {
-			log.Error(err, "failed to collect resource metrics")
-		}
-	}
-
-	metrics.IncRequestsServed(controllerType, reconcileResult)
 	log.Info("Successfully reconciled WorkloadServiceAccounts")
 	return ctrl.Result{}, nil
 }
