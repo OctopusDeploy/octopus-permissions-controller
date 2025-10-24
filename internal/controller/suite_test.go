@@ -86,7 +86,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	targetNamespaceRegex = regexp.MustCompile("octopus-(agent|worker)-.*")
+	targetNamespaceRegex = regexp.MustCompile("^octopus-(agent|worker)-.*")
 })
 
 var _ = AfterSuite(func() {

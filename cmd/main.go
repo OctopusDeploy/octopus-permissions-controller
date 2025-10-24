@@ -50,7 +50,7 @@ import (
 var (
 	scheme                = runtime.NewScheme()
 	setupLog              = ctrl.Log.WithName("setup")
-	defaultNamespaceRegex = regexp.MustCompile("octopus-(agent|worker)-.*")
+	defaultNamespaceRegex = regexp.MustCompile("^octopus-(agent|worker)-.*")
 )
 
 func init() {

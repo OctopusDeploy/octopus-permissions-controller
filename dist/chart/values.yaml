@@ -25,7 +25,7 @@ controllerManager:
   # overrides targetNamespaceRegex
   targetNamespaces: ""
 
-  # Target namespace regex - defaults to "octopus-(agent|worker)-.*"
+  # Target namespace regex - defaults to "^octopus-(agent|worker)-.*"
   targetNamespaceRegex: ""
 
   # Resource limits and requests
