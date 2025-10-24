@@ -34,9 +34,8 @@ const ERROR = "error"
 // ClusterWorkloadServiceAccountReconciler reconciles a ClusterWorkloadServiceAccount object
 type ClusterWorkloadServiceAccountReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	Engine           rules.Engine
-	MetricsCollector *metrics.MetricsCollector
+	Scheme *runtime.Scheme
+	Engine rules.Engine
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch

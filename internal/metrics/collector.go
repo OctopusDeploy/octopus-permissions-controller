@@ -2,65 +2,187 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type MetricsCollector struct {
+// OctopusMetricsCollector implements the prometheus.Collector interface
+// to provide up-to-date metrics when Prometheus scrapes the endpoint.
+type OctopusMetricsCollector struct {
 	client client.Client
 	engine rules.Engine
+
+	// Metric descriptors
+	wsaTotalDesc                    *prometheus.Desc
+	cwsaTotalDesc                   *prometheus.Desc
+	serviceAccountsTotalDesc        *prometheus.Desc
+	rolesTotalDesc                  *prometheus.Desc
+	clusterRolesTotalDesc           *prometheus.Desc
+	roleBindingsTotalDesc           *prometheus.Desc
+	clusterRoleBindingsTotalDesc    *prometheus.Desc
+	distinctScopesTotalDesc         *prometheus.Desc
+	scopesWithProjectsTotalDesc     *prometheus.Desc
+	scopesWithEnvironmentsTotalDesc *prometheus.Desc
+	scopesWithTenantsTotalDesc      *prometheus.Desc
+	scopesWithStepsTotalDesc        *prometheus.Desc
+	scopesWithSpacesTotalDesc       *prometheus.Desc
+	discoveredAgentsTotalDesc       *prometheus.Desc
 }
 
-func NewMetricsCollector(cli client.Client) *MetricsCollector {
-	return &MetricsCollector{
+// NewOctopusMetricsCollector creates a new instance of OctopusMetricsCollector
+func NewOctopusMetricsCollector(cli client.Client, eng rules.Engine) *OctopusMetricsCollector {
+	return &OctopusMetricsCollector{
 		client: cli,
+		engine: eng,
+
+		wsaTotalDesc: prometheus.NewDesc(
+			"octopus_wsa_total",
+			"Total number of WorkloadServiceAccounts",
+			[]string{"namespace"},
+			nil,
+		),
+		cwsaTotalDesc: prometheus.NewDesc(
+			"octopus_cwsa_total",
+			"Total number of ClusterWorkloadServiceAccounts",
+			nil,
+			nil,
+		),
+		serviceAccountsTotalDesc: prometheus.NewDesc(
+			"octopus_service_accounts_total",
+			"Total number of Service Accounts managed by Octopus",
+			[]string{"namespace"},
+			nil,
+		),
+		rolesTotalDesc: prometheus.NewDesc(
+			"octopus_roles_total",
+			"Total number of Roles managed by Octopus",
+			[]string{"namespace"},
+			nil,
+		),
+		clusterRolesTotalDesc: prometheus.NewDesc(
+			"octopus_cluster_roles_total",
+			"Total number of ClusterRoles managed by Octopus",
+			nil,
+			nil,
+		),
+		roleBindingsTotalDesc: prometheus.NewDesc(
+			"octopus_role_bindings_total",
+			"Total number of RoleBindings managed by Octopus",
+			[]string{"namespace"},
+			nil,
+		),
+		clusterRoleBindingsTotalDesc: prometheus.NewDesc(
+			"octopus_cluster_role_bindings_total",
+			"Total number of ClusterRoleBindings managed by Octopus",
+			nil,
+			nil,
+		),
+		distinctScopesTotalDesc: prometheus.NewDesc(
+			"octopus_distinct_scopes_total",
+			"Total number of distinct scopes",
+			nil,
+			nil,
+		),
+		scopesWithProjectsTotalDesc: prometheus.NewDesc(
+			"octopus_scopes_with_projects_total",
+			"Number of scopes with Project defined",
+			nil,
+			nil,
+		),
+		scopesWithEnvironmentsTotalDesc: prometheus.NewDesc(
+			"octopus_scopes_with_environments_total",
+			"Number of scopes with Environment defined",
+			nil,
+			nil,
+		),
+		scopesWithTenantsTotalDesc: prometheus.NewDesc(
+			"octopus_scopes_with_tenants_total",
+			"Number of scopes with Tenant defined",
+			nil,
+			nil,
+		),
+		scopesWithStepsTotalDesc: prometheus.NewDesc(
+			"octopus_scopes_with_steps_total",
+			"Number of scopes with Step defined",
+			nil,
+			nil,
+		),
+		scopesWithSpacesTotalDesc: prometheus.NewDesc(
+			"octopus_scopes_with_spaces_total",
+			"Number of scopes with Space defined",
+			nil,
+			nil,
+		),
+		discoveredAgentsTotalDesc: prometheus.NewDesc(
+			"octopus_discovered_agents_total",
+			"Number of discovered agents",
+			[]string{"agent_type"},
+			nil,
+		),
 	}
 }
 
-func (mc *MetricsCollector) CollectResourceMetrics(ctx context.Context) error {
+// Describe implements the prometheus.Collector interface
+// It sends the descriptors of all the metrics the collector will provide
+func (c *OctopusMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.wsaTotalDesc
+	ch <- c.cwsaTotalDesc
+	ch <- c.serviceAccountsTotalDesc
+	ch <- c.rolesTotalDesc
+	ch <- c.clusterRolesTotalDesc
+	ch <- c.roleBindingsTotalDesc
+	ch <- c.clusterRoleBindingsTotalDesc
+	ch <- c.distinctScopesTotalDesc
+	ch <- c.scopesWithProjectsTotalDesc
+	ch <- c.scopesWithEnvironmentsTotalDesc
+	ch <- c.scopesWithTenantsTotalDesc
+	ch <- c.scopesWithStepsTotalDesc
+	ch <- c.scopesWithSpacesTotalDesc
+	ch <- c.discoveredAgentsTotalDesc
+}
+
+// Collect implements the prometheus.Collector interface
+// It is called by Prometheus when it scrapes the metrics endpoint
+// This method collects current metrics and sends them to the provided channel
+func (c *OctopusMetricsCollector) Collect(ch chan<- prometheus.Metric) {
+	ctx := context.Background()
 	logger := log.FromContext(ctx)
 
-	// Collect scope metrics from user-defined WSA/CWSA resources
-	if err := mc.collectScopeMetricsFromResources(ctx); err != nil {
-		logger.Error(err, "Failed to collect scope metrics from resources")
-		return err
-	}
-
-	if err := mc.collectWSAMetrics(ctx); err != nil {
+	if err := c.collectWSAMetrics(ctx, ch); err != nil {
 		logger.Error(err, "Failed to collect WSA metrics")
-		return err
 	}
 
-	if err := mc.collectCWSAMetrics(ctx); err != nil {
+	if err := c.collectCWSAMetrics(ctx, ch); err != nil {
 		logger.Error(err, "Failed to collect CWSA metrics")
-		return err
 	}
 
-	if err := mc.collectServiceAccountMetrics(ctx); err != nil {
+	if err := c.collectServiceAccountMetrics(ctx, ch); err != nil {
 		logger.Error(err, "Failed to collect ServiceAccount metrics")
-		return err
 	}
 
-	if err := mc.collectRoleMetrics(ctx); err != nil {
+	if err := c.collectRoleMetrics(ctx, ch); err != nil {
 		logger.Error(err, "Failed to collect Role metrics")
-		return err
 	}
 
-	if err := mc.collectRoleBindingMetrics(ctx); err != nil {
+	if err := c.collectRoleBindingMetrics(ctx, ch); err != nil {
 		logger.Error(err, "Failed to collect RoleBinding metrics")
-		return err
 	}
 
-	return nil
+	if err := c.collectScopeMetricsFromResources(ctx, ch); err != nil {
+		logger.Error(err, "Failed to collect scope metrics from resources")
+	}
 }
 
-func (mc *MetricsCollector) collectWSAMetrics(ctx context.Context) error {
-	wsaEnumerable, err := mc.engine.GetWorkloadServiceAccounts(ctx)
+// collectWSAMetrics collects WorkloadServiceAccount metrics
+func (c *OctopusMetricsCollector) collectWSAMetrics(ctx context.Context, ch chan<- prometheus.Metric) error {
+	wsaEnumerable, err := c.engine.GetWorkloadServiceAccounts(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get workload service accounts: %w", err)
 	}
 
 	namespaceCounts := make(map[string]int)
@@ -69,16 +191,22 @@ func (mc *MetricsCollector) collectWSAMetrics(ctx context.Context) error {
 	}
 
 	for namespace, count := range namespaceCounts {
-		SetWSATotal(namespace, float64(count))
+		metric := prometheus.MustNewConstMetric(
+			c.wsaTotalDesc,
+			prometheus.GaugeValue,
+			float64(count),
+			namespace,
+		)
+		ch <- metric
 	}
 
 	return nil
 }
 
-func (mc *MetricsCollector) collectCWSAMetrics(ctx context.Context) error {
-	cwsaEnumerable, err := mc.engine.GetClusterWorkloadServiceAccounts(ctx)
+func (c *OctopusMetricsCollector) collectCWSAMetrics(ctx context.Context, ch chan<- prometheus.Metric) error {
+	cwsaEnumerable, err := c.engine.GetClusterWorkloadServiceAccounts(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get cluster workload service accounts: %w", err)
 	}
 
 	count := 0
@@ -86,14 +214,20 @@ func (mc *MetricsCollector) collectCWSAMetrics(ctx context.Context) error {
 		count++
 	}
 
-	SetCWSATotal(float64(count))
+	metric := prometheus.MustNewConstMetric(
+		c.cwsaTotalDesc,
+		prometheus.GaugeValue,
+		float64(count),
+	)
+	ch <- metric
+
 	return nil
 }
 
-func (mc *MetricsCollector) collectServiceAccountMetrics(ctx context.Context) error {
-	saEnumerable, err := mc.engine.GetServiceAccounts(ctx)
+func (c *OctopusMetricsCollector) collectServiceAccountMetrics(ctx context.Context, ch chan<- prometheus.Metric) error {
+	saEnumerable, err := c.engine.GetServiceAccounts(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get service accounts: %w", err)
 	}
 
 	namespaceCounts := make(map[string]int)
@@ -102,16 +236,22 @@ func (mc *MetricsCollector) collectServiceAccountMetrics(ctx context.Context) er
 	}
 
 	for namespace, count := range namespaceCounts {
-		SetServiceAccountsTotal(namespace, float64(count))
+		metric := prometheus.MustNewConstMetric(
+			c.serviceAccountsTotalDesc,
+			prometheus.GaugeValue,
+			float64(count),
+			namespace,
+		)
+		ch <- metric
 	}
 
 	return nil
 }
 
-func (mc *MetricsCollector) collectRoleMetrics(ctx context.Context) error {
-	roleEnumerable, err := mc.engine.GetRoles(ctx)
+func (c *OctopusMetricsCollector) collectRoleMetrics(ctx context.Context, ch chan<- prometheus.Metric) error {
+	roleEnumerable, err := c.engine.GetRoles(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get roles: %w", err)
 	}
 
 	namespaceCounts := make(map[string]int)
@@ -120,12 +260,18 @@ func (mc *MetricsCollector) collectRoleMetrics(ctx context.Context) error {
 	}
 
 	for namespace, count := range namespaceCounts {
-		SetRolesTotal(namespace, float64(count))
+		metric := prometheus.MustNewConstMetric(
+			c.rolesTotalDesc,
+			prometheus.GaugeValue,
+			float64(count),
+			namespace,
+		)
+		ch <- metric
 	}
 
-	clusterRoleEnumerable, err := mc.engine.GetClusterRoles(ctx)
+	clusterRoleEnumerable, err := c.engine.GetClusterRoles(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get cluster roles: %w", err)
 	}
 
 	clusterRoleCount := 0
@@ -133,15 +279,21 @@ func (mc *MetricsCollector) collectRoleMetrics(ctx context.Context) error {
 		clusterRoleCount++
 	}
 
-	SetClusterRolesTotal(float64(clusterRoleCount))
+	metric := prometheus.MustNewConstMetric(
+		c.clusterRolesTotalDesc,
+		prometheus.GaugeValue,
+		float64(clusterRoleCount),
+	)
+	ch <- metric
+
 	return nil
 }
 
-func (mc *MetricsCollector) collectRoleBindingMetrics(ctx context.Context) error {
+func (c *OctopusMetricsCollector) collectRoleBindingMetrics(ctx context.Context, ch chan<- prometheus.Metric) error {
 
-	roleBindingEnumerable, err := mc.engine.GetRoleBindings(ctx)
+	roleBindingEnumerable, err := c.engine.GetRoleBindings(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get role bindings: %w", err)
 	}
 
 	namespaceCounts := make(map[string]int)
@@ -150,12 +302,18 @@ func (mc *MetricsCollector) collectRoleBindingMetrics(ctx context.Context) error
 	}
 
 	for namespace, count := range namespaceCounts {
-		SetRoleBindingsTotal(namespace, float64(count))
+		metric := prometheus.MustNewConstMetric(
+			c.roleBindingsTotalDesc,
+			prometheus.GaugeValue,
+			float64(count),
+			namespace,
+		)
+		ch <- metric
 	}
 
-	clusterRoleBindingEnumerable, err := mc.engine.GetClusterRoleBindings(ctx)
+	clusterRoleBindingEnumerable, err := c.engine.GetClusterRoleBindings(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get cluster role bindings: %w", err)
 	}
 
 	clusterRoleBindingCount := 0
@@ -163,28 +321,38 @@ func (mc *MetricsCollector) collectRoleBindingMetrics(ctx context.Context) error
 		clusterRoleBindingCount++
 	}
 
-	SetClusterRoleBindingsTotal(float64(clusterRoleBindingCount))
+	metric := prometheus.MustNewConstMetric(
+		c.clusterRoleBindingsTotalDesc,
+		prometheus.GaugeValue,
+		float64(clusterRoleBindingCount),
+	)
+	ch <- metric
+
 	return nil
 }
 
-
 // collectScopeMetricsFromResources collects scope metrics from user-defined WSA/CWSA resources
-func (mc *MetricsCollector) collectScopeMetricsFromResources(ctx context.Context) error {
+func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.Context, ch chan<- prometheus.Metric) error {
 	// Collect WSA resources
 	wsaList := &v1beta1.WorkloadServiceAccountList{}
-	if err := mc.client.List(ctx, wsaList); err != nil {
-		return err
+	if err := c.client.List(ctx, wsaList); err != nil {
+		return fmt.Errorf("failed to list workload service accounts: %w", err)
 	}
 
 	// Collect CWSA resources
 	cwsaList := &v1beta1.ClusterWorkloadServiceAccountList{}
-	if err := mc.client.List(ctx, cwsaList); err != nil {
-		return err
+	if err := c.client.List(ctx, cwsaList); err != nil {
+		return fmt.Errorf("failed to list cluster workload service accounts: %w", err)
 	}
 
 	// Count total distinct user-defined resources
 	totalResources := len(wsaList.Items) + len(cwsaList.Items)
-	SetDistinctScopesTotal(float64(totalResources))
+	distinctScopesMetric := prometheus.MustNewConstMetric(
+		c.distinctScopesTotalDesc,
+		prometheus.GaugeValue,
+		float64(totalResources),
+	)
+	ch <- distinctScopesMetric
 
 	var withProjects, withEnvironments, withTenants, withSteps, withSpaces int
 
@@ -226,17 +394,32 @@ func (mc *MetricsCollector) collectScopeMetricsFromResources(ctx context.Context
 		}
 	}
 
-	SetScopesWithProjectsTotal(float64(withProjects))
-	SetScopesWithEnvironmentsTotal(float64(withEnvironments))
-	SetScopesWithTenantsTotal(float64(withTenants))
-	SetScopesWithStepsTotal(float64(withSteps))
-	SetScopesWithSpacesTotal(float64(withSpaces))
+	// Create and send scope metrics
+	scopeMetrics := []struct {
+		desc  *prometheus.Desc
+		value float64
+	}{
+		{c.scopesWithProjectsTotalDesc, float64(withProjects)},
+		{c.scopesWithEnvironmentsTotalDesc, float64(withEnvironments)},
+		{c.scopesWithTenantsTotalDesc, float64(withTenants)},
+		{c.scopesWithStepsTotalDesc, float64(withSteps)},
+		{c.scopesWithSpacesTotalDesc, float64(withSpaces)},
+	}
+
+	for _, scopeMetric := range scopeMetrics {
+		metric := prometheus.MustNewConstMetric(
+			scopeMetric.desc,
+			prometheus.GaugeValue,
+			scopeMetric.value,
+		)
+		ch <- metric
+	}
 
 	return nil
 }
 
-func (mc *MetricsCollector) TrackScopeMatching(controllerType string, matchedScopesCount int) {
-
+// TrackScopeMatching tracks scope matching events
+func (c *OctopusMetricsCollector) TrackScopeMatching(controllerType string, matchedScopesCount int) {
 	if matchedScopesCount > 0 {
 		IncRequestsScopeMatched(controllerType)
 	} else {

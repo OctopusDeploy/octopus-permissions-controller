@@ -33,9 +33,8 @@ import (
 // WorkloadServiceAccountReconciler reconciles a WorkloadServiceAccount object
 type WorkloadServiceAccountReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	Engine           rules.Engine
-	MetricsCollector *metrics.MetricsCollector
+	Scheme *runtime.Scheme
+	Engine rules.Engine
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch

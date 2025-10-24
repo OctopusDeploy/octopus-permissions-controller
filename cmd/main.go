@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -210,14 +211,15 @@ func main() {
 	// Create the rules engine instance
 	engine := rules.NewInMemoryEngine(mgr.GetClient())
 
-	// Create metrics collector instance
-	metricsCollector := metrics.NewMetricsCollector(mgr.GetClient())
+	// Create new prometheus metrics collector instance
+	octopusMetricsCollector := metrics.NewOctopusMetricsCollector(mgr.GetClient(), &engine)
+
+	crmetrics.Registry.MustRegister(octopusMetricsCollector)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Engine:           &engine,
-		MetricsCollector: metricsCollector,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Engine: &engine,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WorkloadServiceAccount")
 		os.Exit(1)
@@ -237,10 +239,9 @@ func main() {
 		}
 	}
 	if err := (&controller.ClusterWorkloadServiceAccountReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Engine:           &engine,
-		MetricsCollector: metricsCollector,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Engine: &engine,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterWorkloadServiceAccount")
 		os.Exit(1)

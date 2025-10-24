@@ -1,25 +1,27 @@
 package metrics
 
 import (
-	"context"
-
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Metrics Test", func() {
-	Context("When getting metrics", func() {
+	Context("When creating metrics collector", func() {
 		BeforeEach(func() {
-			By("creating the metrics collector")
-			a := NewMetricsCollector(k8sClient)
-			err := a.CollectResourceMetrics(context.TODO())
-			Expect(err).NotTo(HaveOccurred())
+			By("creating the new metrics collector")
+			engine := rules.NewInMemoryEngine(k8sClient)
+			collector := NewOctopusMetricsCollector(k8sClient, &engine)
+			Expect(collector).NotTo(BeNil())
 		})
 		AfterEach(func() {
-			By("Cleanup the specific resource instance WorkloadServiceAccount")
+			By("Cleanup completed")
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
+		It("should successfully create the metrics collector", func() {
+			By("Creating collector with prometheus.Collector interface")
+			engine := rules.NewInMemoryEngine(k8sClient)
+			collector := NewOctopusMetricsCollector(k8sClient, &engine)
+			Expect(collector).NotTo(BeNil())
 		})
 	})
 })
