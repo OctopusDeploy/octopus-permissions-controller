@@ -418,11 +418,6 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 	return nil
 }
 
-// TrackScopeMatching tracks scope matching events
-func (c *OctopusMetricsCollector) TrackScopeMatching(controllerType string, matchedScopesCount int) {
-	if matchedScopesCount > 0 {
-		IncRequestsScopeMatched(controllerType)
-	} else {
-		IncRequestsScopeNotMatched(controllerType)
-	}
+func (c *OctopusMetricsCollector) TrackRequest(controllerType string, scopeMatched bool) {
+	IncRequestsTotal(controllerType, scopeMatched)
 }

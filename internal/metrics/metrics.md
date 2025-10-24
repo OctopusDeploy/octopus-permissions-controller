@@ -34,15 +34,11 @@ All metrics are prefixed with `octopus_` to allow easy filtering in Prometheus q
 
 ### Request Metrics (Counter)
 
-#### Reconciliation Requests
-- **`octopus_requests_served_total{controller_type, result}`**: Total reconciliation requests served
+#### Request Processing
+- **`octopus_requests_total{controller_type, scope_matched}`**: Total requests processed with scope matching status
   - Labels:
     - `controller_type`: "workloadserviceaccount" or "clusterworkloadserviceaccount"
-    - `result`: "success" or "error"
-
-#### Scope Matching
-- **`octopus_requests_scope_matched_total{controller_type}`**: Number of requests where scope matched
-- **`octopus_requests_scope_not_matched_total{controller_type}`**: Number of requests where scope didn't match
+    - `scope_matched`: "true" or "false"
 
 ### Performance Metrics (Histogram)
 

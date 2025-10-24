@@ -8,30 +8,12 @@ import (
 )
 
 var (
-
-	// Request metrics
-	requestsServedTotal = prometheus.NewCounterVec(
+	requestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "octopus_requests_served_total",
-			Help: "Total number of reconciliation requests served",
+			Name: "octopus_requests_total",
+			Help: "Total number of requests processed with scope matching status",
 		},
-		[]string{"controller_type", "result"},
-	)
-
-	requestsScopeMatchedTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "octopus_requests_scope_matched_total",
-			Help: "Number of requests where the scope matched",
-		},
-		[]string{"controller_type"},
-	)
-
-	requestsScopeNotMatchedTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "octopus_requests_scope_not_matched_total",
-			Help: "Number of requests where the scope didn't match",
-		},
-		[]string{"controller_type"},
+		[]string{"controller_type", "scope_matched"},
 	)
 
 	reconciliationDurationSeconds = prometheus.NewHistogramVec(
@@ -55,25 +37,18 @@ var (
 
 func init() {
 	metrics.Registry.MustRegister(
-		requestsServedTotal,
-		requestsScopeMatchedTotal,
-		requestsScopeNotMatchedTotal,
+		requestsTotal,
 		reconciliationDurationSeconds,
 		versionInfo,
 	)
 }
 
-// Request metrics functions
-func IncRequestsServed(controllerType, result string) {
-	requestsServedTotal.WithLabelValues(controllerType, result).Inc()
-}
-
-func IncRequestsScopeMatched(controllerType string) {
-	requestsScopeMatchedTotal.WithLabelValues(controllerType).Inc()
-}
-
-func IncRequestsScopeNotMatched(controllerType string) {
-	requestsScopeNotMatchedTotal.WithLabelValues(controllerType).Inc()
+func IncRequestsTotal(controllerType string, scopeMatched bool) {
+	scopeMatchedStr := "false"
+	if scopeMatched {
+		scopeMatchedStr = "true"
+	}
+	requestsTotal.WithLabelValues(controllerType, scopeMatchedStr).Inc()
 }
 
 func ObserveReconciliationDuration(controllerType, result string, duration float64) {
@@ -84,9 +59,7 @@ func RecordReconciliationDurationFunc(controllerType string, startTime time.Time
 	duration := time.Since(startTime).Seconds()
 	if err := recover(); err != nil {
 		ObserveReconciliationDuration(controllerType, "error", duration)
-		IncRequestsServed(controllerType, "error")
 		panic(err) // Re-panic to maintain original behavior
 	}
-	IncRequestsServed(controllerType, "success")
 	ObserveReconciliationDuration(controllerType, "success", duration)
 }
