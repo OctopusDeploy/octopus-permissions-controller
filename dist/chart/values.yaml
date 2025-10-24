@@ -7,9 +7,6 @@ controllerManager:
     tag: latest
     pullPolicy: IfNotPresent
 
-  # Environment variables
-  env: []
-
   # Pod-level security settings
   podSecurityContext:
     runAsNonRoot: true
@@ -23,6 +20,13 @@ controllerManager:
         drop:
             - ALL
     readOnlyRootFilesystem: true
+
+  # Target namespaces for the controller to create service accounts in - comma-separated
+  # overrides targetNamespaceRegex
+  targetNamespaces: ""
+
+  # Target namespace regex - defaults to "^octopus-(agent|worker)-.*"
+  targetNamespaceRegex: ""
 
   # Resource limits and requests
   resources:

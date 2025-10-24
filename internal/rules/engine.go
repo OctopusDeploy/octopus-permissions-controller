@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -53,7 +54,7 @@ func (s *Scope) String() string {
 		s.Space)
 }
 
-func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
+func NewInMemoryEngine(controllerClient client.Client, targetNamespaceRegex *regexp.Regexp) InMemoryEngine {
 	engine := InMemoryEngine{
 		scopeToSA:          make(map[Scope]ServiceAccountName),
 		targetNamespaces:   []string{},
@@ -62,7 +63,7 @@ func NewInMemoryEngine(controllerClient client.Client) InMemoryEngine {
 		vocabulary:         &GlobalVocabulary{},
 		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
 		ResourceManagement: NewResourceManagementService(controllerClient),
-		NamespaceDiscovery: NamespaceDiscoveryService{},
+		NamespaceDiscovery: NamespaceDiscoveryService{TargetNamespaceRegex: targetNamespaceRegex},
 	}
 	engine.ScopeComputation = NewScopeComputationService(engine.vocabulary, &engine.scopeToSA)
 	return engine
