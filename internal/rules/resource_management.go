@@ -26,6 +26,11 @@ type serviceAccountInfo struct {
 type ResourceManagement interface {
 	GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error)
 	GetClusterWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.ClusterWorkloadServiceAccount], error)
+	GetServiceAccounts(ctx context.Context) (iter.Seq[*corev1.ServiceAccount], error)
+	GetRoles(ctx context.Context) (iter.Seq[*rbacv1.Role], error)
+	GetClusterRoles(ctx context.Context) (iter.Seq[*rbacv1.ClusterRole], error)
+	GetRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.RoleBinding], error)
+	GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.ClusterRoleBinding], error)
 	EnsureRoles(ctx context.Context, resources []WSAResource) (map[string]rbacv1.Role, error)
 	EnsureServiceAccounts(
 		ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string,
@@ -73,6 +78,96 @@ func (r ResourceManagementService) GetClusterWorkloadServiceAccounts(ctx context
 		for _, v := range cwsaList.Items {
 			if !yield(&v) {
 				return
+			}
+		}
+	}, nil
+}
+
+func (r ResourceManagementService) GetServiceAccounts(ctx context.Context) (iter.Seq[*corev1.ServiceAccount], error) {
+	saList := &corev1.ServiceAccountList{}
+	err := r.client.List(ctx, saList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list service accounts: %w", err)
+	}
+
+	return func(yield func(*corev1.ServiceAccount) bool) {
+		for _, v := range saList.Items {
+			if IsOctopusManaged(v.Labels) {
+				if !yield(&v) {
+					return
+				}
+			}
+		}
+	}, nil
+}
+
+func (r ResourceManagementService) GetRoles(ctx context.Context) (iter.Seq[*rbacv1.Role], error) {
+	roleList := &rbacv1.RoleList{}
+	err := r.client.List(ctx, roleList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list roles: %w", err)
+	}
+
+	return func(yield func(*rbacv1.Role) bool) {
+		for _, v := range roleList.Items {
+			if IsOctopusManaged(v.Labels) {
+				if !yield(&v) {
+					return
+				}
+			}
+		}
+	}, nil
+}
+
+func (r ResourceManagementService) GetClusterRoles(ctx context.Context) (iter.Seq[*rbacv1.ClusterRole], error) {
+	clusterRoleList := &rbacv1.ClusterRoleList{}
+	err := r.client.List(ctx, clusterRoleList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cluster roles: %w", err)
+	}
+
+	return func(yield func(*rbacv1.ClusterRole) bool) {
+		for _, v := range clusterRoleList.Items {
+			if IsOctopusManaged(v.Labels) {
+				if !yield(&v) {
+					return
+				}
+			}
+		}
+	}, nil
+}
+
+func (r ResourceManagementService) GetRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.RoleBinding], error) {
+	roleBindingList := &rbacv1.RoleBindingList{}
+	err := r.client.List(ctx, roleBindingList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list role bindings: %w", err)
+	}
+
+	return func(yield func(*rbacv1.RoleBinding) bool) {
+		for _, v := range roleBindingList.Items {
+			if IsOctopusManaged(v.Labels) {
+				if !yield(&v) {
+					return
+				}
+			}
+		}
+	}, nil
+}
+
+func (r ResourceManagementService) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.ClusterRoleBinding], error) {
+	clusterRoleBindingList := &rbacv1.ClusterRoleBindingList{}
+	err := r.client.List(ctx, clusterRoleBindingList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cluster role bindings: %w", err)
+	}
+
+	return func(yield func(*rbacv1.ClusterRoleBinding) bool) {
+		for _, v := range clusterRoleBindingList.Items {
+			if IsOctopusManaged(v.Labels) {
+				if !yield(&v) {
+					return
+				}
 			}
 		}
 	}, nil

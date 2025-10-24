@@ -1,0 +1,59 @@
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: octopus-permissions-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: cwsa-test-multiple-1
+spec:
+  scope:
+    spaces:
+    - space-1
+    - space-2
+    projects:
+    - global-project
+  permissions:
+    permissions:
+      - verbs:
+          - GET
+          - LIST
+          - WATCH
+        apiGroups:
+          - ""
+        resources:
+          - nodes
+          - persistentvolumes
+      - verbs:
+          - GET
+          - LIST
+        apiGroups:
+          - rbac.authorization.k8s.io
+        resources:
+          - clusterroles
+          - clusterrolebindings
+---
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: octopus-permissions-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: cwsa-test-multiple-2
+spec:
+  scope:
+    environments:
+    - staging
+    - production
+    steps:
+    - deploy
+    - test
+  permissions:
+    permissions:
+      - verbs:
+          - GET
+          - LIST
+        apiGroups:
+          - metrics.k8s.io
+        resources:
+          - pods
+          - nodes

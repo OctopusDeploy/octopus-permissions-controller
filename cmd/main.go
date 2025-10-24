@@ -24,7 +24,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -36,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -235,6 +238,11 @@ func main() {
 	}
 
 	// Create the rules engine instance
+
+	// Create new prometheus metrics collector instance
+	octopusMetricsCollector := metrics.NewOctopusMetricsCollector(mgr.GetClient(), &engine)
+
+	crmetrics.Registry.MustRegister(octopusMetricsCollector)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),
