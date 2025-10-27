@@ -36,7 +36,6 @@ type InMemoryEngine struct {
 	NamespaceDiscovery
 }
 
-
 func NewInMemoryEngine(controllerClient client.Client, targetNamespaceRegex *regexp.Regexp) InMemoryEngine {
 	engine := InMemoryEngine{
 		scopeToSA:          make(map[Scope]ServiceAccountName),

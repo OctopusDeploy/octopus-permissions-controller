@@ -17,11 +17,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
+const (
+	scopeMatchedTrue           = "true"
+	endOfFile                  = "EOF"
+	workloadServiceAccountType = "workloadserviceaccount"
+)
+
 var _ = Describe("Metrics Test", func() {
 	Context("When creating metrics collector", func() {
 		BeforeEach(func() {
 			By("creating the new metrics collector")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			collector := NewOctopusMetricsCollector(k8sClient, &engine)
 			Expect(collector).NotTo(BeNil())
 		})
@@ -30,7 +36,7 @@ var _ = Describe("Metrics Test", func() {
 		})
 		It("should successfully create the metrics collector", func() {
 			By("Creating collector with prometheus.Collector interface")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			collector := NewOctopusMetricsCollector(k8sClient, &engine)
 			Expect(collector).NotTo(BeNil())
 		})
@@ -42,7 +48,7 @@ var _ = Describe("Metrics Test", func() {
 
 	BeforeEach(func() {
 		By("Setting up metrics collector and test environment")
-		inMemoryEngine := rules.NewInMemoryEngine(k8sClient)
+		inMemoryEngine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 		engine = &inMemoryEngine
 		collector = NewOctopusMetricsCollector(k8sClient, engine)
 		Expect(collector).NotTo(BeNil())
@@ -107,7 +113,7 @@ var _ = Describe("Metrics Test", func() {
 		})
 	})
 
-	//Context("Kubernetes Resource Metrics", func() {
+	// Context("Kubernetes Resource Metrics", func() {
 	//	It("should accurately collect Kubernetes resource metrics", func() {
 	//		By("Getting baseline metrics before applying test resources")
 	//		baselineRegistry := prometheus.NewRegistry()
@@ -162,7 +168,7 @@ var _ = Describe("Metrics Test", func() {
 	//		afterClusterRoleBindings := getMetricValue(afterMetrics, "octopus_cluster_role_bindings_total")
 	//		Expect(afterClusterRoleBindings).To(Equal(baselineClusterRoleBindings+2), "ClusterRoleBinding count should increase by 2")
 	//	})
-	//})
+	// })
 
 	Context("Scope Metrics", func() {
 		It("should accurately count all scope types", func() {
@@ -232,10 +238,10 @@ var _ = Describe("Metrics Test", func() {
 			registry.MustRegister(testRequestsTotal)
 
 			// Record specific requests
-			testRequestsTotal.WithLabelValues("workloadserviceaccount", "true").Inc()
-			testRequestsTotal.WithLabelValues("workloadserviceaccount", "true").Inc()
-			testRequestsTotal.WithLabelValues("workloadserviceaccount", "false").Inc()
-			testRequestsTotal.WithLabelValues("clusterworkloadserviceaccount", "true").Inc()
+			testRequestsTotal.WithLabelValues(workloadServiceAccountType, scopeMatchedTrue).Inc()
+			testRequestsTotal.WithLabelValues(workloadServiceAccountType, scopeMatchedTrue).Inc()
+			testRequestsTotal.WithLabelValues(workloadServiceAccountType, "false").Inc()
+			testRequestsTotal.WithLabelValues("clusterworkloadServiceAccountType", scopeMatchedTrue).Inc()
 
 			By("Collecting request metrics")
 			metricFamilies, err := registry.Gather()
@@ -268,15 +274,15 @@ var _ = Describe("Metrics Test", func() {
 						}
 					}
 
-					if controllerType == "workloadserviceaccount" && scopeMatched == "true" {
+					if controllerType == workloadServiceAccountType && scopeMatched == scopeMatchedTrue {
 						foundWSATrue = true
 						Expect(*metric.Counter.Value).To(Equal(float64(2)), "Should have 2 WSA true requests")
 					}
-					if controllerType == "workloadserviceaccount" && scopeMatched == "false" {
+					if controllerType == workloadServiceAccountType && scopeMatched == "false" {
 						foundWSAFalse = true
 						Expect(*metric.Counter.Value).To(Equal(float64(1)), "Should have 1 WSA false request")
 					}
-					if controllerType == "clusterworkloadserviceaccount" && scopeMatched == "true" {
+					if controllerType == "clusterworkloadServiceAccountType" && scopeMatched == scopeMatchedTrue {
 						foundCWSATrue = true
 						Expect(*metric.Counter.Value).To(Equal(float64(1)), "Should have 1 CWSA true request")
 					}
@@ -307,9 +313,9 @@ var _ = Describe("Metrics Test", func() {
 			registry.MustRegister(testReconciliationDuration)
 
 			// Record specific durations
-			testReconciliationDuration.WithLabelValues("workloadserviceaccount", "success").Observe(0.5)
-			testReconciliationDuration.WithLabelValues("workloadserviceaccount", "error").Observe(0.1)
-			testReconciliationDuration.WithLabelValues("clusterworkloadserviceaccount", "success").Observe(0.3)
+			testReconciliationDuration.WithLabelValues(workloadServiceAccountType, "success").Observe(0.5)
+			testReconciliationDuration.WithLabelValues(workloadServiceAccountType, "error").Observe(0.1)
+			testReconciliationDuration.WithLabelValues("clusterworkloadServiceAccountType", "success").Observe(0.3)
 
 			By("Collecting reconciliation duration metrics")
 			metricFamilies, err := registry.Gather()
@@ -342,15 +348,15 @@ var _ = Describe("Metrics Test", func() {
 						}
 					}
 
-					if controllerType == "workloadserviceaccount" && result == "success" {
+					if controllerType == workloadServiceAccountType && result == "success" {
 						foundWSASuccess = true
 						Expect(*metric.Histogram.SampleCount).To(Equal(uint64(1)), "Should have 1 WSA success sample")
 					}
-					if controllerType == "workloadserviceaccount" && result == "error" {
+					if controllerType == workloadServiceAccountType && result == "error" {
 						foundWSAError = true
 						Expect(*metric.Histogram.SampleCount).To(Equal(uint64(1)), "Should have 1 WSA error sample")
 					}
-					if controllerType == "clusterworkloadserviceaccount" && result == "success" {
+					if controllerType == "clusterworkloadServiceAccountType" && result == "success" {
 						foundCWSASuccess = true
 						Expect(*metric.Histogram.SampleCount).To(Equal(uint64(1)), "Should have 1 CWSA success sample")
 					}
@@ -381,7 +387,7 @@ func applyTestResourcesWithNamespace(namespaceName string) {
 		var obj unstructured.Unstructured
 		err := decoder.Decode(&obj)
 		if err != nil {
-			if err.Error() == "EOF" {
+			if err.Error() == endOfFile {
 				break
 			}
 			Expect(err).NotTo(HaveOccurred())
@@ -414,7 +420,7 @@ func applyTestResourcesFromFile(namespaceName string, fileName string) {
 		var obj unstructured.Unstructured
 		err := decoder.Decode(&obj)
 		if err != nil {
-			if err.Error() == "EOF" {
+			if err.Error() == endOfFile {
 				break
 			}
 			Expect(err).NotTo(HaveOccurred())
@@ -452,7 +458,7 @@ func cleanupTestResourcesFromNamespace(namespaceName string) {
 			var obj unstructured.Unstructured
 			err := decoder.Decode(&obj)
 			if err != nil {
-				if err.Error() == "EOF" {
+				if err.Error() == "endOfFile" {
 					break
 				}
 				continue
