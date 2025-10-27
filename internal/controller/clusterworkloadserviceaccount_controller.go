@@ -65,6 +65,11 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 
 	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
 
+	if err := r.Engine.Reconcile(ctx); err != nil {
+		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccounts")
+		return ctrl.Result{}, err
+	}
+
 	log.Info("Successfully reconciled ClusterWorkloadServiceAccounts")
 	return ctrl.Result{}, nil
 }
