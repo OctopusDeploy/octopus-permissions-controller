@@ -17,7 +17,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -197,9 +196,9 @@ func (m *MockEngine) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbac
 // GetScopeToSA returns mock scope to service account mapping
 func (m *MockEngine) GetScopeToSA() map[types.Scope]rules.ServiceAccountName {
 	return map[types.Scope]rules.ServiceAccountName{
-		{Project: "proj1"}:                          "sa-proj1",
-		{Project: "proj2"}:                          "sa-proj2",
-		{Environment: "env1", Tenant: "tenant1"}:    "sa-env1-tenant1",
+		{Project: "proj1"}:                       "sa-proj1",
+		{Project: "proj2"}:                       "sa-proj2",
+		{Environment: "env1", Tenant: "tenant1"}: "sa-env1-tenant1",
 	}
 }
 
@@ -212,28 +211,27 @@ func (m *MockEngine) GetServiceAccountForScope(scope types.Scope) (rules.Service
 	return "", fmt.Errorf("service account not found for scope %v", scope)
 }
 
-// Mock implementations for other required interface methods
-func (m *MockEngine) EnsureRoles(ctx context.Context, resources []rules.WSAResource) (map[string]rbacv1.Role, error) {
+func (m *MockEngine) EnsureRoles(context.Context, []rules.WSAResource) (map[string]rbacv1.Role, error) {
 	return make(map[string]rbacv1.Role), nil
 }
 
-func (m *MockEngine) EnsureServiceAccounts(ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error {
+func (m *MockEngine) EnsureServiceAccounts(context.Context, []*corev1.ServiceAccount, []string) error {
 	return nil
 }
 
-func (m *MockEngine) EnsureRoleBindings(ctx context.Context, resources []rules.WSAResource, createdRoles map[string]rbacv1.Role, wsaToServiceAccountNames map[string][]string, targetNamespaces []string) error {
+func (m *MockEngine) EnsureRoleBindings(context.Context, []rules.WSAResource, map[string]rbacv1.Role, map[string][]string, []string) error {
 	return nil
 }
 
-func (m *MockEngine) ComputeScopesForWSAs(allResources []rules.WSAResource) (map[types.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
+func (m *MockEngine) ComputeScopesForWSAs([]rules.WSAResource) (map[types.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
 	return make(map[types.Scope]map[string]rules.WSAResource), rules.GlobalVocabulary{}
 }
 
-func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[types.Scope]map[string]rules.WSAResource) (map[types.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
+func (m *MockEngine) GenerateServiceAccountMappings(map[types.Scope]map[string]rules.WSAResource) (map[types.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
 	return make(map[types.Scope]rules.ServiceAccountName), make(map[rules.ServiceAccountName]map[string]rules.WSAResource), make(map[string][]string), []*corev1.ServiceAccount{}
 }
 
-func (m *MockEngine) DiscoverTargetNamespaces(ctx context.Context, client client.Client) ([]string, error) {
+func (m *MockEngine) DiscoverTargetNamespaces(context.Context, client.Client) ([]string, error) {
 	return []string{"namespace1", "namespace2"}, nil
 }
 
@@ -269,7 +267,7 @@ var _ = Describe("Metrics Test", func() {
 
 		By("Creating unique test namespace for this test")
 		testNamespaceName = fmt.Sprintf("octopus-test-%d", time.Now().UnixNano())
-		testNamespace := &v1.Namespace{}
+		testNamespace := &corev1.Namespace{}
 		testNamespace.Name = testNamespaceName
 
 		err := k8sClient.Create(context.Background(), testNamespace)
@@ -700,7 +698,7 @@ func cleanupTestResourcesFromNamespace(namespaceName string) {
 		}
 	}
 
-	testNamespace := &v1.Namespace{}
+	testNamespace := &corev1.Namespace{}
 	testNamespace.Name = namespaceName
 	_ = k8sClient.Delete(context.Background(), testNamespace)
 }
