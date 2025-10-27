@@ -69,7 +69,7 @@ var _ = Describe("WorkloadServiceAccount Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			controllerReconciler := &WorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),

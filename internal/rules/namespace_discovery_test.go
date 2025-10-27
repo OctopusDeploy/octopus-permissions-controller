@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,11 +21,13 @@ func TestDiscoverTargetNamespaces(t *testing.T) {
 		name        string
 		deployments []appsv1.Deployment
 		expected    []string
+		regex       *regexp.Regexp
 	}{
 		{
 			name:        "no deployments should return default namespace",
 			deployments: []appsv1.Deployment{},
 			expected:    []string{"default"},
+			regex:       regexp.MustCompile("^octopus-(agent|worker)-.*"),
 		},
 		{
 			name: "multiple deployments with duplicate namespace should return unique namespaces",
@@ -32,7 +35,7 @@ func TestDiscoverTargetNamespaces(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "octopus-agent-1",
-						Namespace: "test-namespace",
+						Namespace: "octopus-agent-1",
 						Labels: map[string]string{
 							"app.kubernetes.io/name": "octopus-agent",
 						},
@@ -41,7 +44,7 @@ func TestDiscoverTargetNamespaces(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "octopus-agent-2",
-						Namespace: "test-namespace", // duplicate namespace
+						Namespace: "octopus-agent-1", // duplicate namespace
 						Labels: map[string]string{
 							"app.kubernetes.io/name": "octopus-agent",
 						},
@@ -50,14 +53,40 @@ func TestDiscoverTargetNamespaces(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "octopus-agent-3",
-						Namespace: "octopus-system",
+						Namespace: "octopus-agent-3",
 						Labels: map[string]string{
 							"app.kubernetes.io/name": "octopus-agent",
 						},
 					},
 				},
 			},
-			expected: []string{"octopus-system", "test-namespace"}, // should be sorted and unique
+			expected: []string{"octopus-agent-1", "octopus-agent-3"}, // should be sorted and unique
+			regex:    regexp.MustCompile("^octopus-(agent|worker)-.*"),
+		},
+		{
+			name: "namespaces that don't match the regex should not be returned",
+			deployments: []appsv1.Deployment{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "octopus-agent-3",
+						Namespace: "my-scary-namespace",
+						Labels: map[string]string{
+							"app.kubernetes.io/name": "octopus-agent",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "octopus-agent-3",
+						Namespace: "octopus-agent-namespace",
+						Labels: map[string]string{
+							"app.kubernetes.io/name": "octopus-agent",
+						},
+					},
+				},
+			},
+			expected: []string{"octopus-agent-namespace"},
+			regex:    regexp.MustCompile("^octopus-(agent|worker)-.*"),
 		},
 	}
 
@@ -75,7 +104,7 @@ func TestDiscoverTargetNamespaces(t *testing.T) {
 				Build()
 
 			// Test the function
-			service := NamespaceDiscoveryService{}
+			service := NamespaceDiscoveryService{TargetNamespaceRegex: tt.regex}
 			result, err := service.DiscoverTargetNamespaces(context.Background(), fakeClient)
 
 			// Assertions

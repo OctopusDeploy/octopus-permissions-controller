@@ -78,7 +78,7 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			controllerReconciler := &ClusterWorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
@@ -142,7 +142,7 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 
 		It("should successfully reconcile with multiple scope dimensions", func() {
 			By("Reconciling the resource with complex scope")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			controllerReconciler := &ClusterWorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
@@ -203,7 +203,7 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 
 		It("should successfully reconcile with ClusterRole references", func() {
 			By("Reconciling the resource with ClusterRole refs")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			controllerReconciler := &ClusterWorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
@@ -270,7 +270,7 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 
 		It("should successfully reconcile with mixed permissions", func() {
 			By("Reconciling the resource with both ClusterRoles and inline permissions")
-			engine := rules.NewInMemoryEngine(k8sClient)
+			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
 			controllerReconciler := &ClusterWorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
