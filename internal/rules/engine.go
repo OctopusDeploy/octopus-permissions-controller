@@ -127,3 +127,9 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 
 	return nil
 }
+
+// GetDistinctScopesCount returns the number of meaningful distinct scopes
+// This corresponds to the number of scopes that have service accounts mapped
+func (i *InMemoryEngine) GetDistinctScopesCount() int {
+	return len(i.scopeToSA)
+}

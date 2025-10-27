@@ -345,12 +345,12 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 		return fmt.Errorf("failed to list cluster workload service accounts: %w", err)
 	}
 
-	// Count total distinct user-defined resources
-	totalResources := len(wsaList.Items) + len(cwsaList.Items)
+	scopeToSAMap := c.engine.GetScopeToSA()
+	distinctScopesCount := len(scopeToSAMap)
 	distinctScopesMetric := prometheus.MustNewConstMetric(
 		c.distinctScopesTotalDesc,
 		prometheus.GaugeValue,
-		float64(totalResources),
+		float64(distinctScopesCount),
 	)
 	ch <- distinctScopesMetric
 

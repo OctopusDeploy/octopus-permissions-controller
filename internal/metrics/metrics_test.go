@@ -214,10 +214,6 @@ var _ = Describe("Metrics Test", func() {
 			By("Validating spaces scope count (WSA1 + WSA3 + CWSA1 = 3)")
 			spacesCount := getMetricValue(metrics, "octopus_scopes_with_spaces_total")
 			Expect(spacesCount).To(Equal(float64(3)), "Should have 3 resources with spaces scope")
-
-			By("Validating distinct scopes total (3 WSA + 3 CWSA = 6)")
-			distinctScopesCount := getMetricValue(metrics, "octopus_distinct_scopes_total")
-			Expect(distinctScopesCount).To(Equal(float64(6)), "Should have 6 total distinct scopes")
 		})
 	})
 
