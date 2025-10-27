@@ -3,18 +3,26 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"iter"
 	"strings"
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/types"
 	"github.com/octopusdeploy/octopus-permissions-controller/testdata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 )
 
 const (
@@ -22,6 +30,212 @@ const (
 	endOfFile                  = "EOF"
 	workloadServiceAccountType = "workloadserviceaccount"
 )
+
+// MockEngine is a mock implementation of the rules.Engine interface for testing
+type MockEngine struct{}
+
+// NewMockEngine creates a new mock engine with predefined test data
+func NewMockEngine() *MockEngine {
+	return &MockEngine{}
+}
+
+// Reconcile mock implementation
+func (m *MockEngine) Reconcile(ctx context.Context) error {
+	return nil
+}
+
+// GetWorkloadServiceAccounts returns mock WSA data
+func (m *MockEngine) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
+	return func(yield func(*v1beta1.WorkloadServiceAccount) bool) {
+		wsa1 := &v1beta1.WorkloadServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wsa1",
+				Namespace: "namespace1",
+			},
+		}
+		wsa2 := &v1beta1.WorkloadServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wsa2",
+				Namespace: "namespace1",
+			},
+		}
+		if !yield(wsa1) {
+			return
+		}
+		yield(wsa2)
+	}, nil
+}
+
+// GetClusterWorkloadServiceAccounts returns mock CWSA data
+func (m *MockEngine) GetClusterWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.ClusterWorkloadServiceAccount], error) {
+	return func(yield func(*v1beta1.ClusterWorkloadServiceAccount) bool) {
+		cwsa1 := &v1beta1.ClusterWorkloadServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "cwsa1",
+			},
+		}
+		yield(cwsa1)
+	}, nil
+}
+
+// GetServiceAccounts returns mock ServiceAccount data
+func (m *MockEngine) GetServiceAccounts(ctx context.Context) (iter.Seq[*corev1.ServiceAccount], error) {
+	return func(yield func(*corev1.ServiceAccount) bool) {
+		sa1 := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sa1",
+				Namespace: "namespace1",
+			},
+		}
+		sa2 := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sa2",
+				Namespace: "namespace1",
+			},
+		}
+		sa3 := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sa3",
+				Namespace: "namespace2",
+			},
+		}
+		if !yield(sa1) {
+			return
+		}
+		if !yield(sa2) {
+			return
+		}
+		yield(sa3)
+	}, nil
+}
+
+// GetRoles returns mock Role data
+func (m *MockEngine) GetRoles(ctx context.Context) (iter.Seq[*rbacv1.Role], error) {
+	return func(yield func(*rbacv1.Role) bool) {
+		role1 := &rbacv1.Role{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "role1",
+				Namespace: "namespace1",
+			},
+		}
+		role2 := &rbacv1.Role{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "role2",
+				Namespace: "namespace2",
+			},
+		}
+		if !yield(role1) {
+			return
+		}
+		yield(role2)
+	}, nil
+}
+
+// GetClusterRoles returns mock ClusterRole data
+func (m *MockEngine) GetClusterRoles(ctx context.Context) (iter.Seq[*rbacv1.ClusterRole], error) {
+	return func(yield func(*rbacv1.ClusterRole) bool) {
+		cr1 := &rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "clusterrole1",
+			},
+		}
+		cr2 := &rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "clusterrole2",
+			},
+		}
+		if !yield(cr1) {
+			return
+		}
+		yield(cr2)
+	}, nil
+}
+
+// GetRoleBindings returns mock RoleBinding data
+func (m *MockEngine) GetRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.RoleBinding], error) {
+	return func(yield func(*rbacv1.RoleBinding) bool) {
+		rb1 := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rb1",
+				Namespace: "namespace1",
+			},
+		}
+		rb2 := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rb2",
+				Namespace: "namespace1",
+			},
+		}
+		rb3 := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rb3",
+				Namespace: "namespace2",
+			},
+		}
+		if !yield(rb1) {
+			return
+		}
+		if !yield(rb2) {
+			return
+		}
+		yield(rb3)
+	}, nil
+}
+
+// GetClusterRoleBindings returns mock ClusterRoleBinding data
+func (m *MockEngine) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.ClusterRoleBinding], error) {
+	return func(yield func(*rbacv1.ClusterRoleBinding) bool) {
+		crb1 := &rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "crb1",
+			},
+		}
+		yield(crb1)
+	}, nil
+}
+
+// GetScopeToSA returns mock scope to service account mapping
+func (m *MockEngine) GetScopeToSA() map[types.Scope]rules.ServiceAccountName {
+	return map[types.Scope]rules.ServiceAccountName{
+		{Project: "proj1"}:                          "sa-proj1",
+		{Project: "proj2"}:                          "sa-proj2",
+		{Environment: "env1", Tenant: "tenant1"}:    "sa-env1-tenant1",
+	}
+}
+
+// GetServiceAccountForScope returns the service account for a given scope
+func (m *MockEngine) GetServiceAccountForScope(scope types.Scope) (rules.ServiceAccountName, error) {
+	scopeToSA := m.GetScopeToSA()
+	if sa, exists := scopeToSA[scope]; exists {
+		return sa, nil
+	}
+	return "", fmt.Errorf("service account not found for scope %v", scope)
+}
+
+// Mock implementations for other required interface methods
+func (m *MockEngine) EnsureRoles(ctx context.Context, resources []rules.WSAResource) (map[string]rbacv1.Role, error) {
+	return make(map[string]rbacv1.Role), nil
+}
+
+func (m *MockEngine) EnsureServiceAccounts(ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string) error {
+	return nil
+}
+
+func (m *MockEngine) EnsureRoleBindings(ctx context.Context, resources []rules.WSAResource, createdRoles map[string]rbacv1.Role, wsaToServiceAccountNames map[string][]string, targetNamespaces []string) error {
+	return nil
+}
+
+func (m *MockEngine) ComputeScopesForWSAs(allResources []rules.WSAResource) (map[types.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
+	return make(map[types.Scope]map[string]rules.WSAResource), rules.GlobalVocabulary{}
+}
+
+func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[types.Scope]map[string]rules.WSAResource) (map[types.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
+	return make(map[types.Scope]rules.ServiceAccountName), make(map[rules.ServiceAccountName]map[string]rules.WSAResource), make(map[string][]string), []*corev1.ServiceAccount{}
+}
+
+func (m *MockEngine) DiscoverTargetNamespaces(ctx context.Context, client client.Client) ([]string, error) {
+	return []string{"namespace1", "namespace2"}, nil
+}
 
 var _ = Describe("Metrics Test", func() {
 	Context("When creating metrics collector", func() {
@@ -113,62 +327,80 @@ var _ = Describe("Metrics Test", func() {
 		})
 	})
 
-	// Context("Kubernetes Resource Metrics", func() {
-	//	It("should accurately collect Kubernetes resource metrics", func() {
-	//		By("Getting baseline metrics before applying test resources")
-	//		baselineRegistry := prometheus.NewRegistry()
-	//		err := baselineRegistry.Register(collector)
-	//		Expect(err).NotTo(HaveOccurred())
-	//
-	//		baselineMetricFamilies, err := baselineRegistry.Gather()
-	//		Expect(err).NotTo(HaveOccurred())
-	//		baselineMetrics := convertMetricFamiliesToMap(baselineMetricFamilies)
-	//
-	//		baselineSA := getTotalMetricValue(baselineMetrics, "octopus_service_accounts_total")
-	//		baselineRoles := getTotalMetricValue(baselineMetrics, "octopus_roles_total")
-	//		baselineClusterRoles := getMetricValue(baselineMetrics, "octopus_cluster_roles_total")
-	//		baselineRoleBindings := getTotalMetricValue(baselineMetrics, "octopus_role_bindings_total")
-	//		baselineClusterRoleBindings := getMetricValue(baselineMetrics, "octopus_cluster_role_bindings_total")
-	//
-	//		By("Applying test Kubernetes resources with known counts")
-	//		applyTestResourcesFromFile(testNamespaceName, "unit/test-k8s-resources.yaml")
-	//
-	//		By("Waiting for resources to be processed")
-	//		time.Sleep(2 * time.Second)
-	//
-	//		By("Collecting metrics after applying test resources")
-	//		afterRegistry := prometheus.NewRegistry()
-	//		err = afterRegistry.Register(collector)
-	//		Expect(err).NotTo(HaveOccurred())
-	//
-	//		afterMetricFamilies, err := afterRegistry.Gather()
-	//		Expect(err).NotTo(HaveOccurred())
-	//		afterMetrics := convertMetricFamiliesToMap(afterMetricFamilies)
-	//
-	//		By("Validating ServiceAccount metrics increased by expected test resources")
-	//		// Expected: baseline + 3 test ServiceAccounts
-	//		afterSA := getTotalMetricValue(afterMetrics, "octopus_service_accounts_total")
-	//		Expect(afterSA).To(Equal(baselineSA+3), "ServiceAccount count should increase by 3")
-	//
-	//		By("Validating Role metrics increased by expected test resources")
-	//		// Expected: baseline + 2 test Roles
-	//		afterRoles := getTotalMetricValue(afterMetrics, "octopus_roles_total")
-	//		Expect(afterRoles).To(Equal(baselineRoles+2), "Role count should increase by 2")
-	//
-	//		// Expected: baseline + 2 test ClusterRoles
-	//		afterClusterRoles := getMetricValue(afterMetrics, "octopus_cluster_roles_total")
-	//		Expect(afterClusterRoles).To(Equal(baselineClusterRoles+2), "ClusterRole count should increase by 2")
-	//
-	//		By("Validating RoleBinding metrics increased by expected test resources")
-	//		// Expected: baseline + 3 test RoleBindings
-	//		afterRoleBindings := getTotalMetricValue(afterMetrics, "octopus_role_bindings_total")
-	//		Expect(afterRoleBindings).To(Equal(baselineRoleBindings+3), "RoleBinding count should increase by 3")
-	//
-	//		// Expected: baseline + 2 test ClusterRoleBindings
-	//		afterClusterRoleBindings := getMetricValue(afterMetrics, "octopus_cluster_role_bindings_total")
-	//		Expect(afterClusterRoleBindings).To(Equal(baselineClusterRoleBindings+2), "ClusterRoleBinding count should increase by 2")
-	//	})
-	// })
+	Context("Kubernetes Resource Metrics with Mock Engine", func() {
+		It("should accurately collect Kubernetes resource metrics", func() {
+			By("Creating a mock engine with known resource counts")
+			mockEngine := NewMockEngine()
+
+			// Create collector with mock engine
+			mockCollector := NewOctopusMetricsCollector(k8sClient, mockEngine)
+			Expect(mockCollector).NotTo(BeNil())
+
+			By("Collecting metrics from mock engine")
+			registry := prometheus.NewRegistry()
+			err := registry.Register(mockCollector)
+			Expect(err).NotTo(HaveOccurred())
+
+			metricFamilies, err := registry.Gather()
+			Expect(err).NotTo(HaveOccurred())
+
+			metrics := convertMetricFamiliesToMap(metricFamilies)
+
+			By("Validating ServiceAccount metrics")
+			// MockEngine returns 2 SAs in namespace1, 1 SA in namespace2
+			_, exists := metrics["octopus_service_accounts_total"]
+			Expect(exists).To(BeTrue(), "octopus_service_accounts_total metric should exist")
+
+			totalSA := getTotalMetricValue(metrics, "octopus_service_accounts_total")
+			Expect(totalSA).To(Equal(float64(3)), "Should have 3 total ServiceAccounts")
+
+			By("Validating Role metrics")
+			// MockEngine returns 1 Role in namespace1, 1 Role in namespace2
+			totalRoles := getTotalMetricValue(metrics, "octopus_roles_total")
+			Expect(totalRoles).To(Equal(float64(2)), "Should have 2 total Roles")
+
+			By("Validating ClusterRole metrics")
+			// MockEngine returns 2 ClusterRoles
+			clusterRoles := getMetricValue(metrics, "octopus_cluster_roles_total")
+			Expect(clusterRoles).To(Equal(float64(2)), "Should have 2 ClusterRoles")
+
+			By("Validating RoleBinding metrics")
+			// MockEngine returns 2 RoleBindings in namespace1, 1 RoleBinding in namespace2
+			totalRoleBindings := getTotalMetricValue(metrics, "octopus_role_bindings_total")
+			Expect(totalRoleBindings).To(Equal(float64(3)), "Should have 3 total RoleBindings")
+
+			By("Validating ClusterRoleBinding metrics")
+			// MockEngine returns 1 ClusterRoleBinding
+			clusterRoleBindings := getMetricValue(metrics, "octopus_cluster_role_bindings_total")
+			Expect(clusterRoleBindings).To(Equal(float64(1)), "Should have 1 ClusterRoleBinding")
+		})
+	})
+
+	Context("Distinct Scopes Metrics with Mock Engine", func() {
+		It("should accurately count distinct scopes", func() {
+			By("Creating a mock engine with known distinct scopes")
+			mockEngine := NewMockEngine()
+
+			// Create collector with mock engine
+			mockCollector := NewOctopusMetricsCollector(k8sClient, mockEngine)
+			Expect(mockCollector).NotTo(BeNil())
+
+			By("Collecting distinct scope metrics")
+			registry := prometheus.NewRegistry()
+			err := registry.Register(mockCollector)
+			Expect(err).NotTo(HaveOccurred())
+
+			metricFamilies, err := registry.Gather()
+			Expect(err).NotTo(HaveOccurred())
+
+			metrics := convertMetricFamiliesToMap(metricFamilies)
+
+			By("Validating distinct scopes count")
+			// MockEngine returns 3 distinct scopes
+			distinctScopes := getMetricValue(metrics, "octopus_distinct_scopes_total")
+			Expect(distinctScopes).To(Equal(float64(3)), "Should have 3 distinct scopes")
+		})
+	})
 
 	Context("Scope Metrics", func() {
 		It("should accurately count all scope types", func() {
@@ -499,4 +731,20 @@ func getMetricValue(metrics map[string]*dto.MetricFamily, metricName string) flo
 	}
 
 	return 0
+}
+
+func getTotalMetricValue(metrics map[string]*dto.MetricFamily, metricName string) float64 {
+	family, exists := metrics[metricName]
+	if !exists {
+		return 0
+	}
+
+	total := 0.0
+	for _, metric := range family.Metric {
+		if metric.Gauge != nil && metric.Gauge.Value != nil {
+			total += *metric.Gauge.Value
+		}
+	}
+
+	return total
 }
