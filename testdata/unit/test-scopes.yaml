@@ -1,0 +1,112 @@
+# Comprehensive test file for all Octopus metrics validation
+# This creates a controlled set of resources to validate metric collection
+
+---
+# WSA 1: Test namespace with all scopes populated
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: metrics-wsa-full
+  namespace: octopus-test
+spec:
+  scope:
+    spaces: [space-1, space-2]
+    projects: [project-1, project-2]
+    environments: [env-1, env-2]
+    tenants: [tenant-1]
+    steps: [deploy, test]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST]
+        apiGroups: [""]
+        resources: [pods, secrets]
+
+---
+# WSA 2: Test namespace with partial scopes
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: metrics-wsa-partial
+  namespace: octopus-test
+spec:
+  scope:
+    projects: [project-3]
+    environments: [env-3]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST, CREATE]
+        apiGroups: [apps]
+        resources: [deployments]
+
+---
+# WSA 3: Custom namespace with only spaces
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: metrics-wsa-spaces-only
+  namespace: octopus-test
+spec:
+  scope:
+    spaces: [space-3]
+  permissions:
+    permissions:
+      - verbs: [GET]
+        apiGroups: [v1]
+        resources: [configmaps]
+
+---
+# CWSA 1: With all scopes
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: metrics-cwsa-full
+spec:
+  scope:
+    spaces: [global-space]
+    projects: [global-project-1]
+    environments: [production, staging]
+    tenants: [global-tenant]
+    steps: [deploy]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST]
+        apiGroups: [""]
+        resources: [nodes]
+
+---
+# CWSA 2: With partial scopes
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: metrics-cwsa-partial
+spec:
+  scope:
+    projects: [global-project-2]
+    tenants: [global-tenant-2]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST]
+        apiGroups: [rbac.authorization.k8s.io]
+        resources: [clusterroles, clusterrolebindings]
+
+---
+# CWSA 3: Only steps
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: metrics-cwsa-steps-only
+spec:
+  scope:
+    steps: [validate, deploy, cleanup]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST, WATCH]
+        apiGroups: [apps]
+        resources: [deployments]
+
+---
+# Create test namespace for WSA
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: octopus-test

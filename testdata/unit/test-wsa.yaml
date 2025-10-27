@@ -7,7 +7,7 @@ apiVersion: agent.octopus.com/v1beta1
 kind: WorkloadServiceAccount
 metadata:
   name: metrics-test-wsa-1
-  namespace: default
+  namespace: octopus-test
 spec:
   scope:
     spaces: [space-1]
@@ -26,7 +26,7 @@ apiVersion: agent.octopus.com/v1beta1
 kind: WorkloadServiceAccount
 metadata:
   name: metrics-test-wsa-2
-  namespace: kube-system
+  namespace: octopus-test
 spec:
   scope:
     spaces: [space-2]
