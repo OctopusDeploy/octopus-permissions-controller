@@ -458,7 +458,7 @@ func cleanupTestResourcesFromNamespace(namespaceName string) {
 			var obj unstructured.Unstructured
 			err := decoder.Decode(&obj)
 			if err != nil {
-				if err.Error() == "endOfFile" {
+				if err.Error() == endOfFile {
 					break
 				}
 				continue
