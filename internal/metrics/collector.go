@@ -177,9 +177,7 @@ func (c *OctopusMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 		logger.Error(err, "Failed to collect scope metrics from resources")
 	}
 
-	if err := c.collectTargetNamespaceMetrics(ctx, ch); err != nil {
-		logger.Error(err, "Failed to collect target namespace metrics")
-	}
+	c.collectTargetNamespaceMetrics(ch)
 }
 
 // collectWSAMetrics collects WorkloadServiceAccount metrics
@@ -422,7 +420,7 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 	return nil
 }
 
-func (c *OctopusMetricsCollector) collectTargetNamespaceMetrics(ctx context.Context, ch chan<- prometheus.Metric) error {
+func (c *OctopusMetricsCollector) collectTargetNamespaceMetrics(ch chan<- prometheus.Metric) {
 	targetNamespaces := c.engine.GetTargetNamespaces()
 	count := len(targetNamespaces)
 
@@ -432,8 +430,6 @@ func (c *OctopusMetricsCollector) collectTargetNamespaceMetrics(ctx context.Cont
 		float64(count),
 	)
 	ch <- metric
-
-	return nil
 }
 
 func (c *OctopusMetricsCollector) TrackRequest(controllerType string, scopeMatched bool) {
