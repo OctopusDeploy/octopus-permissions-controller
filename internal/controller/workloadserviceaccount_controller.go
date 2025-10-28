@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"time"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,8 +51,12 @@ type WorkloadServiceAccountReconciler struct {
 // move the current state of the cluster closer to the desired state.
 func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	startTime := time.Now()
+	controllerType := "workloadserviceaccount"
 
 	log.Info("WorkloadServiceAccount reconciliation triggered")
+
+	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
 
 	if err := r.Engine.Reconcile(ctx); err != nil {
 		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccounts")

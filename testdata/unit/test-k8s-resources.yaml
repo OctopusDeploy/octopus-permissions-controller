@@ -1,0 +1,177 @@
+# Test file for Kubernetes resource metrics validation
+# Creates a controlled set of standard Kubernetes resources for exact counting
+
+---
+# Create test namespace first
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: octopus-test
+  labels:
+    test-type: metrics
+
+---
+# Test ServiceAccounts
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-sa-1
+  namespace: default
+  labels:
+    test-type: metrics
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-sa-2
+  namespace: kube-system
+  labels:
+    test-type: metrics
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-sa-3
+  namespace: octopus-test
+  labels:
+    test-type: metrics
+
+---
+# Test Roles
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: test-role-1
+  namespace: default
+  labels:
+    test-type: metrics
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: test-role-2
+  namespace: kube-system
+  labels:
+    test-type: metrics
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create"]
+
+---
+# Test ClusterRoles
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: test-cluster-role-1
+  labels:
+    test-type: metrics
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: test-cluster-role-2
+  labels:
+    test-type: metrics
+rules:
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  verbs: ["get", "list"]
+
+---
+# Test RoleBindings
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-role-binding-1
+  namespace: default
+  labels:
+    test-type: metrics
+subjects:
+- kind: ServiceAccount
+  name: test-sa-1
+  namespace: default
+roleRef:
+  kind: Role
+  name: test-role-1
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-role-binding-2
+  namespace: kube-system
+  labels:
+    test-type: metrics
+subjects:
+- kind: ServiceAccount
+  name: test-sa-2
+  namespace: kube-system
+roleRef:
+  kind: Role
+  name: test-role-2
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-role-binding-3
+  namespace: octopus-test
+  labels:
+    test-type: metrics
+subjects:
+- kind: ServiceAccount
+  name: test-sa-3
+  namespace: octopus-test
+roleRef:
+  kind: Role
+  name: test-role-1
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Test ClusterRoleBindings
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: test-cluster-role-binding-1
+  labels:
+    test-type: metrics
+subjects:
+- kind: ServiceAccount
+  name: test-sa-1
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: test-cluster-role-1
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: test-cluster-role-binding-2
+  labels:
+    test-type: metrics
+subjects:
+- kind: ServiceAccount
+  name: test-sa-2
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: test-cluster-role-2
+  apiGroup: rbac.authorization.k8s.io
+

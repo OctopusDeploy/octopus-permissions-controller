@@ -318,6 +318,15 @@ func shortHash(value string) string {
 	return fmt.Sprintf("%x", hash)[:32] // Use first 32 characters (128 bits)
 }
 
+// IsOctopusManaged checks if a resource is managed by the Octopus controller
+func IsOctopusManaged(labels map[string]string) bool {
+	if labels == nil {
+		return false
+	}
+	permissions, exists := labels[PermissionsKey]
+	return exists && permissions == "enabled"
+}
+
 // generateServiceAccountName generates a ServiceAccountName based on the given scope
 func generateServiceAccountName(wsaNames iter.Seq[string]) ServiceAccountName {
 	hash := shortHash(strings.Join(slices.Collect(wsaNames), "-"))

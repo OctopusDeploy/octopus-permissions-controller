@@ -18,6 +18,7 @@ type ScopeComputation interface {
 		map[string][]string,
 		[]*corev1.ServiceAccount,
 	)
+	GetScopeToSA() map[Scope]ServiceAccountName
 }
 
 type ScopeComputationService struct {
@@ -99,4 +100,12 @@ func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Sco
 	}
 
 	return scopeToServiceAccount, serviceAccountToWSAs, wsaToServiceAccountNames, serviceAccountsToCreate
+}
+
+// GetScopeToSA returns the current scope to service account mapping
+func (s ScopeComputationService) GetScopeToSA() map[Scope]ServiceAccountName {
+	if s.scopeToSA == nil {
+		return make(map[Scope]ServiceAccountName)
+	}
+	return *s.scopeToSA
 }

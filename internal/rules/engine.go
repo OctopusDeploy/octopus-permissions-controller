@@ -5,22 +5,17 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type Scope = types.Scope
 
 type AgentName string
 
 type Namespace string
 
 type ServiceAccountName string
-
-type Scope struct {
-	Project     string `json:"project"`
-	Environment string `json:"environment"`
-	Tenant      string `json:"tenant"`
-	Step        string `json:"step"`
-	Space       string `json:"space"`
-}
 
 type Engine interface {
 	ResourceManagement
@@ -39,19 +34,6 @@ type InMemoryEngine struct {
 	ScopeComputation
 	ResourceManagement
 	NamespaceDiscovery
-}
-
-func (s *Scope) IsEmpty() bool {
-	return s.Project == "" && s.Environment == "" && s.Tenant == "" && s.Step == "" && s.Space == ""
-}
-
-func (s *Scope) String() string {
-	return fmt.Sprintf("projects=%s,environments=%s,tenants=%s,steps=%s,spaces=%s",
-		s.Project,
-		s.Environment,
-		s.Tenant,
-		s.Step,
-		s.Space)
 }
 
 func NewInMemoryEngine(controllerClient client.Client, targetNamespaceRegex *regexp.Regexp) InMemoryEngine {

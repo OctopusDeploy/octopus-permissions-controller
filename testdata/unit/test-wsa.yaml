@@ -1,0 +1,70 @@
+# Comprehensive test file for all Octopus metrics
+# This file creates resources to test all octopus_ metrics
+
+---
+# Test WSA resources (namespace-scoped)
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: metrics-test-wsa-1
+  namespace: octopus-test
+spec:
+  scope:
+    spaces: [space-1]
+    projects: [project-1]
+    environments: [env-1]
+    tenants: [tenant-1]
+    steps: [step-1]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST]
+        apiGroups: [""]
+        resources: [pods]
+
+---
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: metrics-test-wsa-2
+  namespace: octopus-test
+spec:
+  scope:
+    spaces: [space-2]
+    projects: [project-2]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST, CREATE]
+        apiGroups: [apps]
+        resources: [deployments]
+
+---
+# Test CWSA resources (cluster-scoped)
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: metrics-test-cwsa-1
+spec:
+  scope:
+    spaces: [global-space]
+    environments: [production]
+    tenants: [global-tenant]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST]
+        apiGroups: [""]
+        resources: [nodes]
+
+---
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: metrics-test-cwsa-2
+spec:
+  scope:
+    projects: [global-project]
+    steps: [deploy, test]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST]
+        apiGroups: [rbac.authorization.k8s.io]
+        resources: [clusterroles]
