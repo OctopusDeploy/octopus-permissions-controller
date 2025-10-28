@@ -4,7 +4,7 @@ global:
 scrape_configs:
   - job_name: 'octopus-permissions-controller'
     static_configs:
-      - targets: ['localhost:8444']
+      - targets: ['localhost:8443']
     scrape_interval: 5s
     metrics_path: /metrics
     scheme: http
