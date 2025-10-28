@@ -235,6 +235,10 @@ func (m *MockEngine) DiscoverTargetNamespaces(context.Context, client.Client) ([
 	return []string{"namespace1", "namespace2"}, nil
 }
 
+func (m *MockEngine) GetTargetNamespaces() []string {
+	return []string{"namespace1", "namespace2"}
+}
+
 var _ = Describe("Metrics Test", func() {
 	Context("When creating metrics collector", func() {
 		BeforeEach(func() {

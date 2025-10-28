@@ -146,6 +146,11 @@ func (m *MockEngine) DiscoverTargetNamespaces(ctx context.Context, k8sClient cli
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (m *MockEngine) GetTargetNamespaces() []string {
+	args := m.Called()
+	return args.Get(0).([]string)
+}
+
 func (m *MockEngine) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
 	args := m.Called()
 	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)

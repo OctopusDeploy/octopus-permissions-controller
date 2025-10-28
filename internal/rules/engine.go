@@ -127,3 +127,7 @@ func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 
 	return nil
 }
+
+func (i *InMemoryEngine) GetTargetNamespaces() []string {
+	return i.targetNamespaces
+}
