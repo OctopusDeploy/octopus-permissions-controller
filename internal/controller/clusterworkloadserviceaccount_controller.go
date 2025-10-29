@@ -66,9 +66,18 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
 
 	if err := r.Engine.Reconcile(ctx); err != nil {
+		// Track failed reconciliation as scope matching failed
+		metrics.IncRequestsTotal(controllerType, false)
 		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccounts")
 		return ctrl.Result{}, err
 	}
+
+	// Check if we have any scopes after reconciliation to determine scope matching success
+	finalScopes := r.Engine.GetScopeToSA()
+	scopeMatched := len(finalScopes) > 0
+
+	// Track the request with scope matching result
+	metrics.IncRequestsTotal(controllerType, scopeMatched)
 
 	log.Info("Successfully reconciled ClusterWorkloadServiceAccounts")
 	return ctrl.Result{}, nil
