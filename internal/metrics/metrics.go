@@ -25,9 +25,9 @@ var (
 		[]string{"controller_type", "result"},
 	)
 
-	// Version information metric
-	versionInfo = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	// Version information metric (info pattern)
+	versionInfo = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Name: "octopus_version_info",
 			Help: "Version information about the Octopus Permissions Controller",
 		},
@@ -62,4 +62,9 @@ func RecordReconciliationDurationFunc(controllerType string, startTime time.Time
 		panic(err) // Re-panic to maintain original behavior
 	}
 	ObserveReconciliationDuration(controllerType, "success", duration)
+}
+
+// SetVersionInfo sets the version information in the metrics
+func SetVersionInfo(version string) {
+	versionInfo.WithLabelValues(version).Inc()
 }
