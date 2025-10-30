@@ -12,8 +12,13 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/hashicorp/go-set/v3"
 )
 
 // serviceAccountInfo tracks a service account name and namespace
@@ -21,6 +26,8 @@ type serviceAccountInfo struct {
 	name      string
 	namespace string
 }
+
+const serviceAccountFinalizer = "octopus.com/serviceaccount"
 
 // ResourceManagement defines the interface for creating and managing Kubernetes resources
 type ResourceManagement interface {
@@ -39,15 +46,27 @@ type ResourceManagement interface {
 		ctx context.Context, resources []WSAResource, createdRoles map[string]rbacv1.Role,
 		wsaToServiceAccounts map[string][]string, targetNamespaces []string,
 	) error
+	GarbageCollectServiceAccounts(
+		ctx context.Context, expectedServiceAccounts *set.Set[string], targetNamespaces *set.Set[string],
+	) (ctrl.Result, error)
 }
 
 type ResourceManagementService struct {
 	client client.Client
+	scheme *runtime.Scheme
 }
 
 func NewResourceManagementService(newClient client.Client) ResourceManagementService {
 	return ResourceManagementService{
 		client: newClient,
+		scheme: nil, // Will be set when needed
+	}
+}
+
+func NewResourceManagementServiceWithScheme(newClient client.Client, scheme *runtime.Scheme) ResourceManagementService {
+	return ResourceManagementService{
+		client: newClient,
+		scheme: scheme,
 	}
 }
 
@@ -262,67 +281,173 @@ func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, resou
 		return rbacv1.Role{}, nil
 	}
 
-	namespace := resource.GetNamespace()
 	// Cluster-scoped resources create ClusterRoles not Roles
 	if resource.IsClusterScoped() {
-		return rbacv1.Role{}, nil
+		clusterRole, err := r.createClusterRoleIfNeeded(ctx, resource)
+		if err != nil {
+			return rbacv1.Role{}, err
+		}
+		// Return a Role with just the name for compatibility with existing code
+		// The name will be used to create ClusterRoleBindings in createRoleBindingsForResource
+		return rbacv1.Role{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: clusterRole.Name,
+			},
+		}, nil
 	}
 
+	namespace := resource.GetNamespace()
 	// Generate a role name based on permissions hash to ensure uniqueness
 	permissionsHash := shortHash(fmt.Sprintf("%+v", permissions))
 	roleName := fmt.Sprintf("octopus-role-%s", permissionsHash)
 
 	role := rbacv1.Role{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "rbac.authorization.k8s.io/v1",
+			Kind:       "Role",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      roleName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				PermissionsKey: "enabled",
+				ManagedByLabel: ManagedByValue,
 			},
 		},
 		Rules: permissions,
 	}
 
-	existingRole := rbacv1.Role{}
-	err := r.client.Get(ctx, client.ObjectKeyFromObject(&role), &existingRole)
-	if err == nil {
-		logger.Info("Role already exists", "name", roleName)
-		return existingRole, nil
-	}
-
-	// TODO: When passing ctx, client always failed with ctx cancelled errors
-	err = r.client.Create(context.TODO(), &role)
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			logger.Info("Role already exists", "name", roleName)
-			return role, nil
+	// Set owner reference if scheme is available
+	if r.scheme != nil {
+		owner := resource.GetOwnerObject()
+		if wsa, ok := owner.(*v1beta1.WorkloadServiceAccount); ok {
+			if err := controllerutil.SetControllerReference(wsa, &role, r.scheme); err != nil {
+				logger.Error(err, "failed to set controller reference for Role")
+				// Continue without owner reference rather than failing
+			}
 		}
-		return rbacv1.Role{}, fmt.Errorf("failed to create Role %s: %w", roleName, err)
 	}
 
-	logger.Info("Created Role", "name", roleName, "permissions", len(permissions))
+	// Use server-side apply for idempotent resource management
+	// TODO: When passing ctx, client always failed with ctx cancelled errors
+	err := r.client.Patch(context.TODO(), &role, client.Apply,
+		client.ForceOwnership,
+		client.FieldOwner("octopus-permissions-controller"))
+	if err != nil {
+		return rbacv1.Role{}, fmt.Errorf("failed to apply Role %s: %w", roleName, err)
+	}
+
+	logger.Info("Applied Role", "name", roleName, "permissions", len(permissions))
 	return role, nil
 }
 
-// createServiceAccount deep copies a template service account, sets the namespace, and creates the service account
+func (r ResourceManagementService) createClusterRoleIfNeeded(
+	ctx context.Context, resource WSAResource,
+) (rbacv1.ClusterRole, error) {
+	logger := log.FromContext(ctx).WithName("createClusterRoleIfNeeded")
+
+	permissions := resource.GetPermissionRules()
+	if len(permissions) == 0 {
+		return rbacv1.ClusterRole{}, nil
+	}
+
+	// Generate a cluster role name based on permissions hash to ensure uniqueness
+	permissionsHash := shortHash(fmt.Sprintf("%+v", permissions))
+	clusterRoleName := fmt.Sprintf("octopus-clusterrole-%s", permissionsHash)
+
+	clusterRole := rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "rbac.authorization.k8s.io/v1",
+			Kind:       "ClusterRole",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: clusterRoleName,
+			Labels: map[string]string{
+				ManagedByLabel: ManagedByValue,
+			},
+		},
+		Rules: permissions,
+	}
+
+	// Set owner reference if scheme is available
+	if r.scheme != nil {
+		owner := resource.GetOwnerObject()
+		if cwsa, ok := owner.(*v1beta1.ClusterWorkloadServiceAccount); ok {
+			if err := controllerutil.SetControllerReference(cwsa, &clusterRole, r.scheme); err != nil {
+				logger.Error(err, "failed to set controller reference for ClusterRole")
+				// Continue without owner reference rather than failing
+			}
+		}
+	}
+
+	// Use server-side apply for idempotent resource management
+	err := r.client.Patch(context.TODO(), &clusterRole, client.Apply,
+		client.ForceOwnership,
+		client.FieldOwner("octopus-permissions-controller"))
+	if err != nil {
+		return rbacv1.ClusterRole{}, fmt.Errorf("failed to apply ClusterRole %s: %w", clusterRoleName, err)
+	}
+
+	logger.Info("Applied ClusterRole", "name", clusterRoleName, "permissions", len(permissions))
+	return clusterRole, nil
+}
+
+// createServiceAccount deep copies a template service account, sets the namespace, and applies it using server-side apply
 func (r ResourceManagementService) createServiceAccount(
 	ctx context.Context, namespace string, templateServiceAccount *corev1.ServiceAccount,
 ) error {
 	logger := log.FromContext(ctx).WithName("createServiceAccount")
 
 	serviceAccount := templateServiceAccount.DeepCopy()
+	serviceAccount.TypeMeta = metav1.TypeMeta{
+		APIVersion: "v1",
+		Kind:       "ServiceAccount",
+	}
 	serviceAccount.ObjectMeta.Namespace = namespace //nolint:staticcheck // The namespace must be set in the ObjectMeta
 
-	err := r.client.Create(ctx, serviceAccount)
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			logger.Info("ServiceAccount already exists", "name", serviceAccount.Name, "namespace", namespace)
-			return nil
+	// Clear ResourceVersion to ensure SSA treats this as a create-or-update
+	// This is critical for Server-Side Apply to work correctly
+	serviceAccount.ResourceVersion = ""
+
+	// Add managed-by label for garbage collection tracking
+	if serviceAccount.Labels == nil {
+		serviceAccount.Labels = make(map[string]string)
+	}
+	serviceAccount.Labels[ManagedByLabel] = ManagedByValue
+
+	// Add finalizer to track ownership across all namespaces
+	// This allows us to find and clean up ServiceAccounts regardless of their namespace
+	finalizers := serviceAccount.GetFinalizers()
+	hasFinalizer := false
+	for _, f := range finalizers {
+		if f == serviceAccountFinalizer {
+			hasFinalizer = true
+			break
 		}
-		return fmt.Errorf("failed to create ServiceAccount %s in namespace %s: %w", serviceAccount.Name, namespace, err)
+	}
+	if !hasFinalizer {
+		serviceAccount.SetFinalizers(append(finalizers, serviceAccountFinalizer))
 	}
 
-	logger.Info("Created ServiceAccount", "name", serviceAccount.Name, "namespace", namespace)
+	// Log what we're about to apply for debugging
+	logger.V(1).Info("Applying ServiceAccount",
+		"name", serviceAccount.Name,
+		"namespace", namespace,
+		"annotations", serviceAccount.Annotations,
+		"hasFinalizer", len(serviceAccount.Finalizers) > 0)
+
+	// Use server-side apply for idempotent resource management
+	err := r.client.Patch(ctx, serviceAccount, client.Apply,
+		client.ForceOwnership,
+		client.FieldOwner("octopus-permissions-controller"))
+	if err != nil {
+		logger.Error(err, "Failed to apply ServiceAccount",
+			"name", serviceAccount.Name,
+			"namespace", namespace,
+			"annotations", serviceAccount.Annotations)
+		return fmt.Errorf("failed to apply ServiceAccount %s in namespace %s: %w", serviceAccount.Name, namespace, err)
+	}
+
+	logger.Info("Applied ServiceAccount", "name", serviceAccount.Name, "namespace", namespace)
 	return nil
 }
 
@@ -353,13 +478,26 @@ func (r ResourceManagementService) createRoleBindingsForResource(
 
 	// Create role binding for inline permissions (if role was created)
 	if createdRole, exists := createdRoles[resource.GetName()]; exists {
-		roleRef := rbacv1.RoleRef{
-			Kind:     "Role",
-			Name:     createdRole.Name,
-			APIGroup: "rbac.authorization.k8s.io",
-		}
-		if bindErr := r.createRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
-			err = multierr.Append(err, bindErr)
+		if resource.IsClusterScoped() {
+			// For cluster-scoped resources with inline permissions, create ClusterRoleBinding
+			roleRef := rbacv1.RoleRef{
+				Kind:     "ClusterRole",
+				Name:     createdRole.Name,
+				APIGroup: "rbac.authorization.k8s.io",
+			}
+			if bindErr := r.createClusterRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
+				err = multierr.Append(err, bindErr)
+			}
+		} else {
+			// For namespace-scoped resources with inline permissions, create RoleBinding
+			roleRef := rbacv1.RoleRef{
+				Kind:     "Role",
+				Name:     createdRole.Name,
+				APIGroup: "rbac.authorization.k8s.io",
+			}
+			if bindErr := r.createRoleBinding(ctx, resource, roleRef, subjects); bindErr != nil {
+				err = multierr.Append(err, bindErr)
+			}
 		}
 	}
 
@@ -391,25 +529,41 @@ func (r ResourceManagementService) createRoleBinding(
 	namespace := resource.GetNamespace()
 
 	roleBinding := &rbacv1.RoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "rbac.authorization.k8s.io/v1",
+			Kind:       "RoleBinding",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
-			// TODO: Labels?
+			Labels: map[string]string{
+				ManagedByLabel: ManagedByValue,
+			},
 		},
 		RoleRef:  roleRef,
 		Subjects: subjects,
 	}
 
-	err := r.client.Create(ctx, roleBinding)
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			logger.Info("RoleBinding already exists", "name", name, "namespace", namespace)
-			return nil
+	// Set owner reference if scheme is available (only for namespaced WSAs)
+	if r.scheme != nil && !resource.IsClusterScoped() {
+		owner := resource.GetOwnerObject()
+		if wsa, ok := owner.(*v1beta1.WorkloadServiceAccount); ok {
+			if err := controllerutil.SetControllerReference(wsa, roleBinding, r.scheme); err != nil {
+				logger.Error(err, "failed to set controller reference for RoleBinding")
+				// Continue without owner reference rather than failing
+			}
 		}
-		return fmt.Errorf("failed to create RoleBinding %s in namespace %s: %w", name, namespace, err)
 	}
 
-	logger.Info("Created RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "resource", resource.GetName())
+	// Use server-side apply for idempotent resource management
+	err := r.client.Patch(ctx, roleBinding, client.Apply,
+		client.ForceOwnership,
+		client.FieldOwner("octopus-permissions-controller"))
+	if err != nil {
+		return fmt.Errorf("failed to apply RoleBinding %s in namespace %s: %w", name, namespace, err)
+	}
+
+	logger.Info("Applied RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "resource", resource.GetName())
 	return nil
 }
 
@@ -422,23 +576,213 @@ func (r ResourceManagementService) createClusterRoleBinding(
 	name := fmt.Sprintf("octopus-crb-%s", shortHash(fmt.Sprintf("%s-%s", resource.GetName(), roleRef.Name)))
 
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "rbac.authorization.k8s.io/v1",
+			Kind:       "ClusterRoleBinding",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
-			// TODO: Labels?
+			Labels: map[string]string{
+				ManagedByLabel: ManagedByValue,
+			},
 		},
 		RoleRef:  roleRef,
 		Subjects: subjects,
 	}
 
-	err := r.client.Create(ctx, clusterRoleBinding)
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			logger.Info("ClusterRoleBinding already exists", "name", name)
-			return nil
+	// Set owner reference if scheme is available (only for cluster-scoped CWSAs)
+	if r.scheme != nil && resource.IsClusterScoped() {
+		owner := resource.GetOwnerObject()
+		if cwsa, ok := owner.(*v1beta1.ClusterWorkloadServiceAccount); ok {
+			if err := controllerutil.SetControllerReference(cwsa, clusterRoleBinding, r.scheme); err != nil {
+				logger.Error(err, "failed to set controller reference for ClusterRoleBinding")
+				// Continue without owner reference rather than failing
+			}
 		}
-		return fmt.Errorf("failed to create ClusterRoleBinding %s: %w", name, err)
 	}
 
-	logger.Info("Created ClusterRoleBinding", "name", name, "roleRef", roleRef.Name, "resource", resource.GetName())
+	// Use server-side apply for idempotent resource management
+	err := r.client.Patch(ctx, clusterRoleBinding, client.Apply,
+		client.ForceOwnership,
+		client.FieldOwner("octopus-permissions-controller"))
+	if err != nil {
+		return fmt.Errorf("failed to apply ClusterRoleBinding %s: %w", name, err)
+	}
+
+	logger.Info("Applied ClusterRoleBinding", "name", name, "roleRef", roleRef.Name, "resource", resource.GetName())
 	return nil
+}
+
+// GarbageCollectServiceAccounts deletes ServiceAccounts that are managed by this controller
+// but are no longer needed (not in the expectedServiceAccounts set or in out-of-scope namespaces).
+// Returns ctrl.Result with RequeueAfter set when ServiceAccounts are still in use by pods.
+func (r ResourceManagementService) GarbageCollectServiceAccounts(
+	ctx context.Context, expectedServiceAccounts *set.Set[string], targetNamespaces *set.Set[string],
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithName("garbageCollectServiceAccounts")
+	var needsRequeue bool
+
+	// List all ServiceAccounts with our managed-by label across all namespaces
+	saList := &corev1.ServiceAccountList{}
+	if listErr := r.client.List(ctx, saList, client.MatchingLabels{ManagedByLabel: ManagedByValue}); listErr != nil {
+		logger.Error(listErr, "failed to list ServiceAccounts")
+		return ctrl.Result{}, fmt.Errorf("failed to list ServiceAccounts: %w", listErr)
+	}
+
+	// Delete ServiceAccounts that shouldn't exist
+	for i := range saList.Items {
+		sa := &saList.Items[i]
+
+		// Check if this SA has our finalizer (we'll remove it before deletion)
+		hasFinalizer := false
+		for _, f := range sa.GetFinalizers() {
+			if f == serviceAccountFinalizer {
+				hasFinalizer = true
+				break
+			}
+		}
+
+		// Determine if this ServiceAccount should be deleted
+		// Delete if: (1) namespace is not in target namespaces OR (2) name is not in expected set
+		namespaceInScope := targetNamespaces.Contains(sa.Namespace)
+		nameExpected := expectedServiceAccounts.Contains(sa.Name)
+		shouldDelete := !namespaceInScope || !nameExpected
+
+		if shouldDelete {
+			// Check if deletion has already been initiated (deletionTimestamp is set)
+			if sa.DeletionTimestamp.IsZero() {
+				// Deletion not yet initiated - mark for deletion
+				logger.Info("Marking ServiceAccount for deletion",
+					"name", sa.Name,
+					"namespace", sa.Namespace,
+					"reason", fmt.Sprintf("namespaceInScope=%v, nameExpected=%v", namespaceInScope, nameExpected),
+					"annotations", sa.Annotations)
+
+				// Initiate deletion (this sets deletionTimestamp)
+				if deleteErr := r.client.Delete(ctx, sa); deleteErr != nil {
+					if !errors.IsNotFound(deleteErr) {
+						logger.Error(deleteErr, "failed to initiate deletion of ServiceAccount", "name", sa.Name, "namespace", sa.Namespace)
+						return ctrl.Result{}, fmt.Errorf("failed to initiate deletion of ServiceAccount %s in namespace %s: %w", sa.Name, sa.Namespace, deleteErr)
+					}
+				} else {
+					logger.Info("Initiated deletion of ServiceAccount (will check for active pods on next reconcile)",
+						"name", sa.Name, "namespace", sa.Namespace)
+				}
+			} else {
+				// Deletion already initiated - check if pods are still using it
+				logger.Info("ServiceAccount marked for deletion, checking for active pods",
+					"name", sa.Name,
+					"namespace", sa.Namespace)
+
+				inUse, pods, checkErr := r.IsServiceAccountInUse(ctx, sa.Name, targetNamespaces)
+				if checkErr != nil {
+					logger.Error(checkErr, "failed to check if ServiceAccount is in use", "name", sa.Name, "namespace", sa.Namespace)
+					return ctrl.Result{}, fmt.Errorf("failed to check if ServiceAccount %s is in use: %w", sa.Name, checkErr)
+				}
+
+				if inUse {
+					// ServiceAccount is still in use - mark for requeue but continue processing others
+					logger.Info("Deferring ServiceAccount deletion due to active pods, will requeue in 30s",
+						"name", sa.Name,
+						"namespace", sa.Namespace,
+						"activePods", pods,
+						"podCount", len(pods))
+					needsRequeue = true
+					continue
+				} else {
+					// No pods using it - safe to complete deletion by removing finalizer
+					logger.Info("No active pods found, completing ServiceAccount deletion",
+						"name", sa.Name,
+						"namespace", sa.Namespace)
+
+					if hasFinalizer {
+						finalizers := sa.GetFinalizers()
+						newFinalizers := []string{}
+						for _, f := range finalizers {
+							if f != serviceAccountFinalizer {
+								newFinalizers = append(newFinalizers, f)
+							}
+						}
+						sa.SetFinalizers(newFinalizers)
+
+						if updateErr := r.client.Update(ctx, sa); updateErr != nil {
+							if !errors.IsNotFound(updateErr) {
+								logger.Error(updateErr, "failed to remove finalizer from ServiceAccount", "name", sa.Name, "namespace", sa.Namespace)
+								return ctrl.Result{}, fmt.Errorf("failed to remove finalizer from ServiceAccount %s in namespace %s: %w", sa.Name, sa.Namespace, updateErr)
+							}
+						} else {
+							logger.Info("Removed finalizer from ServiceAccount, deletion will complete",
+								"name", sa.Name, "namespace", sa.Namespace)
+						}
+					}
+				}
+			}
+		} else {
+			// Log why we're keeping this SA for debugging
+			logger.V(1).Info("Keeping ServiceAccount",
+				"name", sa.Name,
+				"namespace", sa.Namespace,
+				"annotations", sa.Annotations,
+				"reason", "still needed")
+		}
+	}
+
+	// If any ServiceAccounts are still in use, return requeue result
+	if needsRequeue {
+		logger.Info("Some ServiceAccounts still in use by pods, requeueing in 5s")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// IsServiceAccountInUse checks if any pods in the target namespaces are currently using the specified ServiceAccount.
+// It returns true if any pods in Running, Pending, or Terminating state are using the SA,
+// along with the names of those pods for logging purposes.
+func (r ResourceManagementService) IsServiceAccountInUse(
+	ctx context.Context, saName string, targetNamespaces *set.Set[string],
+) (bool, []string, error) {
+	logger := log.FromContext(ctx).WithName("isServiceAccountInUse")
+	var activePods []string
+
+	// Check each target namespace for pods using this ServiceAccount
+	for namespace := range targetNamespaces.Items() {
+		rawPodList := &corev1.PodList{}
+		err := r.client.List(ctx, rawPodList,
+			client.InNamespace(namespace))
+
+		if err != nil {
+			logger.Error(err, "failed to list pods in namespace", "namespace", namespace, "serviceAccount", saName)
+			return false, nil, fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)
+		}
+
+		// Filter pods that are using the specified ServiceAccount
+		podList := &corev1.PodList{}
+		for i := range rawPodList.Items {
+			pod := &rawPodList.Items[i]
+			if pod.Spec.ServiceAccountName == saName {
+				podList.Items = append(podList.Items, *pod)
+			}
+		}
+
+		// Check if any pods are in Running or Pending state
+		for i := range podList.Items {
+			pod := &podList.Items[i]
+
+			switch pod.Status.Phase {
+			case corev1.PodRunning, corev1.PodPending:
+				activePods = append(activePods, fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+			}
+		}
+	}
+
+	if len(activePods) > 0 {
+		logger.V(1).Info("ServiceAccount is in use by active pods",
+			"serviceAccount", saName,
+			"podCount", len(activePods),
+			"pods", activePods)
+		return true, activePods, nil
+	}
+
+	return false, nil, nil
 }
