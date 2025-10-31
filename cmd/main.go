@@ -51,12 +51,10 @@ import (
 	// +kubebuilder:scaffold:imports
 )
 
-// StartupReconciler runs a full reconciliation once on controller startup
 type StartupReconciler struct {
 	engine *rules.InMemoryEngine
 }
 
-// Start implements manager.Runnable and performs the initial full reconciliation
 func (s *StartupReconciler) Start(ctx context.Context) error {
 	setupLog.Info("Running initial full reconciliation")
 	if err := s.engine.Reconcile(ctx); err != nil {
@@ -64,12 +62,9 @@ func (s *StartupReconciler) Start(ctx context.Context) error {
 		return err
 	}
 	setupLog.Info("Initial reconciliation completed successfully")
-	// Return immediately - we only need to run once
 	return nil
 }
 
-// NeedLeaderElection implements manager.LeaderElectionRunnable
-// This ensures the startup reconcile only runs on the leader
 func (s *StartupReconciler) NeedLeaderElection() bool {
 	return true
 }

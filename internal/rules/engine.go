@@ -90,12 +90,10 @@ func NewInMemoryEngineWithNamespaces(
 	return engine
 }
 
-// Reconcile performs a full reconciliation of all WorkloadServiceAccounts and ClusterWorkloadServiceAccounts.
 func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	// Fetch WorkloadServiceAccounts
 	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return err

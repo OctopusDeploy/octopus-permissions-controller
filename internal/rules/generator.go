@@ -14,11 +14,7 @@ import (
 )
 
 func getScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary) {
-	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
-
-	// Use set theory to compute minimal service accounts needed
-	// Only create service accounts where multiple WSAs could apply to the same scope
 	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
 
@@ -51,7 +47,6 @@ func NewGlobalVocabulary() GlobalVocabulary {
 }
 
 func (v *GlobalVocabulary) GetKnownScopeCombination(scope Scope) Scope {
-	// For each dimension, if the value is known, keep it; otherwise, set to wildcard
 	knownScope := Scope{}
 
 	if v[ProjectIndex].Contains(scope.Project) {

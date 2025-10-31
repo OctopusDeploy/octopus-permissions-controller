@@ -21,7 +21,6 @@ import (
 	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -34,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-// WorkloadServiceAccountReconciler reconciles a WorkloadServiceAccount object
 type WorkloadServiceAccountReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -52,16 +50,15 @@ type WorkloadServiceAccountReconciler struct {
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
 func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	startTime := time.Now()
-	defer metrics.RecordReconciliationDurationFunc("workloadserviceaccount", startTime)
+	defer recordMetrics("workloadserviceaccount", startTime)
 
 	log.Info("WorkloadServiceAccount reconciliation triggered", "name", req.Name, "namespace", req.Namespace)
 
-	wsa, err := r.fetchResource(ctx, req)
+	wsa := &agentoctopuscomv1beta1.WorkloadServiceAccount{}
+	wsa, err := fetchResource(ctx, r.Client, req, wsa)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -69,151 +66,29 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
-	if r.isBeingDeleted(wsa) {
-		return r.handleDeletion(ctx, req, wsa)
+	if isBeingDeleted(wsa) {
+		wsaResource := rules.NewWSAResource(wsa)
+		return handleDeletion(ctx, r.Client, req, wsa, r.Engine, wsaResource)
 	}
 
-	if r.ensureFinalizer(ctx, wsa) {
-		wsa, err = r.fetchResource(ctx, req)
+	if ensureFinalizer(ctx, r.Client, wsa) {
+		wsa, err = fetchResource(ctx, r.Client, req, wsa)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	if err := r.reconcileResource(ctx, wsa); err != nil {
-		r.updateStatusOnFailure(ctx, wsa, err)
-		return ctrl.Result{}, err
-	}
-
-	r.updateStatusOnSuccess(ctx, wsa)
-	log.Info("Successfully reconciled WorkloadServiceAccount")
-	return ctrl.Result{}, nil
-}
-
-func (r *WorkloadServiceAccountReconciler) fetchResource(
-	ctx context.Context, req ctrl.Request,
-) (*agentoctopuscomv1beta1.WorkloadServiceAccount, error) {
-	log := logf.FromContext(ctx)
-	wsa := &agentoctopuscomv1beta1.WorkloadServiceAccount{}
-
-	if err := r.Get(ctx, req.NamespacedName, wsa); err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			log.V(1).Info("WorkloadServiceAccount not found, likely deleted")
-			return nil, nil
-		}
-		log.Error(err, "failed to get WorkloadServiceAccount")
-		return nil, err
-	}
-
-	return wsa, nil
-}
-
-func (r *WorkloadServiceAccountReconciler) isBeingDeleted(wsa *agentoctopuscomv1beta1.WorkloadServiceAccount) bool {
-	return !wsa.DeletionTimestamp.IsZero()
-}
-
-func (r *WorkloadServiceAccountReconciler) handleDeletion(
-	ctx context.Context, req ctrl.Request, wsa *agentoctopuscomv1beta1.WorkloadServiceAccount,
-) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	if !hasFinalizer(wsa.GetFinalizers(), ServiceAccountCleanupFinalizer) {
-		log.V(1).Info("Resource being deleted but finalizer already removed")
-		return ctrl.Result{}, nil
-	}
-
-	log.Info("Cleaning up ServiceAccounts for deleted WorkloadServiceAccount")
-
 	wsaResource := rules.NewWSAResource(wsa)
-	result, err := r.Engine.CleanupServiceAccounts(ctx, wsaResource)
-	if err != nil {
-		log.Error(err, "failed to cleanup ServiceAccounts")
-		return result, err
-	}
-
-	if result.RequeueAfter > 0 || result.Requeue {
-		log.Info("ServiceAccounts cleanup pending, will requeue", "requeue", result)
-		return result, nil
-	}
-
-	if err := r.Get(ctx, req.NamespacedName, wsa); err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			log.V(1).Info("WorkloadServiceAccount deleted during cleanup")
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "failed to refetch before removing finalizer")
-		return ctrl.Result{}, err
-	}
-
-	if removeFinalizer(wsa) {
-		if err := r.Update(ctx, wsa); err != nil {
-			if client.IgnoreNotFound(err) == nil {
-				log.V(1).Info("WorkloadServiceAccount deleted before finalizer removal")
-				return ctrl.Result{}, nil
-			}
-			log.Error(err, "failed to remove finalizer")
-			return ctrl.Result{}, err
-		}
-		log.Info("Successfully cleaned up ServiceAccounts and removed finalizer")
-	}
-
-	return ctrl.Result{}, nil
-}
-
-func (r *WorkloadServiceAccountReconciler) ensureFinalizer(
-	ctx context.Context, wsa *agentoctopuscomv1beta1.WorkloadServiceAccount,
-) bool {
-	log := logf.FromContext(ctx)
-
-	if addFinalizer(wsa) {
-		if err := r.Update(ctx, wsa); err != nil {
-			log.Error(err, "failed to add finalizer")
-			return false
-		}
-		log.Info("Added finalizer to WorkloadServiceAccount")
-		return true
-	}
-	return false
-}
-
-func (r *WorkloadServiceAccountReconciler) reconcileResource(
-	ctx context.Context, wsa *agentoctopuscomv1beta1.WorkloadServiceAccount,
-) error {
-	log := logf.FromContext(ctx)
-	wsaResource := rules.NewWSAResource(wsa)
-
 	if err := r.Engine.ReconcileResource(ctx, wsaResource); err != nil {
 		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccount")
-		return err
+		updateStatusOnFailure(ctx, r.Client, wsa, &wsa.Status, err)
+		return ctrl.Result{}, err
 	}
 
-	return nil
-}
-
-func (r *WorkloadServiceAccountReconciler) updateStatusOnFailure(
-	ctx context.Context, wsa *agentoctopuscomv1beta1.WorkloadServiceAccount, err error,
-) {
-	log := logf.FromContext(ctx)
-
-	wsa.Status.Conditions = updateCondition(wsa.Status.Conditions, ConditionTypeReady,
-		"False", ReasonReconcileFailed, err.Error())
-
-	if statusErr := r.Status().Update(ctx, wsa); statusErr != nil {
-		log.Error(statusErr, "failed to update status after reconciliation failure")
-	}
-}
-
-func (r *WorkloadServiceAccountReconciler) updateStatusOnSuccess(
-	ctx context.Context, wsa *agentoctopuscomv1beta1.WorkloadServiceAccount,
-) {
-	log := logf.FromContext(ctx)
-
-	wsa.Status.Conditions = updateCondition(wsa.Status.Conditions, ConditionTypeReady,
-		"True", ReasonReconcileSuccess, "All ServiceAccounts, Roles, and RoleBindings successfully reconciled")
-
-	if err := r.Status().Update(ctx, wsa); err != nil {
-		log.Error(err, "failed to update status after successful reconciliation")
-	}
+	updateStatusOnSuccess(ctx, r.Client, wsa, &wsa.Status,
+		"All ServiceAccounts, Roles, and RoleBindings successfully reconciled")
+	log.Info("Successfully reconciled WorkloadServiceAccount")
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -234,7 +109,9 @@ func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) er
 // mapServiceAccountToWSAs maps ServiceAccount events to WorkloadServiceAccount reconcile requests.
 // When a ServiceAccount changes (especially when marked for deletion), this triggers reconciliation
 // of all WSAs so they can complete the two-phase deletion process (remove finalizers if safe).
-func (r *WorkloadServiceAccountReconciler) mapServiceAccountToWSAs(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *WorkloadServiceAccountReconciler) mapServiceAccountToWSAs(
+	ctx context.Context, obj client.Object,
+) []reconcile.Request {
 	return MapServiceAccountToResources(
 		ctx,
 		obj,
