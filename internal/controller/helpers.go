@@ -77,6 +77,11 @@ func handleDeletion[T WSAResource](
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
+	log.Info("Entering deletion handler",
+		"name", resource.GetName(),
+		"namespace", resource.GetNamespace(),
+		"hasFinalizer", hasFinalizer(resource.GetFinalizers(), ServiceAccountCleanupFinalizer))
+
 	if !hasFinalizer(resource.GetFinalizers(), ServiceAccountCleanupFinalizer) {
 		log.V(1).Info("Resource being deleted but finalizer already removed")
 		return ctrl.Result{}, nil
@@ -90,10 +95,13 @@ func handleDeletion[T WSAResource](
 		return result, err
 	}
 
-	if result.RequeueAfter > 0 || result.Requeue {
-		log.Info("ServiceAccounts cleanup pending, will requeue", "requeue", result)
+	if result.RequeueAfter > 0 {
+		log.Info("ServiceAccounts cleanup pending, will requeue",
+			"requeueAfter", result.RequeueAfter)
 		return result, nil
 	}
+
+	log.Info("ServiceAccounts cleanup complete, removing finalizer")
 
 	if err := c.Get(ctx, req.NamespacedName, resource); err != nil {
 		if client.IgnoreNotFound(err) == nil {
@@ -113,7 +121,9 @@ func handleDeletion[T WSAResource](
 			log.Error(err, "failed to remove finalizer")
 			return ctrl.Result{}, err
 		}
-		log.Info("Successfully cleaned up ServiceAccounts and removed finalizer")
+		log.Info("Successfully cleaned up ServiceAccounts and removed finalizer",
+			"name", resource.GetName(),
+			"namespace", resource.GetNamespace())
 	}
 
 	return ctrl.Result{}, nil

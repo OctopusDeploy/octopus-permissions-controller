@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
+// nolint:goconst // We don't need to const a resource name
 package rules
 
 import (
@@ -1326,7 +1326,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Delete(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation to mark SA for deletion")
-			engine.Reconcile(testCtx)
+			_ = engine.Reconcile(testCtx)
 
 			By("verifying SA is marked for deletion")
 			sa := &corev1.ServiceAccount{}

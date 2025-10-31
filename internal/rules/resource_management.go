@@ -615,38 +615,87 @@ func (r ResourceManagementService) GarbageCollectServiceAccounts(
 		return ctrl.Result{}, fmt.Errorf("failed to list ServiceAccounts: %w", listErr)
 	}
 
-	var needsRequeue bool
+	logger.Info("Starting garbage collection",
+		"totalManagedSAs", len(saList.Items),
+		"expectedSAs", expectedServiceAccounts.Size(),
+		"targetNamespaces", targetNamespaces.Size())
+
+	var toDelete []*corev1.ServiceAccount
+	var toFinalize []*corev1.ServiceAccount
+	var toKeep []*corev1.ServiceAccount
+
 	for i := range saList.Items {
 		sa := &saList.Items[i]
 
-		if !r.shouldDeleteServiceAccount(sa, expectedServiceAccounts, targetNamespaces) {
-			logger.V(1).Info("Keeping ServiceAccount",
-				"name", sa.Name,
-				"namespace", sa.Namespace,
-				"annotations", sa.Annotations,
-				"reason", "still needed")
+		shouldDelete := r.shouldDeleteServiceAccount(sa, expectedServiceAccounts, targetNamespaces)
+		namespaceInScope := targetNamespaces.Contains(sa.Namespace)
+		nameExpected := expectedServiceAccounts.Contains(sa.Name)
+
+		logger.V(1).Info("Evaluating ServiceAccount",
+			"name", sa.Name,
+			"namespace", sa.Namespace,
+			"shouldDelete", shouldDelete,
+			"namespaceInScope", namespaceInScope,
+			"nameExpected", nameExpected,
+			"hasDeletionTimestamp", !sa.DeletionTimestamp.IsZero())
+
+		if !shouldDelete {
+			toKeep = append(toKeep, sa)
 			continue
 		}
 
 		if sa.DeletionTimestamp.IsZero() {
-			if err := r.markServiceAccountForDeletion(ctx, sa, targetNamespaces); err != nil {
-				return ctrl.Result{}, err
-			}
+			toDelete = append(toDelete, sa)
 		} else {
-			requeue, err := r.completeServiceAccountDeletion(ctx, sa, targetNamespaces)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			if requeue {
-				needsRequeue = true
-			}
+			toFinalize = append(toFinalize, sa)
+		}
+	}
+
+	logger.Info("Garbage collection phase summary",
+		"toKeep", len(toKeep),
+		"toDelete", len(toDelete),
+		"toFinalize", len(toFinalize))
+
+	for _, sa := range toDelete {
+		logger.Info("Phase 1: Marking ServiceAccount for deletion",
+			"name", sa.Name,
+			"namespace", sa.Namespace,
+			"annotations", sa.Annotations)
+		if err := r.markServiceAccountForDeletion(ctx, sa, targetNamespaces); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if len(toDelete) > 0 {
+		logger.Info("Marked ServiceAccounts for deletion, requeueing for Phase 2 finalization",
+			"count", len(toDelete))
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+	}
+
+	var needsRequeue bool
+	for _, sa := range toFinalize {
+		logger.Info("Phase 2: Attempting to finalize ServiceAccount deletion",
+			"name", sa.Name,
+			"namespace", sa.Namespace)
+		requeue, err := r.completeServiceAccountDeletion(ctx, sa, targetNamespaces)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if requeue {
+			needsRequeue = true
 		}
 	}
 
 	if needsRequeue {
-		logger.Info("Some ServiceAccounts still in use by pods, requeueing in 5s")
+		logger.Info("Some ServiceAccounts still in use by pods, requeueing in 5s",
+			"sasAwaitingFinalization", len(toFinalize))
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
+
+	logger.Info("Garbage collection complete",
+		"sasKept", len(toKeep),
+		"sasMarkedForDeletion", len(toDelete),
+		"sasFinalized", len(toFinalize))
 
 	return ctrl.Result{}, nil
 }

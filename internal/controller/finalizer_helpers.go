@@ -51,6 +51,7 @@ func hasSAFinalizer(sa *corev1.ServiceAccount) bool {
 	return hasFinalizer(sa.GetFinalizers(), ServiceAccountFinalizer)
 }
 
+// nolint:unparam // conditionType is currently always Ready, but may vary in the future
 func updateCondition(conditions []metav1.Condition, conditionType, status, reason, message string) []metav1.Condition {
 	condition := metav1.Condition{
 		Type:    conditionType,

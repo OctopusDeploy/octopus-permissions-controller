@@ -531,20 +531,30 @@ func (i *InMemoryEngine) syncDeletingSAs(ctx context.Context) error {
 // It recomputes what ServiceAccounts are needed by all remaining resources and deletes only
 // those that are no longer needed by any resource.
 // The deletingResource parameter should be the resource being deleted (so it can be excluded from the calculation).
-func (i *InMemoryEngine) CleanupServiceAccounts(ctx context.Context, deletingResource WSAResource) (ctrl.Result, error) {
-	// Fetch all remaining WorkloadServiceAccounts
+func (i *InMemoryEngine) CleanupServiceAccounts(
+	ctx context.Context, deletingResource WSAResource,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithName("cleanupServiceAccounts")
+
+	deletingName := deletingResource.GetName()
+	deletingNamespace := deletingResource.GetNamespace()
+	deletingIsClusterScoped := deletingResource.IsClusterScoped()
+
+	logger.Info("Starting cleanup for deleted resource",
+		"name", deletingName,
+		"namespace", deletingNamespace,
+		"isClusterScoped", deletingIsClusterScoped)
+
 	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get WorkloadServiceAccounts: %w", err)
 	}
 
-	// Fetch all remaining ClusterWorkloadServiceAccounts
 	cwsaEnumerable, err := i.GetClusterWorkloadServiceAccounts(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ClusterWorkloadServiceAccounts: %w", err)
 	}
 
-	// Get target namespaces - acquire read lock to safely access shared state
 	i.mu.RLock()
 	targetNamespaces := i.targetNamespaces
 	lookupNamespaces := i.lookupNamespaces
@@ -557,10 +567,6 @@ func (i *InMemoryEngine) CleanupServiceAccounts(ctx context.Context, deletingRes
 		}
 		targetNamespaces = namespaces
 	}
-
-	deletingName := deletingResource.GetName()
-	deletingNamespace := deletingResource.GetNamespace()
-	deletingIsClusterScoped := deletingResource.IsClusterScoped()
 
 	allResources := make([]WSAResource, 0)
 	for wsa := range wsaEnumerable {
@@ -578,52 +584,51 @@ func (i *InMemoryEngine) CleanupServiceAccounts(ctx context.Context, deletingRes
 		allResources = append(allResources, cwsaResource)
 	}
 
-	// Compute what ServiceAccounts are still needed
-	// We need to reacquire the read lock for these computations
+	logger.Info("Computed remaining resources after deletion",
+		"remainingWSAs", len(allResources),
+		"targetNamespaces", len(targetNamespaces))
+
 	i.mu.RLock()
 	scopeMap, _ := i.ComputeScopesForWSAs(allResources)
 	_, _, _, neededServiceAccounts := i.GenerateServiceAccountMappings(scopeMap)
 	i.mu.RUnlock()
 
 	neededSet := set.New[string](len(neededServiceAccounts))
+	neededNames := make([]string, 0, len(neededServiceAccounts))
 	for _, sa := range neededServiceAccounts {
 		neededSet.Insert(sa.Name)
+		neededNames = append(neededNames, sa.Name)
 	}
+
+	logger.Info("Computed needed ServiceAccounts after deletion",
+		"neededCount", len(neededNames),
+		"neededSAs", neededNames)
 
 	targetNamespacesSet := set.New[string](len(targetNamespaces))
 	for _, ns := range targetNamespaces {
 		targetNamespacesSet.Insert(ns)
 	}
 
-	// Perform garbage collection (Phase 1: mark SAs for deletion)
+	logger.Info("Calling garbage collection")
 	result, err := i.GarbageCollectServiceAccounts(ctx, neededSet, targetNamespacesSet)
 	if err != nil {
+		logger.Error(err, "Garbage collection failed")
 		return result, err
 	}
 
-	// Run garbage collection again immediately (Phase 2: remove finalizers from marked SAs)
-	// This ensures that ServiceAccounts marked for deletion in Phase 1 get their finalizers
-	// removed immediately if they're not in use, completing the deletion in one reconciliation cycle.
-	result2, err2 := i.GarbageCollectServiceAccounts(ctx, neededSet, targetNamespacesSet)
-	if err2 != nil {
-		return result2, err2
+	if result.RequeueAfter > 0 {
+		logger.Info("Garbage collection requires requeue",
+			"requeueAfter", result.RequeueAfter)
 	}
 
-	// Merge requeue results - if either phase needs requeue, we should requeue
-	if result2.RequeueAfter > 0 || result2.Requeue {
-		result = result2
-	}
-
-	// Update the deletingSAs map to track which SAs are marked for deletion
-	// Acquire write lock before calling syncDeletingSAs
 	i.mu.Lock()
 	syncErr := i.syncDeletingSAs(ctx)
 	i.mu.Unlock()
 
 	if syncErr != nil {
-		// Return error to fail reconciliation and ensure map stays in sync
 		return ctrl.Result{}, fmt.Errorf("failed to sync deletingSAs map: %w", syncErr)
 	}
 
+	logger.Info("Cleanup complete", "result", result)
 	return result, nil
 }
