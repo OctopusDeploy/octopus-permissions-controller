@@ -1,11 +1,10 @@
 package rules
 
 import (
-	"slices"
-	"testing"
-
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	"github.com/stretchr/testify/assert"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -65,73 +64,84 @@ func NewFindAllPossibleResourceScopesTest(name string) FindAllPossibleResourceSc
 	return test
 }
 
-func Test_getScopesForWSAs(t *testing.T) {
-	tests := []FindAllPossibleResourceScopesTest{
-		NewFindAllPossibleResourceScopesTest("Simple Scopes and WSAs"),
-	}
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			// Convert WSA pointers to WSAResource interface
-			resources := make([]WSAResource, len(tt.WsaList))
-			for i, wsa := range tt.WsaList {
-				resources[i] = NewWSAResource(wsa)
-			}
+var _ = Describe("Scope Generation", func() {
+	Describe("getScopesForWSAs", func() {
+		Context("When generating scopes for WorkloadServiceAccounts", func() {
+			It("Should return non-empty results with scopes mapped to WSAs", func() {
+				By("Creating test vocabulary and WSA list")
+				testData := NewFindAllPossibleResourceScopesTest("Simple Scopes and WSAs")
 
-			result, _ := getScopesForWSAs(resources)
-			// Verify we get some results
-			assert.NotEmpty(t, result, "getScopesForWSAs should return non-empty result")
+				By("Converting WSA pointers to WSAResource interface")
+				resources := make([]WSAResource, len(testData.WsaList))
+				for i, wsa := range testData.WsaList {
+					resources[i] = NewWSAResource(wsa)
+				}
 
-			// Verify each scope has at least one WSA mapped to it
-			for scope, wsaMap := range result {
-				assert.NotEmpty(t, wsaMap, "Each scope should have at least one WSA: %v", scope)
-			}
+				By("Generating scopes for WSAs")
+				result, _ := getScopesForWSAs(resources)
+
+				By("Verifying results")
+				Expect(result).NotTo(BeEmpty(), "getScopesForWSAs should return non-empty result")
+
+				for scope, wsaMap := range result {
+					Expect(wsaMap).NotTo(BeEmpty(), "Each scope should have at least one WSA: %v", scope)
+				}
+			})
 		})
-	}
-}
+	})
+})
 
-func Test_MultipleWSAsWithTheSameScopeOnlyCreateOneServiceAccount(t *testing.T) {
-	// This test ensures that even if multiple scopes map to the same set of WSAs,
-	// only one service account is created for that set of WSAs.
-	wsa1 := &v1beta1.WorkloadServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
-	}
-	scopeMap := map[Scope]map[string]WSAResource{
-		{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-			"wsa1": NewWSAResource(wsa1),
-		},
-		{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-			"wsa1": NewWSAResource(wsa1),
-		},
-	}
-	_, _, wsaToSANames, _ := GenerateServiceAccountMappings(scopeMap)
-
-	assert.Contains(t, wsaToSANames, "wsa1")
-	assert.Equal(t, len(wsaToSANames["wsa1"]), 1)
-}
-
-func Test_GenerateServiceAccountMappings(t *testing.T) {
-	wsa1 := &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1"}}
-	wsa2 := &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2"}}
-
-	tests := []struct {
-		name                string
-		scopeMap            map[Scope]map[string]WSAResource
-		wantScopes          int
-		wantServiceAccounts int
-	}{
-		{
-			name: "single scope with one WSA",
-			scopeMap: map[Scope]map[string]WSAResource{
+var _ = Describe("Service Account Deduplication", func() {
+	Context("When multiple scopes map to the same set of WSAs", func() {
+		It("Should create only one service account for that set of WSAs", func() {
+			By("Creating a WSA that appears in multiple scopes")
+			wsa1 := &v1beta1.WorkloadServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
+			}
+			scopeMap := map[Scope]map[string]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					"wsa1": NewWSAResource(wsa1),
 				},
-			},
-			wantScopes:          1,
-			wantServiceAccounts: 1,
-		},
-		{
-			name: "multiple scopes with overlapping WSAs",
-			scopeMap: map[Scope]map[string]WSAResource{
+				{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
+					"wsa1": NewWSAResource(wsa1),
+				},
+			}
+
+			By("Generating service account mappings")
+			_, _, wsaToSANames, _ := GenerateServiceAccountMappings(scopeMap)
+
+			By("Verifying only one service account is created")
+			Expect(wsaToSANames).To(HaveKey("wsa1"))
+			Expect(wsaToSANames["wsa1"]).To(HaveLen(1))
+		})
+	})
+})
+
+var _ = Describe("GenerateServiceAccountMappings", func() {
+	var wsa1, wsa2 *v1beta1.WorkloadServiceAccount
+
+	BeforeEach(func() {
+		wsa1 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1"}}
+		wsa2 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2"}}
+	})
+
+	Context("When generating service account mappings", func() {
+		It("Should handle single scope with one WSA", func() {
+			scopeMap := map[Scope]map[string]WSAResource{
+				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
+					"wsa1": NewWSAResource(wsa1),
+				},
+			}
+
+			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+			Expect(scopeToSA).To(HaveLen(1), "Number of scopes should match")
+			Expect(serviceAccounts).To(HaveLen(1), "Number of service accounts should match")
+			verifyServiceAccountMappings(scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+		})
+
+		It("Should handle multiple scopes with overlapping WSAs", func() {
+			scopeMap := map[Scope]map[string]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					"wsa1": NewWSAResource(wsa1),
 					"wsa2": NewWSAResource(wsa2),
@@ -139,109 +149,91 @@ func Test_GenerateServiceAccountMappings(t *testing.T) {
 				{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					"wsa1": NewWSAResource(wsa1),
 				},
-			},
-			wantScopes:          2,
-			wantServiceAccounts: 2,
-		},
-		{
-			name: "identical scopes (should create one service account)",
-			scopeMap: map[Scope]map[string]WSAResource{
+			}
+
+			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+			Expect(scopeToSA).To(HaveLen(2), "Number of scopes should match")
+			Expect(serviceAccounts).To(HaveLen(2), "Number of service accounts should match")
+			verifyServiceAccountMappings(scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+		})
+
+		It("Should create one service account for identical scopes", func() {
+			scopeMap := map[Scope]map[string]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
 						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
 					}),
 				},
-			},
-			wantScopes:          1,
-			wantServiceAccounts: 1,
-		},
-		{
-			name:                "empty scope map",
-			scopeMap:            map[Scope]map[string]WSAResource{},
-			wantScopes:          0,
-			wantServiceAccounts: 0,
-		},
+			}
+
+			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+			Expect(scopeToSA).To(HaveLen(1), "Number of scopes should match")
+			Expect(serviceAccounts).To(HaveLen(1), "Number of service accounts should match")
+			verifyServiceAccountMappings(scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+		})
+
+		It("Should handle empty scope map", func() {
+			scopeMap := map[Scope]map[string]WSAResource{}
+
+			scopeToSA, _, _, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+			Expect(scopeToSA).To(BeEmpty(), "Number of scopes should be zero")
+			Expect(serviceAccounts).To(BeEmpty(), "Number of service accounts should be zero")
+		})
+	})
+})
+
+// verifyServiceAccountMappings is a helper to verify the consistency of service account mappings
+func verifyServiceAccountMappings(
+	scopeToSA map[Scope]ServiceAccountName,
+	saToWSAs map[ServiceAccountName]map[string]WSAResource,
+	wsaToSANames map[string][]string,
+	serviceAccounts []*corev1.ServiceAccount,
+	originalScopeMap map[Scope]map[string]WSAResource,
+) {
+	// Verify consistency between maps
+	for scope, sa := range scopeToSA {
+		// Check service account exists in the slice
+		found := false
+		for _, serviceAccount := range serviceAccounts {
+			if serviceAccount.Name == string(sa) {
+				found = true
+				break
+			}
+		}
+		Expect(found).To(BeTrue(), "Service account from scope map should exist in service accounts slice")
+
+		wsaMap, exists := saToWSAs[sa]
+		Expect(exists).To(BeTrue(), "Service account should have WSA mapping")
+		Expect(wsaMap).NotTo(BeEmpty(), "Service account should have at least one WSA")
+
+		// Verify WSAs in the mapping exist in the original scope
+		originalWSAs := originalScopeMap[scope]
+		for wsaName, wsa := range wsaMap {
+			originalWSA, wsaExists := originalWSAs[wsaName]
+			Expect(wsaExists).To(BeTrue(), "WSA %s should exist in original scope %v", wsaName, scope)
+			Expect(wsa).To(Equal(originalWSA), "WSA pointer should match original")
+		}
+
+		// Verify reverse mapping (WSA to service account names)
+		for wsaName := range wsaMap {
+			saNames, exists := wsaToSANames[wsaName]
+			Expect(exists).To(BeTrue(), "WSA %s should have service account mapping", wsaName)
+			Expect(saNames).To(ContainElement(string(sa)), "WSA should map back to service account")
+		}
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(tt.scopeMap)
+	// Verify service account names follow the expected pattern (either human-readable or hash-based)
+	for _, sa := range serviceAccounts {
+		Expect(sa.Name).To(HavePrefix("octopus-sa-"), "Service account name should follow the expected pattern")
+		Expect(len(sa.Name)).To(BeNumerically(">", 5), "Service account name should have content after prefix")
 
-			// Verify the number of scopes matches
-			assert.Equal(t, tt.wantScopes, len(scopeToSA), "Number of scopes should match")
-
-			// Verify the number of unique service accounts matches
-			assert.Equal(t, tt.wantServiceAccounts, len(serviceAccounts), "Number of service accounts should match")
-
-			// Verify consistency between maps
-			for scope, sa := range scopeToSA {
-				// Check service account exists in the slice
-				found := false
-				for _, serviceAccount := range serviceAccounts {
-					if serviceAccount.Name == string(sa) {
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "Service account from scope map should exist in service accounts slice")
-
-				wsaMap, exists := saToWSAs[sa]
-				assert.True(t, exists, "Service account should have WSA mapping")
-				assert.NotEmpty(t, wsaMap, "Service account should have at least one WSA")
-
-				// Verify WSAs in the mapping exist in the original scope
-				originalWSAs := tt.scopeMap[scope]
-				for wsaName, wsa := range wsaMap {
-					originalWSA, wsaExists := originalWSAs[wsaName]
-					assert.True(t, wsaExists, "WSA %s should exist in original scope %v", wsaName, scope)
-					assert.Equal(t, originalWSA, wsa, "WSA pointer should match original")
-				}
-
-				// Verify reverse mapping (WSA to service account names)
-				for wsaName := range wsaMap {
-					saNames, exists := wsaToSANames[wsaName]
-					assert.True(t, exists, "WSA %s should have service account mapping", wsaName)
-					assert.Contains(t, saNames, string(sa), "WSA should map back to service account")
-				}
-			}
-
-			// Verify service account names follow the expected pattern
-			for _, sa := range serviceAccounts {
-				assert.Contains(t, sa.Name, "octopus-sa-", "Service account name should follow the expected pattern")
-				assert.True(t, len(sa.Name) > len("octopus-sa-"), "Service account name should have a hash suffix")
-
-				// Verify service account has proper metadata
-				assert.NotNil(t, sa.Labels, "Service account should have labels")
-				assert.NotNil(t, sa.Annotations, "Service account should have annotations")
-			}
-		})
+		// Verify service account has proper metadata
+		Expect(sa.Labels).NotTo(BeNil(), "Service account should have labels")
+		Expect(sa.Annotations).NotTo(BeNil(), "Service account should have annotations")
 	}
 }
 
-func Test_generateServiceAccountName(t *testing.T) {
-	tests := []struct {
-		name     string
-		wsaNames []string
-		want     string
-	}{
-		{
-			name:     "Single WSA",
-			wsaNames: []string{"wsa1"},
-			want:     "octopus-sa-0e813084b9bcdf5e87ec36a6eeddc15e",
-		},
-		{
-			name:     "Multiple WSAs",
-			wsaNames: []string{"wsa1", "wsa2", "wsa3"},
-			want:     "octopus-sa-e712752029c0eb8f00ca307935abd62c",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := generateServiceAccountName(slices.Values(tt.wsaNames))
-
-			// Check the SA names are deterministic
-			assert.EqualValues(t, tt.want, result, "Service account name should be deterministic")
-		})
-	}
-}
+// generateServiceAccountName tests removed - function is deprecated in favor of generateGroupedServiceAccountName

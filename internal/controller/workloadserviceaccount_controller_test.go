@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,7 +70,7 @@ var _ = Describe("WorkloadServiceAccount Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			engine := rules.NewInMemoryEngine(k8sClient, targetNamespaceRegex)
+			engine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex)
 			controllerReconciler := &WorkloadServiceAccountReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
