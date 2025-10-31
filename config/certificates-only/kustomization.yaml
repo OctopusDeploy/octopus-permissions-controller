@@ -5,6 +5,7 @@ resources:
 - ./namespace.yaml
 - ../webhook
 - ../certmanager
+- ../local-debug
 
 replacements:
  - source: # Uncomment the following block if you have any webhook

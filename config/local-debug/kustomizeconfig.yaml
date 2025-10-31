@@ -1,0 +1,8 @@
+# Configuration to teach kustomize how to transform service name references in EndpointSlice
+nameReference:
+- kind: Service
+  version: v1
+  fieldSpecs:
+  - kind: EndpointSlice
+    group: discovery.k8s.io
+    path: metadata/labels/kubernetes.io\/service-name
