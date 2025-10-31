@@ -267,18 +267,36 @@ func (i *InMemoryEngine) detectScopeChanges(
 
 // reconcileWithScopeChanges performs full reconciliation when scopes have changed
 func (i *InMemoryEngine) reconcileWithScopeChanges(ctx context.Context, targetNamespaces []string) error {
-	// Fetch all WSAs to recompute expected state
+	allResources, err := i.fetchAllResources(ctx)
+	if err != nil {
+		return err
+	}
+
+	fullScopeMap, fullVocabulary := i.ComputeScopesForWSAs(allResources)
+	*i.vocabulary = fullVocabulary
+
+	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, neededServiceAccounts := i.GenerateServiceAccountMappings(fullScopeMap)
+
+	i.updateInMemoryMaps(scopeToSaNameMap, saToWsaMap, fullScopeMap)
+
+	if err := i.ensureAllRBACResources(ctx, allResources, neededServiceAccounts, wsaToServiceAccountNames, targetNamespaces); err != nil {
+		return err
+	}
+
+	return i.cleanupOrphanedResources(ctx, neededServiceAccounts, targetNamespaces)
+}
+
+func (i *InMemoryEngine) fetchAllResources(ctx context.Context) ([]WSAResource, error) {
 	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get WorkloadServiceAccounts: %w", err)
+		return nil, fmt.Errorf("failed to get WorkloadServiceAccounts: %w", err)
 	}
 
 	cwsaEnumerable, err := i.GetClusterWorkloadServiceAccounts(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get ClusterWorkloadServiceAccounts: %w", err)
+		return nil, fmt.Errorf("failed to get ClusterWorkloadServiceAccounts: %w", err)
 	}
 
-	// Collect all resources
 	allResources := make([]WSAResource, 0)
 	for wsa := range wsaEnumerable {
 		allResources = append(allResources, NewWSAResource(wsa))
@@ -287,14 +305,14 @@ func (i *InMemoryEngine) reconcileWithScopeChanges(ctx context.Context, targetNa
 		allResources = append(allResources, NewClusterWSAResource(cwsa))
 	}
 
-	// Recompute full scope map with all WSAs (including updated one)
-	fullScopeMap, fullVocabulary := i.ComputeScopesForWSAs(allResources)
-	*i.vocabulary = fullVocabulary
+	return allResources, nil
+}
 
-	// Generate service accounts based on full state
-	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, neededServiceAccounts := i.GenerateServiceAccountMappings(fullScopeMap)
-
-	// Update all in-memory maps with complete state
+func (i *InMemoryEngine) updateInMemoryMaps(
+	scopeToSaNameMap map[Scope]ServiceAccountName,
+	saToWsaMap map[ServiceAccountName]map[string]WSAResource,
+	fullScopeMap map[Scope]map[string]WSAResource,
+) {
 	maps.Clear(i.scopeToSA)
 	maps.Clear(i.saToWsaMap)
 	maps.Clear(i.wsaToScopesMap)
@@ -302,41 +320,51 @@ func (i *InMemoryEngine) reconcileWithScopeChanges(ctx context.Context, targetNa
 	for scope, sa := range scopeToSaNameMap {
 		i.scopeToSA[scope] = sa
 	}
-	for sa, wsa := range saToWsaMap {
-		i.saToWsaMap[sa] = wsa
+	for sa, wsaMap := range saToWsaMap {
+		i.saToWsaMap[sa] = wsaMap
 	}
 
-	// Track scopes for each WSA
 	for scope, wsaMap := range fullScopeMap {
 		for wsaName := range wsaMap {
 			i.wsaToScopesMap[wsaName] = append(i.wsaToScopesMap[wsaName], scope)
 		}
 	}
+}
 
-	// Ensure roles for all resources (needed for role bindings)
+func (i *InMemoryEngine) ensureAllRBACResources(
+	ctx context.Context,
+	allResources []WSAResource,
+	neededServiceAccounts []*corev1.ServiceAccount,
+	wsaToServiceAccountNames map[string][]string,
+	targetNamespaces []string,
+) error {
 	createdRoles, err := i.EnsureRoles(ctx, allResources)
 	if err != nil {
 		return fmt.Errorf("failed to ensure roles: %w", err)
 	}
 
-	// Ensure service accounts for all resources
 	if err := i.EnsureServiceAccounts(ctx, neededServiceAccounts, targetNamespaces); err != nil {
 		return fmt.Errorf("failed to ensure service accounts: %w", err)
 	}
 
-	// Log what SAs were created for debugging
 	for _, sa := range neededServiceAccounts {
 		log.FromContext(ctx).V(1).Info("Expected ServiceAccount",
 			"name", sa.Name,
 			"annotations", sa.Annotations)
 	}
 
-	// Ensure role bindings for all resources
 	if err := i.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToServiceAccountNames, targetNamespaces); err != nil {
 		return fmt.Errorf("failed to ensure role bindings: %w", err)
 	}
 
-	// Garbage collect orphaned ServiceAccounts
+	return nil
+}
+
+func (i *InMemoryEngine) cleanupOrphanedResources(
+	ctx context.Context,
+	neededServiceAccounts []*corev1.ServiceAccount,
+	targetNamespaces []string,
+) error {
 	neededSet := set.New[string](len(neededServiceAccounts))
 	for _, sa := range neededServiceAccounts {
 		neededSet.Insert(sa.Name)
@@ -351,9 +379,7 @@ func (i *InMemoryEngine) reconcileWithScopeChanges(ctx context.Context, targetNa
 		return fmt.Errorf("failed to garbage collect service accounts: %w", err)
 	}
 
-	// Update the deletingSAs map to track which SAs are marked for deletion
 	if err := i.syncDeletingSAs(ctx); err != nil {
-		// Return error to fail reconciliation and ensure map stays in sync
 		return fmt.Errorf("failed to sync deletingSAs map: %w", err)
 	}
 

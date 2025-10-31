@@ -25,18 +25,12 @@ import (
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -64,164 +58,174 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	startTime := time.Now()
-	controllerType := "clusterworkloadserviceaccount"
-	defer metrics.RecordReconciliationDurationFunc(controllerType, startTime)
+	defer metrics.RecordReconciliationDurationFunc("clusterworkloadserviceaccount", startTime)
 
 	log.Info("ClusterWorkloadServiceAccount reconciliation triggered", "name", req.Name)
 
-	// Fetch the ClusterWorkloadServiceAccount instance
-	cwsa := &agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}
-	if err := r.Get(ctx, req.NamespacedName, cwsa); err != nil {
-		// Resource not found or error fetching
-		if client.IgnoreNotFound(err) == nil {
-			// This is normal - owned resources trigger reconciles when deleted
-			log.V(1).Info("ClusterWorkloadServiceAccount not found, likely deleted")
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "failed to get ClusterWorkloadServiceAccount")
+	cwsa, err := r.fetchResource(ctx, req)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// Handle deletion with finalizer
-	if !cwsa.DeletionTimestamp.IsZero() {
-		if hasFinalizer(cwsa.GetFinalizers(), ServiceAccountCleanupFinalizer) {
-			log.Info("Cleaning up ServiceAccounts for deleted ClusterWorkloadServiceAccount")
-
-			// Delete ServiceAccounts that are no longer needed by any WSA/cWSA
-			// Pass the resource being deleted so it can be excluded from the calculation
-			cwsaResource := rules.NewClusterWSAResource(cwsa)
-			result, err := r.Engine.CleanupServiceAccounts(ctx, cwsaResource)
-			if err != nil {
-				log.Error(err, "failed to cleanup ServiceAccounts")
-				// Don't block deletion even if cleanup fails - return error to retry
-				return result, err
-			}
-			// Check if we need to requeue (e.g., ServiceAccounts still in use)
-			if result.RequeueAfter > 0 || result.Requeue {
-				log.Info("ServiceAccounts cleanup pending, will requeue", "requeue", result)
-				return result, nil
-			}
-
-			// Refetch the object to get the latest ResourceVersion before removing finalizer
-			// This prevents "Precondition failed" errors from stale objects
-			if err := r.Get(ctx, req.NamespacedName, cwsa); err != nil {
-				if client.IgnoreNotFound(err) == nil {
-					// Object was deleted while we were cleaning up
-					log.V(1).Info("ClusterWorkloadServiceAccount deleted during cleanup")
-					return ctrl.Result{}, nil
-				}
-				log.Error(err, "failed to refetch before removing finalizer")
-				return ctrl.Result{}, err
-			}
-
-			// Double-check finalizer still exists after refetch
-			if removeFinalizer(cwsa) {
-				if err := r.Update(ctx, cwsa); err != nil {
-					if client.IgnoreNotFound(err) == nil {
-						log.V(1).Info("ClusterWorkloadServiceAccount deleted before finalizer removal")
-						return ctrl.Result{}, nil
-					}
-					log.Error(err, "failed to remove finalizer")
-					return ctrl.Result{}, err
-				}
-				log.Info("Successfully cleaned up ServiceAccounts and removed finalizer")
-			}
-		} else {
-			log.V(1).Info("ClusterWorkloadServiceAccount being deleted but finalizer already removed")
-		}
+	if cwsa == nil {
 		return ctrl.Result{}, nil
 	}
 
-	// Add finalizer if not present
-	if addFinalizer(cwsa) {
-		if err := r.Update(ctx, cwsa); err != nil {
-			log.Error(err, "failed to add finalizer")
-			return ctrl.Result{}, err
-		}
-		log.Info("Added finalizer to ClusterWorkloadServiceAccount")
+	if r.isBeingDeleted(cwsa) {
+		return r.handleDeletion(ctx, req, cwsa)
+	}
 
-		// Refetch the object after update to get the latest ResourceVersion
-		if err := r.Get(ctx, req.NamespacedName, cwsa); err != nil {
-			log.Error(err, "failed to refetch ClusterWorkloadServiceAccount after finalizer update")
+	if r.ensureFinalizer(ctx, cwsa) {
+		cwsa, err = r.fetchResource(ctx, req)
+		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	// Perform incremental reconciliation for this specific resource
-	cwsaResource := rules.NewClusterWSAResource(cwsa)
-	if err := r.Engine.ReconcileResource(ctx, cwsaResource); err != nil {
-		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccount")
-
-		// Set Ready=False condition on failure
-		apimeta.SetStatusCondition(&cwsa.Status.Conditions, metav1.Condition{
-			Type:    ConditionTypeReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  ReasonReconcileFailed,
-			Message: err.Error(),
-		})
-		if statusErr := r.Status().Update(ctx, cwsa); statusErr != nil {
-			log.Error(statusErr, "failed to update status after reconciliation failure")
-		}
-
+	if err := r.reconcileResource(ctx, cwsa); err != nil {
+		r.updateStatusOnFailure(ctx, cwsa, err)
 		return ctrl.Result{}, err
 	}
 
-	// Set Ready=True condition on success
-	apimeta.SetStatusCondition(&cwsa.Status.Conditions, metav1.Condition{
-		Type:    ConditionTypeReady,
-		Status:  metav1.ConditionTrue,
-		Reason:  ReasonReconcileSuccess,
-		Message: "All ServiceAccounts, ClusterRoles, and ClusterRoleBindings successfully reconciled",
-	})
-	if err := r.Status().Update(ctx, cwsa); err != nil && !apierrors.IsConflict(err) {
-		log.Error(err, "failed to update status after successful reconciliation")
-		// Don't return error - reconciliation was successful even if status update failed
+	r.updateStatusOnSuccess(ctx, cwsa)
+	log.Info("Successfully reconciled ClusterWorkloadServiceAccount")
+	return ctrl.Result{}, nil
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) fetchResource(
+	ctx context.Context, req ctrl.Request,
+) (*agentoctopuscomv1beta1.ClusterWorkloadServiceAccount, error) {
+	log := logf.FromContext(ctx)
+	cwsa := &agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}
+
+	if err := r.Get(ctx, req.NamespacedName, cwsa); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			log.V(1).Info("ClusterWorkloadServiceAccount not found, likely deleted")
+			return nil, nil
+		}
+		log.Error(err, "failed to get ClusterWorkloadServiceAccount")
+		return nil, err
 	}
 
-	log.Info("Successfully reconciled ClusterWorkloadServiceAccounts")
+	return cwsa, nil
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) isBeingDeleted(cwsa *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount) bool {
+	return !cwsa.DeletionTimestamp.IsZero()
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) handleDeletion(
+	ctx context.Context, req ctrl.Request, cwsa *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount,
+) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	if !hasFinalizer(cwsa.GetFinalizers(), ServiceAccountCleanupFinalizer) {
+		log.V(1).Info("Resource being deleted but finalizer already removed")
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("Cleaning up ServiceAccounts for deleted ClusterWorkloadServiceAccount")
+
+	cwsaResource := rules.NewClusterWSAResource(cwsa)
+	result, err := r.Engine.CleanupServiceAccounts(ctx, cwsaResource)
+	if err != nil {
+		log.Error(err, "failed to cleanup ServiceAccounts")
+		return result, err
+	}
+
+	if result.RequeueAfter > 0 || result.Requeue {
+		log.Info("ServiceAccounts cleanup pending, will requeue", "requeue", result)
+		return result, nil
+	}
+
+	if err := r.Get(ctx, req.NamespacedName, cwsa); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			log.V(1).Info("ClusterWorkloadServiceAccount deleted during cleanup")
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "failed to refetch before removing finalizer")
+		return ctrl.Result{}, err
+	}
+
+	if removeFinalizer(cwsa) {
+		if err := r.Update(ctx, cwsa); err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				log.V(1).Info("ClusterWorkloadServiceAccount deleted before finalizer removal")
+				return ctrl.Result{}, nil
+			}
+			log.Error(err, "failed to remove finalizer")
+			return ctrl.Result{}, err
+		}
+		log.Info("Successfully cleaned up ServiceAccounts and removed finalizer")
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) ensureFinalizer(
+	ctx context.Context, cwsa *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount,
+) bool {
+	log := logf.FromContext(ctx)
+
+	if addFinalizer(cwsa) {
+		if err := r.Update(ctx, cwsa); err != nil {
+			log.Error(err, "failed to add finalizer")
+			return false
+		}
+		log.Info("Added finalizer to ClusterWorkloadServiceAccount")
+		return true
+	}
+	return false
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) reconcileResource(
+	ctx context.Context, cwsa *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount,
+) error {
+	log := logf.FromContext(ctx)
+	cwsaResource := rules.NewClusterWSAResource(cwsa)
+
+	if err := r.Engine.ReconcileResource(ctx, cwsaResource); err != nil {
+		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccount")
+		return err
+	}
+
+	return nil
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) updateStatusOnFailure(
+	ctx context.Context, cwsa *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount, err error,
+) {
+	log := logf.FromContext(ctx)
+
+	cwsa.Status.Conditions = updateCondition(cwsa.Status.Conditions, ConditionTypeReady,
+		"False", ReasonReconcileFailed, err.Error())
+
+	if statusErr := r.Status().Update(ctx, cwsa); statusErr != nil {
+		log.Error(statusErr, "failed to update status after reconciliation failure")
+	}
+}
+
+func (r *ClusterWorkloadServiceAccountReconciler) updateStatusOnSuccess(
+	ctx context.Context, cwsa *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount,
+) {
+	log := logf.FromContext(ctx)
+
+	cwsa.Status.Conditions = updateCondition(cwsa.Status.Conditions, ConditionTypeReady,
+		"True", ReasonReconcileSuccess, "All ServiceAccounts, ClusterRoles, and ClusterRoleBindings successfully reconciled")
+
+	if err := r.Status().Update(ctx, cwsa); err != nil {
+		log.Error(err, "failed to update status after successful reconciliation")
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}).
-		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(predicate.Funcs{
-			DeleteFunc: func(e event.DeleteEvent) bool {
-				// Don't reconcile on owned resource deletion
-				// The owner is already being deleted, so no need to reconcile
-				return false
-			},
-		})).
+		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(SuppressOwnedResourceDeletes())).
 		Watches(
 			&corev1.ServiceAccount{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToCWSAs),
-			builder.WithPredicates(predicate.Funcs{
-				CreateFunc: func(e event.CreateEvent) bool {
-					// Don't reconcile on SA creation
-					return false
-				},
-				UpdateFunc: func(e event.UpdateEvent) bool {
-					// Only reconcile if deletion state changed
-					oldSA, oldOk := e.ObjectOld.(*corev1.ServiceAccount)
-					newSA, newOk := e.ObjectNew.(*corev1.ServiceAccount)
-					if !oldOk || !newOk {
-						return false
-					}
-
-					// Only trigger if SA just got marked for deletion OR finalizer was removed
-					oldDeleting := !oldSA.DeletionTimestamp.IsZero()
-					newDeleting := !newSA.DeletionTimestamp.IsZero()
-					oldHasFinalizer := hasSAFinalizer(oldSA)
-					newHasFinalizer := hasSAFinalizer(newSA)
-
-					return (!oldDeleting && newDeleting) || (oldHasFinalizer && !newHasFinalizer)
-				},
-				DeleteFunc: func(e event.DeleteEvent) bool {
-					// Don't reconcile on actual deletion (already handled by Update)
-					return false
-				},
-			}),
+			builder.WithPredicates(ServiceAccountDeletionPredicate()),
 		).
 		Named("clusterworkloadserviceaccount").
 		Complete(r)
@@ -233,54 +237,18 @@ func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Mana
 func (r *ClusterWorkloadServiceAccountReconciler) mapServiceAccountToCWSAs(
 	ctx context.Context, obj client.Object,
 ) []reconcile.Request {
-	sa, ok := obj.(*corev1.ServiceAccount)
-	if !ok {
-		return nil
-	}
-
-	log := logf.FromContext(ctx)
-
-	// Only reconcile for ServiceAccounts managed by this controller
-	if sa.Labels[rules.ManagedByLabel] != rules.ManagedByValue {
-		return nil
-	}
-
-	// Only reconcile if SA is being deleted (has deletion timestamp)
-	if sa.DeletionTimestamp.IsZero() {
-		return nil
-	}
-
-	// List all ClusterWorkloadServiceAccounts and enqueue reconcile requests for all of them
-	// This ensures that when a ServiceAccount is marked for deletion, all CWSAs get a chance
-	// to run their garbage collection logic and remove finalizers if safe.
-	cwsaList := &agentoctopuscomv1beta1.ClusterWorkloadServiceAccountList{}
-	if err := r.List(ctx, cwsaList); err != nil {
-		log.Error(err, "failed to list ClusterWorkloadServiceAccounts for ServiceAccount mapping")
-		return nil
-	}
-
-	requests := make([]reconcile.Request, 0, len(cwsaList.Items))
-	for i := range cwsaList.Items {
-		cwsa := &cwsaList.Items[i]
-
-		// Skip CWSAs that are already being deleted
-		if !cwsa.DeletionTimestamp.IsZero() {
-			continue
-		}
-
-		requests = append(requests, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name: cwsa.Name,
-			},
-		})
-	}
-
-	if len(requests) > 0 {
-		log.V(1).Info("Enqueueing CWSAs for ServiceAccount deletion",
-			"serviceAccount", sa.Name,
-			"namespace", sa.Namespace,
-			"cwsaCount", len(requests))
-	}
-
-	return requests
+	return MapServiceAccountToResources(
+		ctx,
+		obj,
+		r.Client,
+		&agentoctopuscomv1beta1.ClusterWorkloadServiceAccountList{},
+		func(list *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountList) []*agentoctopuscomv1beta1.ClusterWorkloadServiceAccount {
+			result := make([]*agentoctopuscomv1beta1.ClusterWorkloadServiceAccount, len(list.Items))
+			for i := range list.Items {
+				result[i] = &list.Items[i]
+			}
+			return result
+		},
+		"ClusterWorkloadServiceAccount",
+	)
 }

@@ -99,6 +99,10 @@ type ClusterWorkloadServiceAccountList struct {
 	Items           []ClusterWorkloadServiceAccount `json:"items"`
 }
 
+func (cwsa *ClusterWorkloadServiceAccount) GetConditions() *[]metav1.Condition {
+	return &cwsa.Status.Conditions
+}
+
 func init() {
 	SchemeBuilder.Register(&ClusterWorkloadServiceAccount{}, &ClusterWorkloadServiceAccountList{})
 }

@@ -70,6 +70,26 @@ func NewResourceManagementServiceWithScheme(newClient client.Client, scheme *run
 	}
 }
 
+func (r ResourceManagementService) setOwnerReference(ctx context.Context, resource WSAResource, obj client.Object) {
+	if r.scheme == nil {
+		return
+	}
+
+	logger := log.FromContext(ctx).WithName("setOwnerReference")
+	owner := resource.GetOwnerObject()
+
+	switch o := owner.(type) {
+	case *v1beta1.WorkloadServiceAccount:
+		if err := controllerutil.SetControllerReference(o, obj, r.scheme); err != nil {
+			logger.Error(err, "failed to set controller reference", "objectType", fmt.Sprintf("%T", obj))
+		}
+	case *v1beta1.ClusterWorkloadServiceAccount:
+		if err := controllerutil.SetControllerReference(o, obj, r.scheme); err != nil {
+			logger.Error(err, "failed to set controller reference", "objectType", fmt.Sprintf("%T", obj))
+		}
+	}
+}
+
 func (r ResourceManagementService) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
 	wsaList := &v1beta1.WorkloadServiceAccountList{}
 	err := r.client.List(ctx, wsaList)
@@ -316,16 +336,7 @@ func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, resou
 		Rules: permissions,
 	}
 
-	// Set owner reference if scheme is available
-	if r.scheme != nil {
-		owner := resource.GetOwnerObject()
-		if wsa, ok := owner.(*v1beta1.WorkloadServiceAccount); ok {
-			if err := controllerutil.SetControllerReference(wsa, &role, r.scheme); err != nil {
-				logger.Error(err, "failed to set controller reference for Role")
-				// Continue without owner reference rather than failing
-			}
-		}
-	}
+	r.setOwnerReference(ctx, resource, &role)
 
 	// Use server-side apply for idempotent resource management
 	// TODO: When passing ctx, client always failed with ctx cancelled errors
@@ -368,16 +379,7 @@ func (r ResourceManagementService) createClusterRoleIfNeeded(
 		Rules: permissions,
 	}
 
-	// Set owner reference if scheme is available
-	if r.scheme != nil {
-		owner := resource.GetOwnerObject()
-		if cwsa, ok := owner.(*v1beta1.ClusterWorkloadServiceAccount); ok {
-			if err := controllerutil.SetControllerReference(cwsa, &clusterRole, r.scheme); err != nil {
-				logger.Error(err, "failed to set controller reference for ClusterRole")
-				// Continue without owner reference rather than failing
-			}
-		}
-	}
+	r.setOwnerReference(ctx, resource, &clusterRole)
 
 	// Use server-side apply for idempotent resource management
 	err := r.client.Patch(context.TODO(), &clusterRole, client.Apply,
@@ -544,15 +546,8 @@ func (r ResourceManagementService) createRoleBinding(
 		Subjects: subjects,
 	}
 
-	// Set owner reference if scheme is available (only for namespaced WSAs)
-	if r.scheme != nil && !resource.IsClusterScoped() {
-		owner := resource.GetOwnerObject()
-		if wsa, ok := owner.(*v1beta1.WorkloadServiceAccount); ok {
-			if err := controllerutil.SetControllerReference(wsa, roleBinding, r.scheme); err != nil {
-				logger.Error(err, "failed to set controller reference for RoleBinding")
-				// Continue without owner reference rather than failing
-			}
-		}
+	if !resource.IsClusterScoped() {
+		r.setOwnerReference(ctx, resource, roleBinding)
 	}
 
 	// Use server-side apply for idempotent resource management
@@ -590,15 +585,8 @@ func (r ResourceManagementService) createClusterRoleBinding(
 		Subjects: subjects,
 	}
 
-	// Set owner reference if scheme is available (only for cluster-scoped CWSAs)
-	if r.scheme != nil && resource.IsClusterScoped() {
-		owner := resource.GetOwnerObject()
-		if cwsa, ok := owner.(*v1beta1.ClusterWorkloadServiceAccount); ok {
-			if err := controllerutil.SetControllerReference(cwsa, clusterRoleBinding, r.scheme); err != nil {
-				logger.Error(err, "failed to set controller reference for ClusterRoleBinding")
-				// Continue without owner reference rather than failing
-			}
-		}
+	if resource.IsClusterScoped() {
+		r.setOwnerReference(ctx, resource, clusterRoleBinding)
 	}
 
 	// Use server-side apply for idempotent resource management
@@ -620,120 +608,160 @@ func (r ResourceManagementService) GarbageCollectServiceAccounts(
 	ctx context.Context, expectedServiceAccounts *set.Set[string], targetNamespaces *set.Set[string],
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithName("garbageCollectServiceAccounts")
-	var needsRequeue bool
 
-	// List all ServiceAccounts with our managed-by label across all namespaces
 	saList := &corev1.ServiceAccountList{}
 	if listErr := r.client.List(ctx, saList, client.MatchingLabels{ManagedByLabel: ManagedByValue}); listErr != nil {
 		logger.Error(listErr, "failed to list ServiceAccounts")
 		return ctrl.Result{}, fmt.Errorf("failed to list ServiceAccounts: %w", listErr)
 	}
 
-	// Delete ServiceAccounts that shouldn't exist
+	var needsRequeue bool
 	for i := range saList.Items {
 		sa := &saList.Items[i]
 
-		// Check if this SA has our finalizer (we'll remove it before deletion)
-		hasFinalizer := false
-		for _, f := range sa.GetFinalizers() {
-			if f == serviceAccountFinalizer {
-				hasFinalizer = true
-				break
-			}
-		}
-
-		// Determine if this ServiceAccount should be deleted
-		// Delete if: (1) namespace is not in target namespaces OR (2) name is not in expected set
-		namespaceInScope := targetNamespaces.Contains(sa.Namespace)
-		nameExpected := expectedServiceAccounts.Contains(sa.Name)
-		shouldDelete := !namespaceInScope || !nameExpected
-
-		if shouldDelete {
-			// Check if deletion has already been initiated (deletionTimestamp is set)
-			if sa.DeletionTimestamp.IsZero() {
-				// Deletion not yet initiated - mark for deletion
-				logger.Info("Marking ServiceAccount for deletion",
-					"name", sa.Name,
-					"namespace", sa.Namespace,
-					"reason", fmt.Sprintf("namespaceInScope=%v, nameExpected=%v", namespaceInScope, nameExpected),
-					"annotations", sa.Annotations)
-
-				// Initiate deletion (this sets deletionTimestamp)
-				if deleteErr := r.client.Delete(ctx, sa); deleteErr != nil {
-					if !errors.IsNotFound(deleteErr) {
-						logger.Error(deleteErr, "failed to initiate deletion of ServiceAccount", "name", sa.Name, "namespace", sa.Namespace)
-						return ctrl.Result{}, fmt.Errorf("failed to initiate deletion of ServiceAccount %s in namespace %s: %w", sa.Name, sa.Namespace, deleteErr)
-					}
-				} else {
-					logger.Info("Initiated deletion of ServiceAccount (will check for active pods on next reconcile)",
-						"name", sa.Name, "namespace", sa.Namespace)
-				}
-			} else {
-				// Deletion already initiated - check if pods are still using it
-				logger.Info("ServiceAccount marked for deletion, checking for active pods",
-					"name", sa.Name,
-					"namespace", sa.Namespace)
-
-				inUse, pods, checkErr := r.IsServiceAccountInUse(ctx, sa.Name, targetNamespaces)
-				if checkErr != nil {
-					logger.Error(checkErr, "failed to check if ServiceAccount is in use", "name", sa.Name, "namespace", sa.Namespace)
-					return ctrl.Result{}, fmt.Errorf("failed to check if ServiceAccount %s is in use: %w", sa.Name, checkErr)
-				}
-
-				if inUse {
-					// ServiceAccount is still in use - mark for requeue but continue processing others
-					logger.Info("Deferring ServiceAccount deletion due to active pods, will requeue in 30s",
-						"name", sa.Name,
-						"namespace", sa.Namespace,
-						"activePods", pods,
-						"podCount", len(pods))
-					needsRequeue = true
-					continue
-				} else {
-					// No pods using it - safe to complete deletion by removing finalizer
-					logger.Info("No active pods found, completing ServiceAccount deletion",
-						"name", sa.Name,
-						"namespace", sa.Namespace)
-
-					if hasFinalizer {
-						finalizers := sa.GetFinalizers()
-						newFinalizers := []string{}
-						for _, f := range finalizers {
-							if f != serviceAccountFinalizer {
-								newFinalizers = append(newFinalizers, f)
-							}
-						}
-						sa.SetFinalizers(newFinalizers)
-
-						if updateErr := r.client.Update(ctx, sa); updateErr != nil {
-							if !errors.IsNotFound(updateErr) {
-								logger.Error(updateErr, "failed to remove finalizer from ServiceAccount", "name", sa.Name, "namespace", sa.Namespace)
-								return ctrl.Result{}, fmt.Errorf("failed to remove finalizer from ServiceAccount %s in namespace %s: %w", sa.Name, sa.Namespace, updateErr)
-							}
-						} else {
-							logger.Info("Removed finalizer from ServiceAccount, deletion will complete",
-								"name", sa.Name, "namespace", sa.Namespace)
-						}
-					}
-				}
-			}
-		} else {
-			// Log why we're keeping this SA for debugging
+		if !r.shouldDeleteServiceAccount(sa, expectedServiceAccounts, targetNamespaces) {
 			logger.V(1).Info("Keeping ServiceAccount",
 				"name", sa.Name,
 				"namespace", sa.Namespace,
 				"annotations", sa.Annotations,
 				"reason", "still needed")
+			continue
+		}
+
+		if sa.DeletionTimestamp.IsZero() {
+			if err := r.markServiceAccountForDeletion(ctx, sa, targetNamespaces); err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			requeue, err := r.completeServiceAccountDeletion(ctx, sa, targetNamespaces)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if requeue {
+				needsRequeue = true
+			}
 		}
 	}
 
-	// If any ServiceAccounts are still in use, return requeue result
 	if needsRequeue {
 		logger.Info("Some ServiceAccounts still in use by pods, requeueing in 5s")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r ResourceManagementService) shouldDeleteServiceAccount(
+	sa *corev1.ServiceAccount,
+	expectedServiceAccounts *set.Set[string],
+	targetNamespaces *set.Set[string],
+) bool {
+	namespaceInScope := targetNamespaces.Contains(sa.Namespace)
+	nameExpected := expectedServiceAccounts.Contains(sa.Name)
+	return !namespaceInScope || !nameExpected
+}
+
+func (r ResourceManagementService) markServiceAccountForDeletion(
+	ctx context.Context,
+	sa *corev1.ServiceAccount,
+	targetNamespaces *set.Set[string],
+) error {
+	logger := log.FromContext(ctx).WithName("markServiceAccountForDeletion")
+
+	namespaceInScope := targetNamespaces.Contains(sa.Namespace)
+	logger.Info("Marking ServiceAccount for deletion",
+		"name", sa.Name,
+		"namespace", sa.Namespace,
+		"reason", fmt.Sprintf("namespaceInScope=%v", namespaceInScope),
+		"annotations", sa.Annotations)
+
+	if deleteErr := r.client.Delete(ctx, sa); deleteErr != nil {
+		if !errors.IsNotFound(deleteErr) {
+			logger.Error(deleteErr, "failed to initiate deletion of ServiceAccount",
+				"name", sa.Name, "namespace", sa.Namespace)
+			return fmt.Errorf("failed to initiate deletion of ServiceAccount %s in namespace %s: %w",
+				sa.Name, sa.Namespace, deleteErr)
+		}
+	} else {
+		logger.Info("Initiated deletion of ServiceAccount (will check for active pods on next reconcile)",
+			"name", sa.Name, "namespace", sa.Namespace)
+	}
+	return nil
+}
+
+func (r ResourceManagementService) completeServiceAccountDeletion(
+	ctx context.Context,
+	sa *corev1.ServiceAccount,
+	targetNamespaces *set.Set[string],
+) (bool, error) {
+	logger := log.FromContext(ctx).WithName("completeServiceAccountDeletion")
+
+	logger.Info("ServiceAccount marked for deletion, checking for active pods",
+		"name", sa.Name,
+		"namespace", sa.Namespace)
+
+	inUse, pods, checkErr := r.IsServiceAccountInUse(ctx, sa.Name, targetNamespaces)
+	if checkErr != nil {
+		logger.Error(checkErr, "failed to check if ServiceAccount is in use",
+			"name", sa.Name, "namespace", sa.Namespace)
+		return false, fmt.Errorf("failed to check if ServiceAccount %s is in use: %w", sa.Name, checkErr)
+	}
+
+	if inUse {
+		logger.Info("Deferring ServiceAccount deletion due to active pods, will requeue in 30s",
+			"name", sa.Name,
+			"namespace", sa.Namespace,
+			"activePods", pods,
+			"podCount", len(pods))
+		return true, nil
+	}
+
+	logger.Info("No active pods found, completing ServiceAccount deletion",
+		"name", sa.Name,
+		"namespace", sa.Namespace)
+
+	return false, r.removeServiceAccountFinalizer(ctx, sa)
+}
+
+func (r ResourceManagementService) removeServiceAccountFinalizer(
+	ctx context.Context,
+	sa *corev1.ServiceAccount,
+) error {
+	logger := log.FromContext(ctx).WithName("removeServiceAccountFinalizer")
+
+	hasFinalizer := false
+	for _, f := range sa.GetFinalizers() {
+		if f == serviceAccountFinalizer {
+			hasFinalizer = true
+			break
+		}
+	}
+
+	if !hasFinalizer {
+		return nil
+	}
+
+	finalizers := sa.GetFinalizers()
+	newFinalizers := []string{}
+	for _, f := range finalizers {
+		if f != serviceAccountFinalizer {
+			newFinalizers = append(newFinalizers, f)
+		}
+	}
+	sa.SetFinalizers(newFinalizers)
+
+	if updateErr := r.client.Update(ctx, sa); updateErr != nil {
+		if !errors.IsNotFound(updateErr) {
+			logger.Error(updateErr, "failed to remove finalizer from ServiceAccount",
+				"name", sa.Name, "namespace", sa.Namespace)
+			return fmt.Errorf("failed to remove finalizer from ServiceAccount %s in namespace %s: %w",
+				sa.Name, sa.Namespace, updateErr)
+		}
+	} else {
+		logger.Info("Removed finalizer from ServiceAccount, deletion will complete",
+			"name", sa.Name, "namespace", sa.Namespace)
+	}
+	return nil
 }
 
 // IsServiceAccountInUse checks if any pods in the target namespaces are currently using the specified ServiceAccount.

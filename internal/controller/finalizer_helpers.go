@@ -2,6 +2,7 @@ package controller
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -64,4 +65,23 @@ func removeFinalizer(obj client.Object) bool {
 // hasSAFinalizer checks if a ServiceAccount has the ServiceAccount finalizer
 func hasSAFinalizer(sa *corev1.ServiceAccount) bool {
 	return hasFinalizer(sa.GetFinalizers(), ServiceAccountFinalizer)
+}
+
+// updateCondition updates or adds a condition to the conditions slice
+func updateCondition(conditions []metav1.Condition, conditionType, status, reason, message string) []metav1.Condition {
+	condition := metav1.Condition{
+		Type:    conditionType,
+		Status:  metav1.ConditionStatus(status),
+		Reason:  reason,
+		Message: message,
+	}
+
+	for i := range conditions {
+		if conditions[i].Type == conditionType {
+			conditions[i] = condition
+			return conditions
+		}
+	}
+
+	return append(conditions, condition)
 }
