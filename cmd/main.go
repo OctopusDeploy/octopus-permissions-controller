@@ -73,6 +73,8 @@ var (
 	scheme                = runtime.NewScheme()
 	setupLog              = ctrl.Log.WithName("setup")
 	defaultNamespaceRegex = regexp.MustCompile("^octopus-(agent|worker)-.*")
+	// Set by linker flags at build time
+	version = "dev"
 )
 
 func init() {
@@ -266,6 +268,10 @@ func main() {
 	octopusMetricsCollector := metrics.NewOctopusMetricsCollector(mgr.GetClient(), &engine)
 
 	crmetrics.Registry.MustRegister(octopusMetricsCollector)
+
+	// Set version information in metrics
+	metrics.SetVersionInfo(version)
+	setupLog.Info("starting manager", "version", version)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),

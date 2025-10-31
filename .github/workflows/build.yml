@@ -77,6 +77,8 @@ jobs:
           cache-to: type=gha,mode=max
           tags: ${{ env.prerelease_registry }}/${{ env.image_name }}:${{ env.version }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ env.version }}
 
       # Only push to production if it's a release
       - name: Login to Docker Hub
