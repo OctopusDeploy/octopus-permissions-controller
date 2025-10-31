@@ -3,7 +3,6 @@ package rules
 import (
 	"crypto/sha256"
 	"fmt"
-	"iter"
 	"maps"
 	"slices"
 	"strings"
@@ -15,11 +14,7 @@ import (
 )
 
 func getScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary) {
-	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
-
-	// Use set theory to compute minimal service accounts needed
-	// Only create service accounts where multiple WSAs could apply to the same scope
 	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
 
@@ -52,7 +47,6 @@ func NewGlobalVocabulary() GlobalVocabulary {
 }
 
 func (v *GlobalVocabulary) GetKnownScopeCombination(scope Scope) Scope {
-	// For each dimension, if the value is known, keep it; otherwise, set to wildcard
 	knownScope := Scope{}
 
 	if v[ProjectIndex].Contains(scope.Project) {
@@ -231,6 +225,78 @@ func buildScopeToWSAMapping(
 	return result
 }
 
+// GroupedDimensions holds collected dimension values for a group of scopes
+type GroupedDimensions struct {
+	Projects     []string
+	Environments []string
+	Tenants      []string
+	Steps        []string
+	Spaces       []string
+}
+
+// groupScopesByWSASet reverses the scope map to group by WSA sets
+func groupScopesByWSASet(scopeMap map[Scope]map[string]WSAResource) map[string][]Scope {
+	wsaSetToScopes := make(map[string][]Scope)
+
+	for scope, wsaMap := range scopeMap {
+		// Create canonical key for WSA set (sorted names)
+		wsaNames := slices.Collect(maps.Keys(wsaMap))
+		slices.Sort(wsaNames)
+		wsaSetKey := strings.Join(wsaNames, ",")
+
+		wsaSetToScopes[wsaSetKey] = append(wsaSetToScopes[wsaSetKey], scope)
+	}
+
+	return wsaSetToScopes
+}
+
+// collectDimensionValues gathers all unique values per dimension
+func collectDimensionValues(scopes []Scope) GroupedDimensions {
+	projects := set.New[string](0)
+	environments := set.New[string](0)
+	tenants := set.New[string](0)
+	steps := set.New[string](0)
+	spaces := set.New[string](0)
+
+	for _, scope := range scopes {
+		if scope.Project != "" && scope.Project != WildcardValue {
+			projects.Insert(scope.Project)
+		}
+		if scope.Environment != "" && scope.Environment != WildcardValue {
+			environments.Insert(scope.Environment)
+		}
+		if scope.Tenant != "" && scope.Tenant != WildcardValue {
+			tenants.Insert(scope.Tenant)
+		}
+		if scope.Step != "" && scope.Step != WildcardValue {
+			steps.Insert(scope.Step)
+		}
+		if scope.Space != "" && scope.Space != WildcardValue {
+			spaces.Insert(scope.Space)
+		}
+	}
+
+	// Convert sets to sorted slices
+	projectSlice := projects.Slice()
+	slices.Sort(projectSlice)
+	environmentSlice := environments.Slice()
+	slices.Sort(environmentSlice)
+	tenantSlice := tenants.Slice()
+	slices.Sort(tenantSlice)
+	stepSlice := steps.Slice()
+	slices.Sort(stepSlice)
+	spaceSlice := spaces.Slice()
+	slices.Sort(spaceSlice)
+
+	return GroupedDimensions{
+		Projects:     projectSlice,
+		Environments: environmentSlice,
+		Tenants:      tenantSlice,
+		Steps:        stepSlice,
+		Spaces:       spaceSlice,
+	}
+}
+
 // GenerateServiceAccountMappings processes the scope map and generates the required mappings
 // for service account creation and management.
 func GenerateServiceAccountMappings(
@@ -246,34 +312,41 @@ func GenerateServiceAccountMappings(
 	uniqueServiceAccounts := make(map[ServiceAccountName]*v1.ServiceAccount)
 	wsaToServiceAccountNamesSet := make(map[string]*set.Set[string])
 
-	// Process each scope and its associated WSAs
-	for scope, wsaMap := range scopeMap {
-		// Generate service account name for this WSA
-		wsaKeys := maps.Keys(wsaMap)
-		serviceAccountName := generateServiceAccountName(wsaKeys)
+	// Group scopes by their WSA sets
+	wsaSetToScopes := groupScopesByWSASet(scopeMap)
 
-		// Map scope to service account name
-		scopeToServiceAccount[scope] = serviceAccountName
+	// Create one SA per unique WSA set
+	for _, scopes := range wsaSetToScopes {
+		// Collect all dimension values for this group
+		grouped := collectDimensionValues(scopes)
 
-		// Track this service account as needing to be created
-		uniqueServiceAccounts[serviceAccountName] = generateServiceAccount(serviceAccountName, scope)
+		// Generate ONE service account name for this entire group
+		serviceAccountName := generateGroupedServiceAccountName(grouped)
 
-		// Map service account to WSA names
-		if existing, exists := serviceAccountToWSAs[serviceAccountName]; exists {
-			maps.Copy(existing, wsaMap)
-		} else {
-			serviceAccountToWSAs[serviceAccountName] = wsaMap
+		// Get WSA map from first scope (they're all the same for this group)
+		wsaMap := scopeMap[scopes[0]]
+
+		// Map ALL scopes in this group to the SAME service account
+		for _, scope := range scopes {
+			scopeToServiceAccount[scope] = serviceAccountName
 		}
 
-		// For each WSA, track which service accounts it maps to
+		// Generate service account with grouped dimensions for labels and annotations
+		uniqueServiceAccounts[serviceAccountName] =
+			generateServiceAccountFromGrouped(serviceAccountName, grouped)
+
+		// Map service account to WSAs
+		serviceAccountToWSAs[serviceAccountName] = wsaMap
+
+		// Track WSA to SA mappings
 		for wsaName := range wsaMap {
 			if wsaSet, ok := wsaToServiceAccountNamesSet[wsaName]; ok {
 				wsaSet.Insert(string(serviceAccountName))
-				continue
+			} else {
+				newSet := set.New[string](1)
+				newSet.Insert(string(serviceAccountName))
+				wsaToServiceAccountNamesSet[wsaName] = newSet
 			}
-			newSet := set.New[string](1)
-			newSet.Insert(string(serviceAccountName))
-			wsaToServiceAccountNamesSet[wsaName] = newSet
 		}
 	}
 
@@ -291,12 +364,12 @@ func GenerateServiceAccountMappings(
 	return scopeToServiceAccount, serviceAccountToWSAs, wsaToServiceAccountNames, serviceAccountsToCreate
 }
 
-func generateServiceAccount(name ServiceAccountName, scope Scope) *v1.ServiceAccount {
+func generateServiceAccountFromGrouped(name ServiceAccountName, grouped GroupedDimensions) *v1.ServiceAccount {
 	return &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        string(name),
-			Labels:      generateServiceAccountLabels(scope),
-			Annotations: generateExpectedAnnotations(scope),
+			Labels:      generateServiceAccountLabelsFromGrouped(grouped),
+			Annotations: generateAnnotationsFromGrouped(grouped),
 		},
 	}
 }
@@ -310,6 +383,10 @@ const (
 	TenantKey         = MetadataNamespace + "/tenant"
 	StepKey           = MetadataNamespace + "/step"
 	SpaceKey          = MetadataNamespace + "/space"
+	// ManagedByLabel is the standard Kubernetes label for tracking resource ownership
+	ManagedByLabel = "app.kubernetes.io/managed-by"
+	// ManagedByValue is the value set on the managed-by label for resources created by this controller
+	ManagedByValue = "octopus-permissions-controller"
 )
 
 // shortHash generates a hash of a string for use in labels and names
@@ -323,60 +400,87 @@ func IsOctopusManaged(labels map[string]string) bool {
 	if labels == nil {
 		return false
 	}
-	permissions, exists := labels[PermissionsKey]
-	return exists && permissions == "enabled"
+	managedBy, exists := labels[ManagedByLabel]
+	return exists && managedBy == ManagedByValue
 }
 
-// generateServiceAccountName generates a ServiceAccountName based on the given scope
-func generateServiceAccountName(wsaNames iter.Seq[string]) ServiceAccountName {
-	hash := shortHash(strings.Join(slices.Collect(wsaNames), "-"))
+// generateGroupedServiceAccountName creates SA name from grouped dimensions
+func generateGroupedServiceAccountName(grouped GroupedDimensions) ServiceAccountName {
+	// Build canonical string representation
+	parts := []string{}
+
+	if len(grouped.Spaces) > 0 {
+		parts = append(parts, "spaces:"+strings.Join(grouped.Spaces, "+"))
+	}
+	if len(grouped.Projects) > 0 {
+		parts = append(parts, "projects:"+strings.Join(grouped.Projects, "+"))
+	}
+	if len(grouped.Environments) > 0 {
+		parts = append(parts, "environments:"+strings.Join(grouped.Environments, "+"))
+	}
+	if len(grouped.Tenants) > 0 {
+		parts = append(parts, "tenants:"+strings.Join(grouped.Tenants, "+"))
+	}
+	if len(grouped.Steps) > 0 {
+		parts = append(parts, "steps:"+strings.Join(grouped.Steps, "+"))
+	}
+
+	if len(parts) == 0 {
+		parts = append(parts, "wildcard")
+	}
+
+	scopeString := strings.Join(parts, "|")
+	hash := shortHash(scopeString)
+
 	return ServiceAccountName(fmt.Sprintf("octopus-sa-%s", hash))
 }
 
-// generateServiceAccountLabels generates the expected labels for a ServiceAccount based on scope
-func generateServiceAccountLabels(scope Scope) map[string]string {
+// generateServiceAccountLabelsFromGrouped generates labels from grouped dimensions
+// For multi-valued dimensions, it hashes all values together
+func generateServiceAccountLabelsFromGrouped(grouped GroupedDimensions) map[string]string {
 	labels := map[string]string{
-		PermissionsKey: "enabled",
+		ManagedByLabel: ManagedByValue,
 	}
 
-	// Hash values for labels to keep them under 63 characters
-	if scope.Project != "" {
-		labels[ProjectKey] = shortHash(scope.Project)
+	// Hash dimension values for labels to keep them under 63 characters
+	if len(grouped.Projects) > 0 {
+		labels[ProjectKey] = shortHash(strings.Join(grouped.Projects, "+"))
 	}
-	if scope.Environment != "" {
-		labels[EnvironmentKey] = shortHash(scope.Environment)
+	if len(grouped.Environments) > 0 {
+		labels[EnvironmentKey] = shortHash(strings.Join(grouped.Environments, "+"))
 	}
-	if scope.Tenant != "" {
-		labels[TenantKey] = shortHash(scope.Tenant)
+	if len(grouped.Tenants) > 0 {
+		labels[TenantKey] = shortHash(strings.Join(grouped.Tenants, "+"))
 	}
-	if scope.Step != "" {
-		labels[StepKey] = shortHash(scope.Step)
+	if len(grouped.Steps) > 0 {
+		labels[StepKey] = shortHash(strings.Join(grouped.Steps, "+"))
 	}
-	if scope.Space != "" {
-		labels[SpaceKey] = shortHash(scope.Space)
+	if len(grouped.Spaces) > 0 {
+		labels[SpaceKey] = shortHash(strings.Join(grouped.Spaces, "+"))
 	}
 
 	return labels
 }
 
-// generateExpectedAnnotations generates the expected annotations for a ServiceAccount
-func generateExpectedAnnotations(scope Scope) map[string]string {
+// generateAnnotationsFromGrouped generates annotations from grouped dimensions
+// For multi-valued dimensions, joins all values with "+"
+func generateAnnotationsFromGrouped(grouped GroupedDimensions) map[string]string {
 	annotations := make(map[string]string)
 
-	if scope.Project != "" {
-		annotations[ProjectKey] = scope.Project
+	if len(grouped.Projects) > 0 {
+		annotations[ProjectKey] = strings.Join(grouped.Projects, "+")
 	}
-	if scope.Environment != "" {
-		annotations[EnvironmentKey] = scope.Environment
+	if len(grouped.Environments) > 0 {
+		annotations[EnvironmentKey] = strings.Join(grouped.Environments, "+")
 	}
-	if scope.Tenant != "" {
-		annotations[TenantKey] = scope.Tenant
+	if len(grouped.Tenants) > 0 {
+		annotations[TenantKey] = strings.Join(grouped.Tenants, "+")
 	}
-	if scope.Step != "" {
-		annotations[StepKey] = scope.Step
+	if len(grouped.Steps) > 0 {
+		annotations[StepKey] = strings.Join(grouped.Steps, "+")
 	}
-	if scope.Space != "" {
-		annotations[SpaceKey] = scope.Space
+	if len(grouped.Spaces) > 0 {
+		annotations[SpaceKey] = strings.Join(grouped.Spaces, "+")
 	}
 
 	return annotations

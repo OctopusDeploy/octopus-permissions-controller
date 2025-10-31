@@ -113,6 +113,10 @@ type WorkloadServiceAccountList struct {
 	Items           []WorkloadServiceAccount `json:"items"`
 }
 
+func (wsa *WorkloadServiceAccount) GetConditions() *[]metav1.Condition {
+	return &wsa.Status.Conditions
+}
+
 func init() {
 	SchemeBuilder.Register(&WorkloadServiceAccount{}, &WorkloadServiceAccountList{})
 }

@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -49,6 +50,24 @@ import (
 	webhookv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/internal/webhook/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
+
+type StartupReconciler struct {
+	engine *rules.InMemoryEngine
+}
+
+func (s *StartupReconciler) Start(ctx context.Context) error {
+	setupLog.Info("Running initial full reconciliation")
+	if err := s.engine.Reconcile(ctx); err != nil {
+		setupLog.Error(err, "failed to run initial reconciliation")
+		return err
+	}
+	setupLog.Info("Initial reconciliation completed successfully")
+	return nil
+}
+
+func (s *StartupReconciler) NeedLeaderElection() bool {
+	return true
+}
 
 var (
 	scheme                = runtime.NewScheme()
@@ -144,7 +163,7 @@ func main() {
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/metrics/server
+	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.1/pkg/metrics/server
 	// - https://book.kubebuilder.io/reference/metrics.html
 	metricsServerOptions := metricsserver.Options{
 		BindAddress:   metricsAddr,
@@ -156,7 +175,7 @@ func main() {
 		// FilterProvider is used to protect the metrics endpoint with authn/authz.
 		// These configurations ensure that only authorized users and service accounts
 		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/metrics/filters#WithAuthenticationAndAuthorization
+		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.1/pkg/metrics/filters#WithAuthenticationAndAuthorization
 		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
 
@@ -232,12 +251,16 @@ func main() {
 
 	var engine rules.InMemoryEngine
 	if len(targetNamespaces) > 0 {
-		engine = rules.NewInMemoryEngineWithNamespaces(mgr.GetClient(), targetNamespaces)
+		engine = rules.NewInMemoryEngineWithNamespaces(mgr.GetClient(), mgr.GetScheme(), targetNamespaces)
 	} else {
-		engine = rules.NewInMemoryEngine(mgr.GetClient(), targetNamespaceRegex)
+		engine = rules.NewInMemoryEngine(mgr.GetClient(), mgr.GetScheme(), targetNamespaceRegex)
 	}
 
-	// Create the rules engine instance
+	// Add startup runnable to perform initial full reconciliation
+	if err := mgr.Add(&StartupReconciler{engine: &engine}); err != nil {
+		setupLog.Error(err, "unable to add startup reconciler")
+		os.Exit(1)
+	}
 
 	// Create new prometheus metrics collector instance
 	octopusMetricsCollector := metrics.NewOctopusMetricsCollector(mgr.GetClient(), &engine)

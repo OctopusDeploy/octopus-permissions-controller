@@ -20,20 +20,16 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"iter"
 	"net"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/test/helpers"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/test/mocks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -55,101 +51,8 @@ var (
 	k8sClient  client.Client
 	cfg        *rest.Config
 	testEnv    *envtest.Environment
-	mockEngine *MockEngine
+	mockEngine *mocks.MockEngine
 )
-
-type MockEngine struct {
-	mock.Mock
-}
-
-func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope) (rules.ServiceAccountName, error) {
-	args := m.Called(scope)
-	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
-}
-
-func (m *MockEngine) Reconcile(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-// ScopeComputation interface methods (embedded in Engine interface)
-func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
-	args := m.Called(wsaList)
-	return args.Get(0).(map[rules.Scope]map[string]rules.WSAResource), args.Get(1).(rules.GlobalVocabulary)
-}
-
-func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[string]rules.WSAResource) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
-	args := m.Called(scopeMap)
-	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[string]rules.WSAResource), args.Get(2).(map[string][]string), args.Get(3).([]*corev1.ServiceAccount)
-}
-
-// ResourceManagement interface methods
-func (m *MockEngine) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*v1beta1.WorkloadServiceAccount]), args.Error(1)
-}
-
-func (m *MockEngine) GetClusterWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.ClusterWorkloadServiceAccount], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*v1beta1.ClusterWorkloadServiceAccount]), args.Error(1)
-}
-
-func (m *MockEngine) GetServiceAccounts(ctx context.Context) (iter.Seq[*corev1.ServiceAccount], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*corev1.ServiceAccount]), args.Error(1)
-}
-
-func (m *MockEngine) GetRoles(ctx context.Context) (iter.Seq[*rbacv1.Role], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*rbacv1.Role]), args.Error(1)
-}
-
-func (m *MockEngine) GetClusterRoles(ctx context.Context) (iter.Seq[*rbacv1.ClusterRole], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*rbacv1.ClusterRole]), args.Error(1)
-}
-
-func (m *MockEngine) GetRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.RoleBinding], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*rbacv1.RoleBinding]), args.Error(1)
-}
-
-func (m *MockEngine) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.ClusterRoleBinding], error) {
-	args := m.Called(ctx)
-	return args.Get(0).(iter.Seq[*rbacv1.ClusterRoleBinding]), args.Error(1)
-}
-
-func (m *MockEngine) EnsureRoles(
-	ctx context.Context, resources []rules.WSAResource,
-) (map[string]rbacv1.Role, error) {
-	args := m.Called(ctx, resources)
-	return args.Get(0).(map[string]rbacv1.Role), args.Error(1)
-}
-
-func (m *MockEngine) EnsureServiceAccounts(
-	ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string,
-) error {
-	args := m.Called(ctx, serviceAccounts, targetNamespaces)
-	return args.Error(0)
-}
-
-func (m *MockEngine) EnsureRoleBindings(
-	ctx context.Context, resources []rules.WSAResource, createdRoles map[string]rbacv1.Role,
-	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
-) error {
-	args := m.Called(ctx, resources, createdRoles, wsaToServiceAccounts, targetNamespaces)
-	return args.Error(0)
-}
-
-func (m *MockEngine) DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error) {
-	args := m.Called(ctx, k8sClient)
-	return args.Get(0).([]string), args.Error(1)
-}
-
-func (m *MockEngine) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
-	args := m.Called()
-	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)
-}
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -179,8 +82,8 @@ var _ = BeforeSuite(func() {
 	}
 
 	// Retrieve the first found binary directory to allow running tests from IDEs
-	if getFirstFoundEnvTestBinaryDir() != "" {
-		testEnv.BinaryAssetsDirectory = getFirstFoundEnvTestBinaryDir()
+	if helpers.GetFirstFoundEnvTestBinaryDir() != "" {
+		testEnv.BinaryAssetsDirectory = helpers.GetFirstFoundEnvTestBinaryDir()
 	}
 
 	// cfg is defined in this file globally.
@@ -208,7 +111,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	mockEngine = &MockEngine{}
+	mockEngine = &mocks.MockEngine{}
 	err = SetupPodWebhookWithManager(mgr, mockEngine)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -239,26 +142,3 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
-
-// getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.
-// ENVTEST-based tests depend on specific binaries, usually located in paths set by
-// controller-runtime. When running tests directly (e.g., via an IDE) without using
-// Makefile targets, the 'BinaryAssetsDirectory' must be explicitly configured.
-//
-// This function streamlines the process by finding the required binaries, similar to
-// setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
-// properly set up, run 'make setup-envtest' beforehand.
-func getFirstFoundEnvTestBinaryDir() string {
-	basePath := filepath.Join("..", "..", "..", "bin", "k8s")
-	entries, err := os.ReadDir(basePath)
-	if err != nil {
-		logf.Log.Error(err, "Failed to read directory", "path", basePath)
-		return ""
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			return filepath.Join(basePath, entry.Name())
-		}
-	}
-	return ""
-}

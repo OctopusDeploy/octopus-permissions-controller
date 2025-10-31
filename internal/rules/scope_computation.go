@@ -1,11 +1,7 @@
 package rules
 
 import (
-	"maps"
-
 	corev1 "k8s.io/api/core/v1"
-
-	"github.com/hashicorp/go-set/v3"
 )
 
 // ScopeComputation defines the interface for computing scopes and service account mappings
@@ -23,10 +19,12 @@ type ScopeComputation interface {
 
 type ScopeComputationService struct {
 	vocabulary *GlobalVocabulary
-	scopeToSA  *map[Scope]ServiceAccountName
+	scopeToSA  map[Scope]ServiceAccountName
 }
 
-func NewScopeComputationService(vocabulary *GlobalVocabulary, scopeToSA *map[Scope]ServiceAccountName) ScopeComputationService {
+func NewScopeComputationService(
+	vocabulary *GlobalVocabulary, scopeToSA map[Scope]ServiceAccountName,
+) ScopeComputationService {
 	return ScopeComputationService{
 		vocabulary: vocabulary,
 		scopeToSA:  scopeToSA,
@@ -35,7 +33,7 @@ func NewScopeComputationService(vocabulary *GlobalVocabulary, scopeToSA *map[Sco
 
 func (s ScopeComputationService) GetServiceAccountForScope(scope Scope) (ServiceAccountName, error) {
 	knownScope := (*s.vocabulary).GetKnownScopeCombination(scope)
-	if sa, ok := (*s.scopeToSA)[knownScope]; ok {
+	if sa, ok := (s.scopeToSA)[knownScope]; ok {
 		return sa, nil
 	}
 
@@ -52,54 +50,8 @@ func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []WSAResource) (ma
 }
 
 func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[string]WSAResource) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[string]WSAResource, map[string][]string, []*corev1.ServiceAccount) {
-	scopeToServiceAccount := make(map[Scope]ServiceAccountName)
-	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]WSAResource)
-	uniqueServiceAccounts := make(map[ServiceAccountName]*corev1.ServiceAccount)
-	wsaToServiceAccountNamesSet := make(map[string]*set.Set[string])
-
-	// Process each scope and its associated WSAs
-	for scope, wsaMap := range scopeMap {
-		// Generate service account name for this WSA
-		wsaKeys := maps.Keys(wsaMap)
-		serviceAccountName := generateServiceAccountName(wsaKeys)
-
-		// Map scope to service account name
-		scopeToServiceAccount[scope] = serviceAccountName
-
-		// Track this service account as needing to be created
-		uniqueServiceAccounts[serviceAccountName] = generateServiceAccount(serviceAccountName, scope)
-
-		// Map service account to WSA names
-		if existing, exists := serviceAccountToWSAs[serviceAccountName]; exists {
-			maps.Copy(existing, wsaMap)
-		} else {
-			serviceAccountToWSAs[serviceAccountName] = wsaMap
-		}
-
-		// For each WSA, track which service accounts it maps to
-		for wsaName := range wsaMap {
-			if wsaSet, ok := wsaToServiceAccountNamesSet[wsaName]; ok {
-				wsaSet.Insert(string(serviceAccountName))
-				continue
-			}
-			newSet := set.New[string](1)
-			newSet.Insert(string(serviceAccountName))
-			wsaToServiceAccountNamesSet[wsaName] = newSet
-		}
-	}
-
-	serviceAccountsToCreate := make([]*corev1.ServiceAccount, 0, len(uniqueServiceAccounts))
-	for _, sa := range uniqueServiceAccounts {
-		serviceAccountsToCreate = append(serviceAccountsToCreate, sa)
-	}
-
-	// Convert from set to slice for wsaToServiceAccountNames
-	wsaToServiceAccountNames := make(map[string][]string, len(wsaToServiceAccountNamesSet))
-	for wsa, wsaSet := range wsaToServiceAccountNamesSet {
-		wsaToServiceAccountNames[wsa] = wsaSet.Slice()
-	}
-
-	return scopeToServiceAccount, serviceAccountToWSAs, wsaToServiceAccountNames, serviceAccountsToCreate
+	// Delegate to the standalone function which has the grouped implementation
+	return GenerateServiceAccountMappings(scopeMap)
 }
 
 // GetScopeToSA returns the current scope to service account mapping
@@ -107,5 +59,5 @@ func (s ScopeComputationService) GetScopeToSA() map[Scope]ServiceAccountName {
 	if s.scopeToSA == nil {
 		return make(map[Scope]ServiceAccountName)
 	}
-	return *s.scopeToSA
+	return s.scopeToSA
 }
