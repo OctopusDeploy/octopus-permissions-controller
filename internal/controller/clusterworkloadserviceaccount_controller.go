@@ -59,7 +59,7 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	log.Info("ClusterWorkloadServiceAccount reconciliation triggered", "name", req.Name)
 
 	cwsa := &agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}
-	cwsa, err := fetchResource(ctx, r.Client, req, cwsa)
+	err := fetchResource(ctx, r.Client, req, cwsa)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -73,7 +73,7 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	}
 
 	if ensureFinalizer(ctx, r.Client, cwsa) {
-		cwsa, err = fetchResource(ctx, r.Client, req, cwsa)
+		err = fetchResource(ctx, r.Client, req, cwsa)
 		if err != nil {
 			return ctrl.Result{}, err
 		}

@@ -37,20 +37,19 @@ type WSAStatus interface {
 	*agentoctopuscomv1beta1.WorkloadServiceAccountStatus | *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountStatus
 }
 
-func fetchResource[T WSAResource](ctx context.Context, c client.Client, req ctrl.Request, resource T) (T, error) {
+func fetchResource[T WSAResource](ctx context.Context, c client.Client, req ctrl.Request, resource T) error {
 	log := logf.FromContext(ctx)
 
 	if err := c.Get(ctx, req.NamespacedName, resource); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			log.V(1).Info("Resource not found, likely deleted")
-			var zero T
-			return zero, nil
+			return nil
 		}
 		log.Error(err, "failed to get resource")
-		return resource, err
+		return err
 	}
 
-	return resource, nil
+	return nil
 }
 
 func ensureFinalizer[T client.Object](ctx context.Context, c client.Client, resource T) bool {
