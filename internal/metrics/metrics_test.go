@@ -234,6 +234,9 @@ var _ = Describe("Metrics Test", func() {
 					},
 				)
 
+				// Set up mock expectations for GetTargetNamespaces
+				mockEngine.On("GetTargetNamespaces").Return([]string{"namespace1", "namespace2"})
+
 				// Create collector with mock engine
 				mockCollector := NewOctopusMetricsCollector(k8sClient, mockEngine)
 				Expect(mockCollector).NotTo(BeNil())
@@ -291,6 +294,9 @@ var _ = Describe("Metrics Test", func() {
 						{Environment: "env1", Tenant: "tenant1"}: "sa-env1-tenant1",
 					},
 				)
+
+				// Set up mock expectations for GetTargetNamespaces
+				mockEngine.On("GetTargetNamespaces").Return([]string{"namespace1", "namespace2"})
 
 				// Set up mock expectations for other Get* methods that the collector will call
 				mockEngine.On("GetWorkloadServiceAccounts", mock.MatchedBy(func(ctx context.Context) bool { return true })).Return(
