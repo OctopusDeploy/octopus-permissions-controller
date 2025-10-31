@@ -28,6 +28,9 @@ type WSAResource interface {
 
 	// IsClusterScoped returns true if this is a cluster-scoped resource
 	IsClusterScoped() bool
+
+	// GetOwnerObject returns the underlying WSA or CWSA object for owner references
+	GetOwnerObject() interface{}
 }
 
 // wsaAdapter wraps a WorkloadServiceAccount to implement WSAResource
@@ -68,6 +71,10 @@ func (w *wsaAdapter) IsClusterScoped() bool {
 	return false
 }
 
+func (w *wsaAdapter) GetOwnerObject() interface{} {
+	return w.wsa
+}
+
 // clusterWSAAdapter wraps a ClusterWorkloadServiceAccount to implement WSAResource
 type clusterWSAAdapter struct {
 	cwsa *v1beta1.ClusterWorkloadServiceAccount
@@ -106,4 +113,8 @@ func (c *clusterWSAAdapter) GetClusterRoles() []rbacv1.RoleRef {
 
 func (c *clusterWSAAdapter) IsClusterScoped() bool {
 	return true
+}
+
+func (c *clusterWSAAdapter) GetOwnerObject() interface{} {
+	return c.cwsa
 }

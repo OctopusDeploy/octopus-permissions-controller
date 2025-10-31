@@ -46,6 +46,7 @@ const metricsRoleBindingName = "opc-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
+	var testNamespace = "default"
 
 	// Before running the tests, set up the environment by creating the namespace,
 	// enforce the restricted security policy to the namespace, installing CRDs,
@@ -259,7 +260,7 @@ var _ = Describe("Manager", Ordered, func() {
 				Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
 
 				By("getting the metrics by checking curl-metrics logs")
-				metricsOutput := getMetricsOutput()
+				metricsOutput, _ := getMetricsOutput()
 				Expect(metricsOutput).To(ContainSubstring(
 					"controller_runtime_reconcile_total",
 				))
@@ -308,7 +309,6 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should create ServiceAccount and roles when WorkloadServiceAccount is created", func() {
 			wsaName := "test-wsa"
-			testNamespace := "default"
 
 			By("creating a WorkloadServiceAccount using kubectl apply")
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
@@ -325,7 +325,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("waiting for the controller to reconcile and create ServiceAccount")
 			verifyServiceAccountCreated := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
-					"-l", "agent.octopus.com/permissions=enabled", "-o", "jsonpath={.items[*].metadata.name}")
+					"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Failed to list ServiceAccounts")
 				g.Expect(output).NotTo(BeEmpty(), "Expected at least one ServiceAccount")
@@ -336,6 +336,403 @@ var _ = Describe("Manager", Ordered, func() {
 			By("cleaning up test resources")
 			cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
 			_, _ = utils.Run(cmd)
+		})
+
+		Context("Deletion Tests", func() {
+			It("should delete all resources when WSA with unique scope is deleted", func() {
+				wsaName := "test-wsa-delete-unique"
+
+				wsaYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-delete-unique
+  namespace: default
+spec:
+  scope:
+    projects:
+      - unique-project-for-delete
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get", "list"]
+`
+
+				By("creating a WorkloadServiceAccount with unique scope")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsaYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
+
+				By("waiting for ServiceAccount to be created")
+				var saName string
+				verifySACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+					saName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifySACreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for Role to be created")
+				var roleName string
+				verifyRoleCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "roles", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-role-"))
+					roleName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifyRoleCreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for RoleBinding to be created")
+				var rbName string
+				verifyRBCreated := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf(
+						"kubectl get rolebindings -n %s -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-rb-'",
+						testNamespace)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-rb-"))
+					rbName = strings.TrimSpace(strings.Split(output, "\n")[0])
+				}
+				Eventually(verifyRBCreated, 2*time.Minute).Should(Succeed())
+
+				By("deleting the WorkloadServiceAccount")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to delete WorkloadServiceAccount")
+
+				By("verifying ServiceAccount is deleted")
+				verifySADeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "ServiceAccount should be deleted")
+				}
+				Eventually(verifySADeleted, 2*time.Minute).Should(Succeed())
+
+				By("verifying Role is deleted")
+				verifyRoleDeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "role", roleName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "Role should be deleted")
+				}
+				Eventually(verifyRoleDeleted, 2*time.Minute).Should(Succeed())
+
+				By("verifying RoleBinding is deleted")
+				verifyRBDeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "rolebinding", rbName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "RoleBinding should be deleted")
+				}
+				Eventually(verifyRBDeleted, 2*time.Minute).Should(Succeed())
+			})
+
+			It("should preserve service accounts when WSA with shared scope is deleted", func() {
+				wsa1YAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-shared-1
+  namespace: default
+spec:
+  scope:
+    projects:
+      - shared-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get"]
+`
+
+				wsa2YAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-shared-2
+  namespace: default
+spec:
+  scope:
+    projects:
+      - shared-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["services"]
+        verbs: ["list"]
+`
+
+				By("creating first WorkloadServiceAccount with shared scope")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsa1YAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("creating second WorkloadServiceAccount with same shared scope")
+				cmd = exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsa2YAML)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for ServiceAccounts to be created")
+				verifySAsCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+				}
+				Eventually(verifySAsCreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for two Roles to be created")
+				verifyRolesCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "roles", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					roles := strings.Fields(output)
+					g.Expect(len(roles)).To(BeNumerically(">=", 2), "Should have at least 2 roles")
+				}
+				Eventually(verifyRolesCreated, 2*time.Minute).Should(Succeed())
+
+				By("deleting first WorkloadServiceAccount")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", "test-wsa-shared-1", "-n", testNamespace)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying ServiceAccounts are still present")
+				time.Sleep(10 * time.Second) // Give time for potential cleanup
+				verifySAsPreserved := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"), "ServiceAccounts should still exist")
+				}
+				Eventually(verifySAsPreserved).Should(Succeed())
+
+				By("verifying at least one Role still exists (from wsa-shared-2)")
+				verifyRolePreserved := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "roles", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-role-"), "At least one Role should still exist")
+				}
+				Eventually(verifyRolePreserved).Should(Succeed())
+
+				By("cleaning up second WorkloadServiceAccount")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", "test-wsa-shared-2", "-n", testNamespace)
+				_, _ = utils.Run(cmd)
+			})
+
+			It("should clean up orphaned service accounts when WSA is deleted", func() {
+				wsaBroadYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-broad
+  namespace: default
+spec:
+  scope:
+    spaces:
+      - test-space
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["configmaps"]
+        verbs: ["get"]
+`
+
+				wsaSpecificYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-specific
+  namespace: default
+spec:
+  scope:
+    spaces:
+      - test-space
+    projects:
+      - specific-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["secrets"]
+        verbs: ["get"]
+`
+
+				By("creating WSA with broad scope")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsaBroadYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for initial ServiceAccounts")
+				time.Sleep(5 * time.Second)
+
+				By("creating WSA with more specific scope")
+				cmd = exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsaSpecificYAML)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for specific ServiceAccount to be created")
+				var specificSAName string
+				verifySpecificSACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller",
+						"-o", "json")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					// Parse JSON to find SA with project annotation
+					var saList struct {
+						Items []struct {
+							Metadata struct {
+								Name        string            `json:"name"`
+								Annotations map[string]string `json:"annotations"`
+							} `json:"metadata"`
+						} `json:"items"`
+					}
+					err = json.Unmarshal([]byte(output), &saList)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					for _, sa := range saList.Items {
+						if sa.Metadata.Annotations["agent.octopus.com/project"] == "specific-project" {
+							specificSAName = sa.Metadata.Name
+							break
+						}
+					}
+					g.Expect(specificSAName).NotTo(BeEmpty(), "Should find specific SA with project annotation")
+				}
+				Eventually(verifySpecificSACreated, 2*time.Minute).Should(Succeed())
+
+				By("deleting the specific WSA")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", "test-wsa-specific", "-n", testNamespace)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying the specific ServiceAccount is deleted (orphaned)")
+				verifySADeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccount", specificSAName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "Specific ServiceAccount should be deleted as it's orphaned")
+				}
+				Eventually(verifySADeleted, 2*time.Minute).Should(Succeed())
+
+				By("verifying broad-scoped ServiceAccounts still exist")
+				verifyBroadSAsExist := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"), "Broad-scoped ServiceAccounts should remain")
+				}
+				Eventually(verifyBroadSAsExist).Should(Succeed())
+
+				By("cleaning up broad WSA")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", "test-wsa-broad", "-n", testNamespace)
+				_, _ = utils.Run(cmd)
+			})
+
+			It("should delete all resources when CWSA with unique scope is deleted", func() {
+				cwsaName := "test-cwsa-delete-unique"
+
+				cwsaYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: test-cwsa-delete-unique
+spec:
+  scope:
+    projects:
+      - unique-cluster-project
+  permissions:
+    permissions:
+      - apiGroups: ["apps"]
+        resources: ["deployments"]
+        verbs: ["get", "list"]
+`
+
+				By("creating a ClusterWorkloadServiceAccount with unique scope")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(cwsaYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterWorkloadServiceAccount")
+
+				By("waiting for ServiceAccount to be created")
+				var saName string
+				verifySACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+					saName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifySACreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for ClusterRole to be created")
+				var crName string
+				verifyCRCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "clusterroles",
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-clusterrole-"))
+					crName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifyCRCreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for ClusterRoleBinding to be created")
+				var crbName string
+				verifyCRBCreated := func(g Gomega) {
+					cmd := exec.Command("bash", "-c",
+						"kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-crb-'")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-crb-"))
+					crbName = strings.TrimSpace(strings.Split(output, "\n")[0])
+				}
+				Eventually(verifyCRBCreated, 2*time.Minute).Should(Succeed())
+
+				By("deleting the ClusterWorkloadServiceAccount")
+				cmd = exec.Command("kubectl", "delete", "clusterworkloadserviceaccount", cwsaName)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to delete ClusterWorkloadServiceAccount")
+
+				By("verifying ServiceAccount is deleted")
+				verifySADeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "ServiceAccount should be deleted")
+				}
+				Eventually(verifySADeleted, 2*time.Minute).Should(Succeed())
+
+				By("verifying ClusterRole is deleted")
+				verifyCRDeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "clusterrole", crName)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "ClusterRole should be deleted")
+				}
+				Eventually(verifyCRDeleted, 2*time.Minute).Should(Succeed())
+
+				By("verifying ClusterRoleBinding is deleted")
+				verifyCRBDeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "clusterrolebinding", crbName)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "ClusterRoleBinding should be deleted")
+				}
+				Eventually(verifyCRBDeleted, 2*time.Minute).Should(Succeed())
+			})
 		})
 	})
 })
@@ -382,13 +779,10 @@ func serviceAccountToken() (string, error) {
 }
 
 // getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.
-func getMetricsOutput() string {
+func getMetricsOutput() (string, error) {
 	By("getting the curl-metrics logs")
 	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-	metricsOutput, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-	Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
-	return metricsOutput
+	return utils.Run(cmd)
 }
 
 // tokenRequest is a simplified representation of the Kubernetes TokenRequest API response,

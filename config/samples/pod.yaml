@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  labels:
+    agent.octopus.com/permissions: enabled
+    agent.octopus.com/space: default
+    agent.octopus.com/project: project-a
+    agent.octopus.com/environment: development
+    agent.octopus.com/step: step-1
+  annotations:
+    agent.octopus.com/space: default
+    agent.octopus.com/project: project-a
+    agent.octopus.com/environment: development
+    agent.octopus.com/step: step-1
+spec:
+  containers:
+    - name: test-pod
+      image: nginx
+      imagePullPolicy: IfNotPresent
+      ports:
+        - name: test-pod
+          containerPort: 80
+          protocol: TCP
+  restartPolicy: Always
