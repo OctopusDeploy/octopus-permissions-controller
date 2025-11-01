@@ -23,6 +23,7 @@ import (
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -138,17 +139,25 @@ func updateStatusOnFailure[T WSAResource, S WSAStatus](
 ) {
 	log := logf.FromContext(ctx)
 
-	switch s := any(status).(type) {
-	case *agentoctopuscomv1beta1.WorkloadServiceAccountStatus:
-		s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
-			"False", ReasonReconcileFailed, err.Error())
-	case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountStatus:
-		s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
-			"False", ReasonReconcileFailed, err.Error())
-	}
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if getErr := c.Get(ctx, client.ObjectKeyFromObject(resource), resource); getErr != nil {
+			return getErr
+		}
 
-	if statusErr := c.Status().Update(ctx, resource); statusErr != nil {
-		log.Error(statusErr, "failed to update status after reconciliation failure")
+		switch s := any(status).(type) {
+		case *agentoctopuscomv1beta1.WorkloadServiceAccountStatus:
+			s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
+				"False", ReasonReconcileFailed, err.Error())
+		case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountStatus:
+			s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
+				"False", ReasonReconcileFailed, err.Error())
+		}
+
+		return c.Status().Update(ctx, resource)
+	})
+
+	if retryErr != nil {
+		log.Error(retryErr, "failed to update status after reconciliation failure")
 	}
 }
 
@@ -161,17 +170,25 @@ func updateStatusOnSuccess[T WSAResource, S WSAStatus](
 ) {
 	log := logf.FromContext(ctx)
 
-	switch s := any(status).(type) {
-	case *agentoctopuscomv1beta1.WorkloadServiceAccountStatus:
-		s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
-			"True", ReasonReconcileSuccess, successMessage)
-	case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountStatus:
-		s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
-			"True", ReasonReconcileSuccess, successMessage)
-	}
+	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if getErr := c.Get(ctx, client.ObjectKeyFromObject(resource), resource); getErr != nil {
+			return getErr
+		}
 
-	if err := c.Status().Update(ctx, resource); err != nil {
-		log.Error(err, "failed to update status after successful reconciliation")
+		switch s := any(status).(type) {
+		case *agentoctopuscomv1beta1.WorkloadServiceAccountStatus:
+			s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
+				"True", ReasonReconcileSuccess, successMessage)
+		case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountStatus:
+			s.Conditions = updateCondition(s.Conditions, ConditionTypeReady,
+				"True", ReasonReconcileSuccess, successMessage)
+		}
+
+		return c.Status().Update(ctx, resource)
+	})
+
+	if retryErr != nil {
+		log.Error(retryErr, "failed to update status after successful reconciliation")
 	}
 }
 

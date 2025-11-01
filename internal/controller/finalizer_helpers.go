@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,15 +55,21 @@ func hasSAFinalizer(sa *corev1.ServiceAccount) bool {
 
 // nolint:unparam // conditionType is currently always Ready, but may vary in the future
 func updateCondition(conditions []metav1.Condition, conditionType, status, reason, message string) []metav1.Condition {
+	now := metav1.NewTime(time.Now())
+
 	condition := metav1.Condition{
-		Type:    conditionType,
-		Status:  metav1.ConditionStatus(status),
-		Reason:  reason,
-		Message: message,
+		Type:               conditionType,
+		Status:             metav1.ConditionStatus(status),
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: now,
 	}
 
 	for i := range conditions {
 		if conditions[i].Type == conditionType {
+			if conditions[i].Status == condition.Status {
+				condition.LastTransitionTime = conditions[i].LastTransitionTime
+			}
 			conditions[i] = condition
 			return conditions
 		}
