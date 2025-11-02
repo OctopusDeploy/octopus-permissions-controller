@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/go-set/v3"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/types"
@@ -34,15 +35,16 @@ type Engine interface {
 }
 
 type InMemoryEngine struct {
-	scopeToSA        map[Scope]ServiceAccountName
-	vocabulary       *GlobalVocabulary
-	saToWsaMap       map[ServiceAccountName]map[string]WSAResource
-	wsaToScopesMap   map[string][]Scope          // Tracks previous scopes for each WSA to detect changes
-	deletingSAs      map[ServiceAccountName]bool // Tracks SAs marked for deletion (with deletionTimestamp)
-	targetNamespaces []string
-	lookupNamespaces bool
-	client           client.Client
-	mu               *sync.RWMutex // Protects in-memory state
+	scopeToSA           map[Scope]ServiceAccountName
+	vocabulary          *GlobalVocabulary
+	saToWsaMap          map[ServiceAccountName]map[string]WSAResource
+	wsaToScopesMap      map[string][]Scope          // Tracks previous scopes for each WSA to detect changes
+	deletingSAs         map[ServiceAccountName]bool // Tracks SAs marked for deletion (with deletionTimestamp)
+	targetNamespaces    []string
+	lookupNamespaces    bool
+	lastNamespaceLookup time.Time
+	client              client.Client
+	mu                  *sync.RWMutex // Protects in-memory state
 	ScopeComputation
 	ResourceManagement
 	NamespaceDiscovery
@@ -215,7 +217,10 @@ func (i *InMemoryEngine) ReconcileResource(ctx context.Context, resource WSAReso
 
 // initializeTargetNamespaces ensures target namespaces are initialized
 func (i *InMemoryEngine) initializeTargetNamespaces(ctx context.Context) error {
-	if len(i.targetNamespaces) == 0 {
+	// Rediscover namespaces ~every 5 minutes
+	if len(i.targetNamespaces) == 0 || i.lastNamespaceLookup.Add(5*time.Minute).Before(time.Now()) {
+		// Update last lookup time
+		i.lastNamespaceLookup = time.Now()
 		if i.lookupNamespaces {
 			targetNamespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
 			if err != nil {
