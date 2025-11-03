@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -25,21 +26,15 @@ var (
 		[]string{"controller_type", "result"},
 	)
 
-	// Version information metric
-	versionInfo = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "octopus_version_info",
-			Help: "Version information about the Octopus Permissions Controller",
-		},
-		[]string{"version"},
-	)
+	// Build information collector (provides go_build_info metric with path, version, checksum labels)
+	buildInfoCollector = collectors.NewBuildInfoCollector()
 )
 
 func init() {
 	metrics.Registry.MustRegister(
 		requestsTotal,
 		reconciliationDurationSeconds,
-		versionInfo,
+		buildInfoCollector,
 	)
 }
 
