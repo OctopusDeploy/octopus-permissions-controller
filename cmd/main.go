@@ -74,7 +74,7 @@ var (
 	setupLog              = ctrl.Log.WithName("setup")
 	defaultNamespaceRegex = regexp.MustCompile("^octopus-(agent|worker)-.*")
 	// Set by linker flags at build time
-	version = "dev"
+	version = "v0.0.0"
 )
 
 func init() {
@@ -269,8 +269,6 @@ func main() {
 
 	crmetrics.Registry.MustRegister(octopusMetricsCollector)
 
-	// Set version information in metrics
-	metrics.SetVersionInfo(version)
 	setupLog.Info("starting manager", "version", version)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{

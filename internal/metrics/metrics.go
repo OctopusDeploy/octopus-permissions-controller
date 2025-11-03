@@ -25,21 +25,15 @@ var (
 		[]string{"controller_type", "result"},
 	)
 
-	// Version information metric (info pattern)
-	versionInfo = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "octopus_version_info",
-			Help: "Version information about the Octopus Permissions Controller",
-		},
-		[]string{"version"},
-	)
+	// Build information collector (provides go_build_info metric with path, version, checksum labels)
+	buildInfoCollector = prometheus.NewBuildInfoCollector()
 )
 
 func init() {
 	metrics.Registry.MustRegister(
 		requestsTotal,
 		reconciliationDurationSeconds,
-		versionInfo,
+		buildInfoCollector,
 	)
 }
 
@@ -64,7 +58,3 @@ func RecordReconciliationDurationFunc(controllerType string, startTime time.Time
 	ObserveReconciliationDuration(controllerType, "success", duration)
 }
 
-// SetVersionInfo sets the version information in the metrics
-func SetVersionInfo(version string) {
-	versionInfo.WithLabelValues(version).Inc()
-}

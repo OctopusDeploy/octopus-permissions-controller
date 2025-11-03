@@ -1,8 +1,6 @@
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
 
-# Version information
-VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 LDFLAGS := -X main.version=$(VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
