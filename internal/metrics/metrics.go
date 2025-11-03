@@ -43,12 +43,12 @@ func init() {
 	)
 }
 
-func IncRequestsTotal(controllerType string, scopeMatched bool) {
+func IncRequestsTotal(requestIdentifier string, scopeMatched bool) {
 	scopeMatchedStr := "false"
 	if scopeMatched {
 		scopeMatchedStr = "true"
 	}
-	requestsTotal.WithLabelValues(controllerType, scopeMatchedStr).Inc()
+	requestsTotal.WithLabelValues(requestIdentifier, scopeMatchedStr).Inc()
 }
 
 func ObserveReconciliationDuration(controllerType, result string, duration float64) {

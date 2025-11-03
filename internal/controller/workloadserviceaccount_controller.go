@@ -21,7 +21,6 @@ import (
 	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -81,19 +80,10 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 
 	wsaResource := rules.NewWSAResource(wsa)
 	if err := r.Engine.ReconcileResource(ctx, wsaResource); err != nil {
-		// Track failed reconciliation as scope matching failed
-		metrics.IncRequestsTotal("workloadserviceaccount", false)
 		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccount")
 		updateStatusOnFailure(ctx, r.Client, wsa, &wsa.Status, err)
 		return ctrl.Result{}, err
 	}
-
-	// Check if we have any scopes after reconciliation to determine scope matching success
-	finalScopes := r.Engine.GetScopeToSA()
-	scopeMatched := len(finalScopes) > 0
-
-	// Track the request with scope matching result
-	metrics.IncRequestsTotal("workloadserviceaccount", scopeMatched)
 
 	updateStatusOnSuccess(ctx, r.Client, wsa, &wsa.Status,
 		"All ServiceAccounts, Roles, and RoleBindings successfully reconciled")
