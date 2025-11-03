@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -26,7 +27,7 @@ var (
 	)
 
 	// Build information collector (provides go_build_info metric with path, version, checksum labels)
-	buildInfoCollector = prometheus.NewBuildInfoCollector()
+	buildInfoCollector = collectors.NewBuildInfoCollector()
 )
 
 func init() {
@@ -57,4 +58,3 @@ func RecordReconciliationDurationFunc(controllerType string, startTime time.Time
 	}
 	ObserveReconciliationDuration(controllerType, "success", duration)
 }
-
