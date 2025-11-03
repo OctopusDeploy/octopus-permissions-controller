@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -87,6 +88,9 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 	if err == nil && serviceAccountName != "" {
 		podlog.Info("Setting service account for pod", "name", pod.GetName(), "originalServiceAccount", pod.Spec.ServiceAccountName, "newServiceAccount", serviceAccountName)
 		pod.Spec.ServiceAccountName = string(serviceAccountName)
+		metrics.IncRequestsTotal("podWebhook", true)
+	} else {
+		metrics.IncRequestsTotal("podWebhook", false)
 	}
 	return err
 }
