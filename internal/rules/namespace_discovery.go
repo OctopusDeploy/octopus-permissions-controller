@@ -11,6 +11,7 @@ import (
 
 type NamespaceDiscovery interface {
 	DiscoverTargetNamespaces(ctx context.Context, k8sClient client.Client) ([]string, error)
+	GetTargetNamespaces() []string
 }
 
 type NamespaceDiscoveryService struct {
@@ -55,4 +56,8 @@ func (nds NamespaceDiscoveryService) DiscoverTargetNamespaces(
 	}
 
 	return namespaces, nil
+}
+
+func (nds NamespaceDiscoveryService) GetTargetNamespaces() []string {
+	return []string{}
 }

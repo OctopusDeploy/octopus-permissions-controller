@@ -389,6 +389,10 @@ func (i *InMemoryEngine) cleanupOrphanedResources(
 	return nil
 }
 
+func (i *InMemoryEngine) GetTargetNamespaces() []string {
+	return i.targetNamespaces
+}
+
 // reconcilePermissionsOnly performs fast path reconciliation when only permissions changed
 func (i *InMemoryEngine) reconcilePermissionsOnly(
 	ctx context.Context, resource WSAResource, scopeMap map[Scope]map[string]WSAResource,

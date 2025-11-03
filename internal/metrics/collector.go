@@ -31,7 +31,7 @@ type OctopusMetricsCollector struct {
 	scopesWithTenantsTotalDesc      *prometheus.Desc
 	scopesWithStepsTotalDesc        *prometheus.Desc
 	scopesWithSpacesTotalDesc       *prometheus.Desc
-	discoveredAgentsTotalDesc       *prometheus.Desc
+	targetNamespacesTotalDesc       *prometheus.Desc
 }
 
 // NewOctopusMetricsCollector creates a new instance of OctopusMetricsCollector
@@ -118,10 +118,10 @@ func NewOctopusMetricsCollector(cli client.Client, eng rules.Engine) *OctopusMet
 			nil,
 			nil,
 		),
-		discoveredAgentsTotalDesc: prometheus.NewDesc(
-			"octopus_discovered_agents_total",
-			"Number of discovered agents",
-			[]string{"agent_type"},
+		targetNamespacesTotalDesc: prometheus.NewDesc(
+			"octopus_target_namespaces_total",
+			"Number of target namespaces",
+			nil,
 			nil,
 		),
 	}
@@ -143,7 +143,7 @@ func (c *OctopusMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.scopesWithTenantsTotalDesc
 	ch <- c.scopesWithStepsTotalDesc
 	ch <- c.scopesWithSpacesTotalDesc
-	ch <- c.discoveredAgentsTotalDesc
+	ch <- c.targetNamespacesTotalDesc
 }
 
 // Collect implements the prometheus.Collector interface
@@ -176,6 +176,8 @@ func (c *OctopusMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	if err := c.collectScopeMetricsFromResources(ctx, ch); err != nil {
 		logger.Error(err, "Failed to collect scope metrics from resources")
 	}
+
+	c.collectTargetNamespaceMetrics(ch)
 }
 
 // collectWSAMetrics collects WorkloadServiceAccount metrics
@@ -416,6 +418,18 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 	}
 
 	return nil
+}
+
+func (c *OctopusMetricsCollector) collectTargetNamespaceMetrics(ch chan<- prometheus.Metric) {
+	targetNamespaces := c.engine.GetTargetNamespaces()
+	count := len(targetNamespaces)
+
+	metric := prometheus.MustNewConstMetric(
+		c.targetNamespacesTotalDesc,
+		prometheus.GaugeValue,
+		float64(count),
+	)
+	ch <- metric
 }
 
 func (c *OctopusMetricsCollector) TrackRequest(controllerType string, scopeMatched bool) {

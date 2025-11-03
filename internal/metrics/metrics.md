@@ -29,8 +29,8 @@ All metrics are prefixed with `octopus_` to allow easy filtering in Prometheus q
 - **`octopus_scopes_with_steps_total`**: Number of scopes with Step defined
 - **`octopus_scopes_with_spaces_total`**: Number of scopes with Space defined
 
-#### Agent Metrics
-- **`octopus_discovered_agents_total{agent_type}`**: Number of discovered agents by type
+#### Namespace Metrics
+- **`octopus_target_namespaces_total`**: Number of target namespaces
 
 ### Request Metrics (Counter)
 
