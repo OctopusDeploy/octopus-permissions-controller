@@ -25,9 +25,17 @@ var (
 		},
 		[]string{"controller_type", "result"},
 	)
-
 	// Build information collector (provides go_build_info metric with path, version, checksum labels)
 	buildInfoCollector = collectors.NewBuildInfoCollector()
+
+	// Version information metric
+	versionInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "octopus_version_info",
+			Help: "Version information about the Octopus Permissions Controller",
+		},
+		[]string{"version"},
+	)
 )
 
 func init() {
@@ -35,6 +43,7 @@ func init() {
 		requestsTotal,
 		reconciliationDurationSeconds,
 		buildInfoCollector,
+		versionInfo,
 	)
 }
 
@@ -57,4 +66,8 @@ func RecordReconciliationDurationFunc(controllerType string, startTime time.Time
 		panic(err) // Re-panic to maintain original behavior
 	}
 	ObserveReconciliationDuration(controllerType, "success", duration)
+}
+
+func SetVersionInfo(version string) {
+	versionInfo.WithLabelValues(version).Set(1)
 }
