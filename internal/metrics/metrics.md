@@ -47,3 +47,10 @@ All metrics are prefixed with `octopus_` to allow easy filtering in Prometheus q
   - Labels:
     - `controller_type`: "workloadserviceaccount" or "clusterworkloadserviceaccount"
     - `result`: "success" or "error"
+
+### Version Information Metrics (Gauge)
+
+#### Version Info
+- **`octopus_version_info{version}`**: Version information about the Octopus Permissions Controller
+  - Labels:
+    - `version`: The version string of the controller

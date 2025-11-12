@@ -270,6 +270,7 @@ func main() {
 	crmetrics.Registry.MustRegister(octopusMetricsCollector)
 
 	setupLog.Info("starting manager", "version", version)
+	metrics.SetVersionInfo(version)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
 		Client: mgr.GetClient(),
