@@ -44,13 +44,13 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Package Chart
-        run: helm package './dist/chart' --version '${{ jobs.version.outputs.version }}' --app-version '${{ jobs.version.outputs.version }}'
+        run: helm package './dist/chart' --version '${{ needs.version.outputs.version }}' --app-version '${{ needs.version.outputs.version }}'
 
       - uses: actions/upload-artifact@v4
         name: Upload packaged chart
         with:
-          name: "${{ steps.version.outputs.package_name }}"
-          path: "${{ github.workspace }}/${{ steps.version.outputs.package_name }}"
+          name: "${{ needs.version.outputs.package_name }}"
+          path: "${{ github.workspace }}/${{ needs.version.outputs.package_name }}"
 
   publish_to_octopus:
     runs-on: ubuntu-latest
