@@ -5,3 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: octopusdeploy/octopus-permissions-controller
+  newTag: latest
