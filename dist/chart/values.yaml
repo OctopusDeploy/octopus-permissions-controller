@@ -1,11 +1,18 @@
 # Configure the controller manager deployment
-controllerManager:
+manager:
   replicas: 1
   
   image:
     repository: controller
     tag: latest
     pullPolicy: IfNotPresent
+
+  # Arguments
+  args:
+    - --leader-elect
+
+  # Environment variables
+  env: []
 
   # Pod-level security settings
   podSecurityContext:
@@ -20,13 +27,6 @@ controllerManager:
         drop:
             - ALL
     readOnlyRootFilesystem: true
-
-  # Target namespaces for the controller to create service accounts in - comma-separated
-  # overrides targetNamespaceRegex
-  targetNamespaces: ""
-
-  # Target namespace regex - defaults to "^octopus-(agent|worker)-.*"
-  targetNamespaceRegex: ""
 
   # Resource limits and requests
   resources:
@@ -56,11 +56,17 @@ crd:
 # Enable to expose /metrics endpoint with RBAC protection.
 metrics:
   enable: true
+  port: 8443  # Metrics server port
 
 # Cert-manager integration for TLS certificates.
 # Required for webhook certificates and metrics endpoint certificates.
 certManager:
   enable: true
+
+# Webhook server configuration
+webhook:
+  enable: true
+  port: 9443  # Webhook server port
 
 # Prometheus ServiceMonitor for metrics scraping.
 # Requires prometheus-operator to be installed in the cluster.

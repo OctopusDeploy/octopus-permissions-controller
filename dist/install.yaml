@@ -11,7 +11,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: clusterworkloadserviceaccounts.agent.octopus.com
 spec:
   group: agent.octopus.com
@@ -249,7 +249,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: workloadserviceaccounts.agent.octopus.com
 spec:
   group: agent.octopus.com
@@ -632,6 +632,14 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - serviceaccounts
   verbs:
   - create
@@ -919,7 +927,7 @@ spec:
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         command:
         - /manager
-        image: octopusdeploy/octopus-permissions-controller:v0.0.1
+        image: octopusdeploy/octopus-permissions-controller:latest
         livenessProbe:
           httpGet:
             path: /healthz
