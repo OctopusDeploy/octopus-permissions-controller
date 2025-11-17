@@ -60,7 +60,7 @@ jobs:
       - name: Download packaged chart
         uses: actions/download-artifact@v4
         with:
-          name: "${{ needs.package.outputs.package_name }}"
+          name: "${{ needs.version.outputs.package_name }}"
 
       - name: Login to Octopus
         uses: OctopusDeploy/login@v1
@@ -72,7 +72,7 @@ jobs:
         uses: OctopusDeploy/push-package-action@v3
         with:
           space: "Modern Deployments"
-          packages: ${{ needs.package.outputs.package_name }}
+          packages: ${{ needs.version.outputs.package_name }}
           overwrite_mode: IgnoreIfExists
 
       - name: Create a release in Octopus Deploy 🐙
