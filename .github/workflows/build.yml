@@ -18,6 +18,9 @@ jobs:
     if: >-
       ${{ github.event_name == 'pull_request' || github.event_name == 'release' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -30,8 +33,9 @@ jobs:
             .github/**
             **.md
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # Set up docker build tooling
+      - uses: docker/setup-buildx-action@v3
+      - uses: depot/setup-action@v1
 
       # Helm automatically sets the image version as a label with a limit of 63 which is exceeded by pre-release builds
       - name: Set short git commit SHA
@@ -66,8 +70,9 @@ jobs:
 
       - name: Build and push to artifactory
         if: github.event_name == 'release' || steps.changed-files-specific.outputs.any_changed == 'true'
-        uses: docker/build-push-action@v5
+        uses: depot/build-push-action@v1
         with:
+          project: 12cbt4ckb3
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
