@@ -14,23 +14,23 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version  }}
-      package_name: ${{ steps.version.outputs.package_name }}
+      version: ${{ env.version }}
+      package_name: ${{ env.package_name }}
 
     steps:
       - name: Generate workflow application version
         if: github.event_name == 'workflow_dispatch'
         id: release_version
         run: |
-          echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          echo "package_name=octopus-permissions-controller-chart-${{ inputs.version }}.tgz" >> $GITHUB_OUTPUT
+          echo "version=${{ inputs.version }}" >> $GITHUB_ENV
+          echo "package_name=octopus-permissions-controller-chart-${{ inputs.version }}.tgz" >> $GITHUB_ENV
 
       - name: Generate release application version
         if: github.event_name == 'release'
         id: workflow_version
         run: |
-          echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          echo "package_name=octopus-permissions-controller-chart-${{ github.event.release.tag_name }}.tgz" >> $GITHUB_OUTPUT
+          echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "package_name=octopus-permissions-controller-chart-${{ github.event.release.tag_name }}.tgz" >> $GITHUB_ENV
 
   package:
     needs: version
