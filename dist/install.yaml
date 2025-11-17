@@ -927,7 +927,7 @@ spec:
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         command:
         - /manager
-        image: controller:latest
+        image: octopusdeploy/octopus-permissions-controller:latest
         livenessProbe:
           httpGet:
             path: /healthz
