@@ -1,10 +1,3 @@
-# Eddy edit
-
-TODO: document/confirm regen chart process
-TODO: document release process
-- Check changes are in main
-- tag?
-
 # octopus-permissions-controller
 // TODO(user): Add simple overview of use/purpose
 
