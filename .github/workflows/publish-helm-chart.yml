@@ -1,5 +1,4 @@
 name: Publish Helm chart
-run-name: Publish Helm chart
 
 on:
   release:

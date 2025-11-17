@@ -1,6 +1,5 @@
 ---
 name: Build and Push Image
-run-name: "Build and Push Image"
 
 # Run on PRs and releases
 # We only push to production on a release
