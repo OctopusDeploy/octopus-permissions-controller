@@ -75,8 +75,6 @@ jobs:
         with:
           project: 12cbt4ckb3
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           tags: ${{ env.prerelease_registry }}/${{ env.image_name }}:${{ env.version }}
           platforms: linux/amd64,linux/arm64
           build-args: |
