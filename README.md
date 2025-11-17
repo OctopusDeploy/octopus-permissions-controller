@@ -1,3 +1,10 @@
+# Eddy edit
+
+TODO: document/confirm regen chart process
+TODO: document release process
+- Check changes are in main
+- tag?
+
 # octopus-permissions-controller
 // TODO(user): Add simple overview of use/purpose
 
@@ -97,7 +104,7 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/octopus-permissions-con
 1. Build the chart using the optional helm plugin
 
 ```sh
-kubebuilder edit --plugins=helm/v1-alpha
+kubebuilder edit --plugins=helm/v2-alpha
 ```
 
 2. See that a chart was generated under 'dist/chart', and users

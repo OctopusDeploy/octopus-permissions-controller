@@ -1,0 +1,86 @@
+name: Publish Helm chart
+run-name: Publish Helm chart
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: "The version of the helm chart to publish (e.g. 1.2.3-preview.1)"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version  }}
+      package_name: ${{ steps.version.outputs.package_name }}
+
+    steps:
+      - name: Generate workflow application version
+        if: github.event_name == 'workflow_dispatch'
+        id: release_version
+        run: |
+          echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          echo "package_name=octopus-permissions-controller-chart-${{ inputs.version }}.tgz" >> $GITHUB_OUTPUT
+
+      - name: Generate release application version
+        if: github.event_name == 'release'
+        id: workflow_version
+        run: |
+          echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          echo "package_name=octopus-permissions-controller-chart-${{ github.event.release.tag_name }}.tgz" >> $GITHUB_OUTPUT
+
+  package:
+    needs: version
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package Chart
+        run: helm package './dist/chart' --version '${{ jobs.version.outputs.version }}' --app-version '${{ jobs.version.outputs.version }}'
+
+      - uses: actions/upload-artifact@v4
+        name: Upload packaged chart
+        with:
+          name: "${{ steps.version.outputs.package_name }}"
+          path: "${{ github.workspace }}/${{ steps.version.outputs.package_name }}"
+
+  publish_to_octopus:
+    runs-on: ubuntu-latest
+    needs: package
+    permissions:
+      id-token: write
+    steps:
+      - name: Download packaged chart
+        uses: actions/download-artifact@v4
+        with:
+          name: "${{ needs.package.outputs.package_name }}"
+
+      - name: Login to Octopus
+        uses: OctopusDeploy/login@v1
+        with:
+          server: ${{ vars.OCTOPUS_SERVER }}
+          service_account_id: ${{ secrets.OCTOPUS_SERVICE_ACCOUNT }}
+
+      - name: Push helm chart to Octopus Deploy 🐙
+        uses: OctopusDeploy/push-package-action@v3
+        with:
+          space: "Modern Deployments"
+          packages: ${{ needs.package.outputs.package_name }}
+          overwrite_mode: IgnoreIfExists
+
+      - name: Create a release in Octopus Deploy 🐙
+        uses: OctopusDeploy/create-release-action@v3
+        with:
+          space: "Modern Deployments"
+          project: "Octopus Permissions Controller"
+          release_number: ${{ needs.version.outputs.version }}
+          package_version: ${{ needs.version.outputs.version }}
+          ignore_existing: true

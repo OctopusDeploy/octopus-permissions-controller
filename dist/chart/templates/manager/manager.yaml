@@ -23,26 +23,23 @@ spec:
         spec:
             containers:
                 - args:
-                    - --metrics-bind-address=:8443
-                    - --leader-elect
+                    {{- if .Values.metrics.enable }}
+                    - --metrics-bind-address=:{{ .Values.metrics.port }}
+                    {{- else }}
+                    # Bind to :0 to disable the controller-runtime managed metrics server
+                    - --metrics-bind-address=0
+                    {{- end }}
                     - --health-probe-bind-address=:8081
+                    {{- range .Values.manager.args }}
+                    - {{ . }}
+                    {{- end }}
                     {{- if .Values.certManager.enable }}
                     - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
                     {{- end }}
                   command:
                     - /manager
-                  {{- if (or .Values.controllerManager.targetNamespaceRegex .Values.controllerManager.targetNamespaces) }}
-                  env:
-                  {{- if .Values.controllerManager.targetNamespaceRegex }}
-                    - name: TARGET_NAMESPACE_REGEX
-                      value: {{ .Values.controllerManager.targetNamespaceRegex | quote }}
-                  {{- end }}
-                  {{- if .Values.controllerManager.targetNamespaces }}
-                    - name: TARGET_NAMESPACES
-                      value: {{ .Values.controllerManager.targetNamespaces | quote }}
-                  {{- end }}
-                  {{- end }}
-                  image: "{{ .Values.controllerManager.image.repository }}:{{ .Values.controllerManager.image.tag }}"
+                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
+                  imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:
                         path: /healthz
@@ -51,7 +48,7 @@ spec:
                     periodSeconds: 20
                   name: manager
                   ports:
-                    - containerPort: 9443
+                    - containerPort: {{ .Values.webhook.port }}
                       name: webhook-server
                       protocol: TCP
                   readinessProbe:
@@ -61,18 +58,17 @@ spec:
                     initialDelaySeconds: 5
                     periodSeconds: 10
                   resources:
-                    limits:
-                        cpu: 500m
-                        memory: 128Mi
-                    requests:
-                        cpu: 10m
-                        memory: 64Mi
+                    {{- if .Values.manager.resources }}
+                    {{- toYaml .Values.manager.resources | nindent 20 }}
+                    {{- else }}
+                    {}
+                    {{- end }}
                   securityContext:
-                    allowPrivilegeEscalation: false
-                    capabilities:
-                        drop:
-                            - ALL
-                    readOnlyRootFilesystem: true
+                    {{- if .Values.manager.securityContext }}
+                    {{- toYaml .Values.manager.securityContext | nindent 20 }}
+                    {{- else }}
+                    {}
+                    {{- end }}
                   volumeMounts:
                     {{- if .Values.certManager.enable }}
                     - mountPath: /tmp/k8s-webhook-server/serving-certs
@@ -80,9 +76,11 @@ spec:
                       readOnly: true
                     {{- end }}
             securityContext:
-                runAsNonRoot: true
-                seccompProfile:
-                    type: RuntimeDefault
+              {{- if .Values.manager.podSecurityContext }}
+              {{- toYaml .Values.manager.podSecurityContext | nindent 14 }}
+              {{- else }}
+              {}
+              {{- end }}
             serviceAccountName: opc-controller-manager
             terminationGracePeriodSeconds: 10
             volumes:
