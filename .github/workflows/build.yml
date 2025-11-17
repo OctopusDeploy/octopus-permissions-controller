@@ -48,6 +48,7 @@ jobs:
         if: github.event_name == 'pull_request'
         id: new_version
         run: |
+          git fetch --tags
           BRANCH_NAME=$(echo ${{ github.head_ref }} | tr '/' '-' | \
             tr '_' '-')
           CURRENT_VERSION=$(git describe --tags --abbrev=0 || echo "0.0.0")
