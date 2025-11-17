@@ -21,3 +21,4 @@ jobs:
         with:
           project: 12cbt4ckb3
           context: .
+          platforms: linux/amd64,linux/arm64
