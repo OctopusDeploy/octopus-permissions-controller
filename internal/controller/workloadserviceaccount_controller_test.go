@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,6 +31,7 @@ import (
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 )
 
 var _ = Describe("WorkloadServiceAccount Controller", func() {
@@ -71,10 +73,12 @@ var _ = Describe("WorkloadServiceAccount Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			engine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex)
+			eventCollector := staging.NewEventCollector(500*time.Millisecond, 100)
 			controllerReconciler := &WorkloadServiceAccountReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				Engine: &engine,
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				Engine:         &engine,
+				EventCollector: eventCollector,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

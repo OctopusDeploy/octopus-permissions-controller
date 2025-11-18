@@ -17,16 +17,18 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging/stages"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -36,6 +38,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -50,24 +53,6 @@ import (
 	webhookv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/internal/webhook/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
-
-type StartupReconciler struct {
-	engine *rules.InMemoryEngine
-}
-
-func (s *StartupReconciler) Start(ctx context.Context) error {
-	setupLog.Info("Running initial full reconciliation")
-	if err := s.engine.Reconcile(ctx); err != nil {
-		setupLog.Error(err, "failed to run initial reconciliation")
-		return err
-	}
-	setupLog.Info("Initial reconciliation completed successfully")
-	return nil
-}
-
-func (s *StartupReconciler) NeedLeaderElection() bool {
-	return true
-}
 
 var (
 	scheme                = runtime.NewScheme()
@@ -93,6 +78,11 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var batchDebounceInterval time.Duration
+	var batchMaxSize int
+	var stageTimeout time.Duration
+	var executionConcurrency int
+	var cacheSyncPeriod time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -111,6 +101,17 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.DurationVar(&batchDebounceInterval, "batch-debounce-interval", 500*time.Millisecond,
+		"Event collection debounce interval for batch processing")
+	flag.IntVar(&batchMaxSize, "batch-max-size", 100,
+		"Maximum batch size for reconciliation")
+	flag.DurationVar(&stageTimeout, "stage-timeout", 30*time.Second,
+		"Maximum duration for stage execution")
+	flag.IntVar(&executionConcurrency, "execution-concurrency", 10,
+		"Maximum concurrent Kubernetes operations during execution")
+	flag.DurationVar(&cacheSyncPeriod, "cache-sync-period", 10*time.Hour,
+		"Minimum frequency at which watched resources are reconciled (default 10h). "+
+			"Lower values correct drift faster but increase API server load.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -215,6 +216,9 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "2c524152.agent.octopus.com",
+		Cache: cache.Options{
+			SyncPeriod: &cacheSyncPeriod,
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -258,9 +262,25 @@ func main() {
 		engine = rules.NewInMemoryEngine(mgr.GetClient(), mgr.GetScheme(), targetNamespaceRegex)
 	}
 
-	// Add startup runnable to perform initial full reconciliation
-	if err := mgr.Add(&StartupReconciler{engine: &engine}); err != nil {
-		setupLog.Error(err, "unable to add startup reconciler")
+	setupLog.Info("Initializing reconciliation",
+		"batchDebounceInterval", batchDebounceInterval,
+		"batchMaxSize", batchMaxSize,
+		"stageTimeout", stageTimeout)
+
+	eventRecorder := mgr.GetEventRecorderFor("octopus-permissions-controller")
+
+	eventCollector := staging.NewEventCollector(batchDebounceInterval, batchMaxSize)
+
+	stagingStages := []staging.Stage{
+		stages.NewPlanningStage(&engine),
+		stages.NewValidationStage(mgr.GetClient(), &engine, targetNamespaces),
+		stages.NewExecutionStage(&engine, eventRecorder),
+	}
+
+	orchestrator := staging.NewStageOrchestrator(stagingStages, eventCollector, &engine, mgr.GetClient(), stageTimeout)
+
+	if err := mgr.Add(orchestrator); err != nil {
+		setupLog.Error(err, "unable to add stage orchestrator")
 		os.Exit(1)
 	}
 
@@ -272,9 +292,11 @@ func main() {
 	setupLog.Info("starting manager", "version", version)
 
 	if err := (&controller.WorkloadServiceAccountReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Engine: &engine,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Engine:         &engine,
+		EventCollector: eventCollector,
+		Recorder:       eventRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WorkloadServiceAccount")
 		os.Exit(1)
@@ -294,9 +316,11 @@ func main() {
 		}
 	}
 	if err := (&controller.ClusterWorkloadServiceAccountReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Engine: &engine,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Engine:         &engine,
+		EventCollector: eventCollector,
+		Recorder:       eventRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterWorkloadServiceAccount")
 		os.Exit(1)

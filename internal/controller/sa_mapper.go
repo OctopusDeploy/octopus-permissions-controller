@@ -18,7 +18,7 @@ func MapServiceAccountToResources[T client.Object, L client.ObjectList](
 	extractItems func(L) []T,
 	resourceType string,
 ) []reconcile.Request {
-	if !IsManagedServiceAccount(obj) || !IsServiceAccountBeingDeleted(obj) {
+	if !IsManagedServiceAccount(obj) {
 		return nil
 	}
 
@@ -51,7 +51,7 @@ func MapServiceAccountToResources[T client.Object, L client.ObjectList](
 
 	if len(requests) > 0 {
 		sa := obj.(*corev1.ServiceAccount)
-		log.V(1).Info("Enqueueing resources for ServiceAccount deletion",
+		log.V(1).Info("Enqueueing resources for ServiceAccount change",
 			"serviceAccount", sa.Name,
 			"namespace", sa.Namespace,
 			"resourceType", resourceType,

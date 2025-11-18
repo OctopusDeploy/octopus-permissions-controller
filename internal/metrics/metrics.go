@@ -26,6 +26,14 @@ var (
 		[]string{"controller_type", "result"},
 	)
 
+	finalizerStuckTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "octopus_finalizer_stuck_total",
+			Help: "Total number of resources detected as stuck in deletion",
+		},
+		[]string{"resource_type"},
+	)
+
 	// Build information collector (provides go_build_info metric with path, version, checksum labels)
 	buildInfoCollector = collectors.NewBuildInfoCollector()
 )
@@ -34,8 +42,13 @@ func init() {
 	metrics.Registry.MustRegister(
 		requestsTotal,
 		reconciliationDurationSeconds,
+		finalizerStuckTotal,
 		buildInfoCollector,
 	)
+}
+
+func IncFinalizerStuck(resourceType string) {
+	finalizerStuckTotal.WithLabelValues(resourceType).Inc()
 }
 
 func IncRequestsTotal(requestIdentifier string, scopeMatched bool) {

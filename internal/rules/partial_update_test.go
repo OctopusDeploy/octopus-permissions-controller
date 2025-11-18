@@ -156,7 +156,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsaSpace)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("creating WSA with project-level scope in same space")
 			projectPermissions := []rbacv1.PolicyRule{
@@ -174,7 +174,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsaProject)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("creating WSA with step-level scope in same space and project")
 			stepPermissions := []rbacv1.PolicyRule{
@@ -193,7 +193,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsaStep)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying step-level service account exists")
 			var stepSA *corev1.ServiceAccount
@@ -265,7 +265,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 				if err != nil {
 					return err
 				}
-				return engine.ReconcileResource(testCtx, NewWSAResource(updatedWSA))
+				return reconcileAll(testCtx, &engine)
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("verifying role was updated")
@@ -324,7 +324,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsaSpecific)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("finding the most specific service account")
 			var specificSA *corev1.ServiceAccount
@@ -400,7 +400,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			cleanResources = append(cleanResources, cwsa)
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts exist in target namespaces")
 			var sharedSA *corev1.ServiceAccount
@@ -478,7 +478,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 				if err != nil {
 					return err
 				}
-				return engine.ReconcileResource(testCtx, NewClusterWSAResource(updatedCWSA))
+				return reconcileAll(testCtx, &engine)
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("verifying ClusterRole was updated")
@@ -517,7 +517,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			cleanResources = append(cleanResources, cwsa)
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts at both scope levels")
 			var spaceSA, projectSA *corev1.ServiceAccount
@@ -586,7 +586,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running initial reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("performing rapid sequential scope updates")
 			for i := 2; i <= 5; i++ {
@@ -614,7 +614,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 					if err != nil {
 						return err
 					}
-					return engine.ReconcileResource(testCtx, NewWSAResource(updatedWSA))
+					return reconcileAll(testCtx, &engine)
 				}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				// Force cleanup of service accounts marked for deletion
@@ -658,7 +658,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 
 			By("verifying no orphaned resources remain")
 			// Run full reconciliation to clean up
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			// Check that only service accounts for project-5 exist
 			totalSACount := 0
@@ -681,7 +681,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running initial reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("performing rapid sequential permission updates")
 			permissionSets := [][]rbacv1.PolicyRule{
@@ -728,7 +728,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 					if err != nil {
 						return err
 					}
-					return engine.ReconcileResource(testCtx, NewWSAResource(updatedWSA))
+					return reconcileAll(testCtx, &engine)
 				}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 			}
 
@@ -779,7 +779,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			cleanResources = append(cleanResources, cwsa)
 
 			By("running initial reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("updating both WSA and CWSA in quick succession")
 			// Update WSA
@@ -810,7 +810,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("running full reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying both updates applied correctly")
 			for _, ns := range targetNamespaces {

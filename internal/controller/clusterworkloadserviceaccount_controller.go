@@ -22,9 +22,11 @@ import (
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,8 +37,10 @@ import (
 
 type ClusterWorkloadServiceAccountReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Engine rules.Engine
+	Scheme         *runtime.Scheme
+	Engine         *rules.InMemoryEngine
+	EventCollector *staging.EventCollector
+	Recorder       record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
@@ -64,43 +68,74 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 	if cwsa == nil {
+		log.V(1).Info("Resource not found", "name", req.Name)
 		return ctrl.Result{}, nil
 	}
 
-	if isBeingDeleted(cwsa) {
-		cwsaResource := rules.NewClusterWSAResource(cwsa)
-		return handleDeletion(ctx, r.Client, req, cwsa, r.Engine, cwsaResource)
-	}
+	cwsaResource := rules.NewClusterWSAResource(cwsa)
 
-	if ensureFinalizer(ctx, r.Client, cwsa) {
-		cwsa, err = fetchResource(ctx, r.Client, req, cwsa)
+	if isBeingDeleted(cwsa) {
+		deleteEvent := &staging.EventInfo{
+			Resource:        cwsaResource,
+			EventType:       staging.EventTypeDelete,
+			Generation:      cwsa.GetGeneration(),
+			ResourceVersion: cwsa.GetResourceVersion(),
+			Timestamp:       time.Now(),
+		}
+		if r.EventCollector.AddEvent(deleteEvent) {
+			log.Info("Delete event queued for batch processing", "name", cwsa.Name)
+		}
+
+		requeue, err := handleDeletion(ctx, r.Client, r.Engine, cwsa)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		if requeue {
+			return ctrl.Result{RequeueAfter: deleteCheckRequeueDelay}, nil
+		}
+		return ctrl.Result{}, nil
 	}
 
-	cwsaResource := rules.NewClusterWSAResource(cwsa)
-	if err := r.Engine.ReconcileResource(ctx, cwsaResource); err != nil {
-		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccount")
-		updateStatusOnFailure(ctx, r.Client, cwsa, &cwsa.Status, err)
+	if err := ensureFinalizer(ctx, r.Client, cwsa); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	updateStatusOnSuccess(ctx, r.Client, cwsa, &cwsa.Status,
-		"All ServiceAccounts, ClusterRoles, and ClusterRoleBindings successfully reconciled")
-	log.Info("Successfully reconciled ClusterWorkloadServiceAccount")
+	eventType := staging.EventTypeUpdate
+	if cwsa.GetGeneration() == 1 {
+		eventType = staging.EventTypeCreate
+	}
+
+	event := &staging.EventInfo{
+		Resource:        cwsaResource,
+		EventType:       eventType,
+		Generation:      cwsa.GetGeneration(),
+		ResourceVersion: cwsa.GetResourceVersion(),
+		Timestamp:       time.Now(),
+	}
+
+	if r.EventCollector.AddEvent(event) {
+		log.V(1).Info("Event added to collector", "generation", cwsa.GetGeneration())
+		if r.Recorder != nil {
+			r.Recorder.Event(cwsa, corev1.EventTypeNormal, "Queued", "Reconciliation queued for batch processing")
+		}
+	} else {
+		log.V(1).Info("Event deduplicated", "generation", cwsa.GetGeneration())
+	}
+
+	log.Info("Successfully queued ClusterWorkloadServiceAccount for reconciliation")
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}).
-		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(SuppressOwnedResourceDeletes())).
+		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{},
+			builder.WithPredicates(GenerationOrDeletePredicate())).
+		Owns(&rbacv1.ClusterRole{}, builder.WithPredicates(OwnedResourcePredicate())).
+		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(OwnedResourcePredicate())).
 		Watches(
 			&corev1.ServiceAccount{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToCWSAs),
-			builder.WithPredicates(ServiceAccountDeletionPredicate()),
+			builder.WithPredicates(ManagedServiceAccountPredicate()),
 		).
 		Named("clusterworkloadserviceaccount").
 		Complete(r)
