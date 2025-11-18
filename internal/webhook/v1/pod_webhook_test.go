@@ -87,6 +87,21 @@ var _ = Describe("Pod Webhook", func() {
 			var actualPod corev1.Pod
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
 			Expect(actualPod.Spec.ServiceAccountName).To(Equal("overridden"))
+
+			// Verify that the OPC version environment variable is injected
+			Expect(actualPod.Spec.Containers).To(HaveLen(1))
+			container := actualPod.Spec.Containers[0]
+
+			var versionEnvVar *corev1.EnvVar
+			for _, envVar := range container.Env {
+				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+					versionEnvVar = &envVar
+					break
+				}
+			}
+			Expect(versionEnvVar).NotTo(BeNil(), "Expected OCTOPUS__K8STENTACLE__OPCVERSION environment variable to be present")
+			Expect(versionEnvVar.Value).To(Equal("v1.0.0-test"))
+
 			mockEngine.AssertExpectations(GinkgoT())
 
 			mockCall.Unset()
@@ -101,8 +116,72 @@ var _ = Describe("Pod Webhook", func() {
 			var actualPod corev1.Pod
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
 			Expect(actualPod.Spec.ServiceAccountName).To(Equal("not-overridden"))
+
+			// Verify that the OPC version environment variable is still injected
+			Expect(actualPod.Spec.Containers).To(HaveLen(1))
+			container := actualPod.Spec.Containers[0]
+
+			var versionEnvVar *corev1.EnvVar
+			for _, envVar := range container.Env {
+				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+					versionEnvVar = &envVar
+					break
+				}
+			}
+			Expect(versionEnvVar).NotTo(BeNil(), "Expected OCTOPUS__K8STENTACLE__OPCVERSION environment variable to be present")
+			Expect(versionEnvVar.Value).To(Equal("v1.0.0-test"))
+
 			mockEngine.AssertExpectations(GinkgoT())
 
+			mockCall.Unset()
+		})
+
+		It("Should inject version environment variable into init containers", func() {
+			By("Creating a pod with init containers")
+
+			// Add init container to the pod
+			pod.Spec.InitContainers = []corev1.Container{
+				{
+					Name:  "init-container",
+					Image: "alpine:latest",
+				},
+			}
+
+			mockCall := mockEngine.On("GetServiceAccountForScope", podScope).Return(rules.ServiceAccountName("overridden"), nil)
+
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+
+			var actualPod corev1.Pod
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &actualPod)).To(Succeed())
+
+			// Verify environment variable is injected into init containers
+			Expect(actualPod.Spec.InitContainers).To(HaveLen(1))
+			initContainer := actualPod.Spec.InitContainers[0]
+
+			var versionEnvVar *corev1.EnvVar
+			for _, envVar := range initContainer.Env {
+				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+					versionEnvVar = &envVar
+					break
+				}
+			}
+			Expect(versionEnvVar).NotTo(BeNil(), "Expected OCTOPUS__K8STENTACLE__OPCVERSION environment variable to be present in init container")
+			Expect(versionEnvVar.Value).To(Equal("v1.0.0-test"))
+
+			Expect(actualPod.Spec.Containers).To(HaveLen(1))
+			container := actualPod.Spec.Containers[0]
+
+			versionEnvVar = nil
+			for _, envVar := range container.Env {
+				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+					versionEnvVar = &envVar
+					break
+				}
+			}
+			Expect(versionEnvVar).NotTo(BeNil(), "Expected OCTOPUS__K8STENTACLE__OPCVERSION environment variable to be present in regular container")
+			Expect(versionEnvVar.Value).To(Equal("v1.0.0-test"))
+
+			mockEngine.AssertExpectations(GinkgoT())
 			mockCall.Unset()
 		})
 	})

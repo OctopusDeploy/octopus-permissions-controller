@@ -43,10 +43,11 @@ const (
 var podlog = logf.Log.WithName("pod-resource")
 
 // SetupPodWebhookWithManager registers the webhook for Pod in the manager.
-func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine) error {
+func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine, version string) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&corev1.Pod{}).
 		WithDefaulter(&PodCustomDefaulter{
-			engine: engine,
+			engine:  engine,
+			version: version,
 		}).
 		Complete()
 }
@@ -59,7 +60,8 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
 type PodCustomDefaulter struct {
-	engine rules.Engine
+	engine  rules.Engine
+	version string
 }
 
 var _ webhook.CustomDefaulter = &PodCustomDefaulter{}
@@ -92,6 +94,9 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 	} else {
 		metrics.IncRequestsTotal("podWebhook", false)
 	}
+
+	d.injectVersionEnvironmentVariable(pod)
+
 	return err
 }
 
@@ -126,4 +131,48 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 	}
 
 	return scope
+}
+
+func (d *PodCustomDefaulter) injectVersionEnvironmentVariable(pod *corev1.Pod) {
+	versionEnvVar := corev1.EnvVar{
+		Name:  "OCTOPUS__K8STENTACLE__OPCVERSION",
+		Value: d.version,
+	}
+
+	// Inject into all containers
+	for i := range pod.Spec.Containers {
+		container := &pod.Spec.Containers[i]
+
+		envVarExists := false
+		for j, envVar := range container.Env {
+			if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+				container.Env[j].Value = d.version
+				envVarExists = true
+				break
+			}
+		}
+
+		if !envVarExists {
+			container.Env = append(container.Env, versionEnvVar)
+		}
+	}
+
+	for i := range pod.Spec.InitContainers {
+		container := &pod.Spec.InitContainers[i]
+
+		envVarExists := false
+		for j, envVar := range container.Env {
+			if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+				container.Env[j].Value = d.version
+				envVarExists = true
+				break
+			}
+		}
+
+		if !envVarExists {
+			container.Env = append(container.Env, versionEnvVar)
+		}
+	}
+
+	podlog.Info("Injected OPC version environment variable", "name", pod.GetName(), "version", d.version)
 }
