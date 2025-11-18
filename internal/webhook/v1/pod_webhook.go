@@ -36,6 +36,7 @@ const (
 	TenantAnnotationKey      = "agent.octopus.com/tenant"
 	StepAnnotationKey        = "agent.octopus.com/step"
 	SpaceAnnotationKey       = "agent.octopus.com/space"
+	OPCVersionEnvVarKey      = "OCTOPUS__K8STENTACLE__OPCVERSION"
 )
 
 // nolint:unused
@@ -135,7 +136,7 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 
 func (d *PodCustomDefaulter) injectVersionEnvironmentVariable(pod *corev1.Pod) {
 	versionEnvVar := corev1.EnvVar{
-		Name:  "OCTOPUS__K8STENTACLE__OPCVERSION",
+		Name:  OPCVersionEnvVarKey,
 		Value: d.version,
 	}
 
@@ -145,7 +146,7 @@ func (d *PodCustomDefaulter) injectVersionEnvironmentVariable(pod *corev1.Pod) {
 
 		envVarExists := false
 		for j, envVar := range container.Env {
-			if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+			if envVar.Name == OPCVersionEnvVarKey {
 				container.Env[j].Value = d.version
 				envVarExists = true
 				break
@@ -162,7 +163,7 @@ func (d *PodCustomDefaulter) injectVersionEnvironmentVariable(pod *corev1.Pod) {
 
 		envVarExists := false
 		for j, envVar := range container.Env {
-			if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+			if envVar.Name == OPCVersionEnvVarKey {
 				container.Env[j].Value = d.version
 				envVarExists = true
 				break

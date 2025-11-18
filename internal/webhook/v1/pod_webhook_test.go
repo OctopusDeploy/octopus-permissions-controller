@@ -94,7 +94,7 @@ var _ = Describe("Pod Webhook", func() {
 
 			var versionEnvVar *corev1.EnvVar
 			for _, envVar := range container.Env {
-				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+				if envVar.Name == OPCVersionEnvVarKey {
 					versionEnvVar = &envVar
 					break
 				}
@@ -123,7 +123,7 @@ var _ = Describe("Pod Webhook", func() {
 
 			var versionEnvVar *corev1.EnvVar
 			for _, envVar := range container.Env {
-				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+				if envVar.Name == OPCVersionEnvVarKey {
 					versionEnvVar = &envVar
 					break
 				}
@@ -160,7 +160,7 @@ var _ = Describe("Pod Webhook", func() {
 
 			var versionEnvVar *corev1.EnvVar
 			for _, envVar := range initContainer.Env {
-				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+				if envVar.Name == OPCVersionEnvVarKey {
 					versionEnvVar = &envVar
 					break
 				}
@@ -173,7 +173,7 @@ var _ = Describe("Pod Webhook", func() {
 
 			versionEnvVar = nil
 			for _, envVar := range container.Env {
-				if envVar.Name == "OCTOPUS__K8STENTACLE__OPCVERSION" {
+				if envVar.Name == OPCVersionEnvVarKey {
 					versionEnvVar = &envVar
 					break
 				}
