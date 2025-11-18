@@ -22,21 +22,18 @@ import (
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 type ClusterWorkloadServiceAccountReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Engine rules.Engine
+	Scheme         *runtime.Scheme
+	Engine         rules.Engine
+	EventCollector *staging.EventCollector
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
@@ -80,14 +77,23 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	}
 
 	cwsaResource := rules.NewClusterWSAResource(cwsa)
-	if err := r.Engine.ReconcileResource(ctx, cwsaResource); err != nil {
-		log.Error(err, "failed to reconcile ServiceAccounts from ClusterWorkloadServiceAccount")
-		updateStatusOnFailure(ctx, r.Client, cwsa, &cwsa.Status, err)
-		return ctrl.Result{}, err
+
+	event := &staging.EventInfo{
+		Resource:        cwsaResource,
+		EventType:       staging.EventTypeUpdate,
+		Generation:      cwsa.GetGeneration(),
+		ResourceVersion: cwsa.GetResourceVersion(),
+		Timestamp:       time.Now(),
+	}
+
+	if r.EventCollector.AddEvent(event) {
+		log.V(1).Info("Event added to collector", "generation", cwsa.GetGeneration())
+	} else {
+		log.V(1).Info("Event deduplicated", "generation", cwsa.GetGeneration())
 	}
 
 	updateStatusOnSuccess(ctx, r.Client, cwsa, &cwsa.Status,
-		"All ServiceAccounts, ClusterRoles, and ClusterRoleBindings successfully reconciled")
+		"Event queued for batch reconciliation")
 	log.Info("Successfully reconciled ClusterWorkloadServiceAccount")
 	return ctrl.Result{}, nil
 }
@@ -96,34 +102,6 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}).
-		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(SuppressOwnedResourceDeletes())).
-		Watches(
-			&corev1.ServiceAccount{},
-			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToCWSAs),
-			builder.WithPredicates(ServiceAccountDeletionPredicate()),
-		).
 		Named("clusterworkloadserviceaccount").
 		Complete(r)
-}
-
-// mapServiceAccountToCWSAs maps ServiceAccount events to ClusterWorkloadServiceAccount reconcile requests.
-// When a ServiceAccount changes (especially when marked for deletion), this triggers reconciliation
-// of all related CWSAs so they can complete the two-phase deletion process (remove finalizers if safe).
-func (r *ClusterWorkloadServiceAccountReconciler) mapServiceAccountToCWSAs(
-	ctx context.Context, obj client.Object,
-) []reconcile.Request {
-	return MapServiceAccountToResources(
-		ctx,
-		obj,
-		r.Client,
-		&agentoctopuscomv1beta1.ClusterWorkloadServiceAccountList{},
-		func(list *agentoctopuscomv1beta1.ClusterWorkloadServiceAccountList) []*agentoctopuscomv1beta1.ClusterWorkloadServiceAccount {
-			result := make([]*agentoctopuscomv1beta1.ClusterWorkloadServiceAccount, len(list.Items))
-			for i := range list.Items {
-				result[i] = &list.Items[i]
-			}
-			return result
-		},
-		"ClusterWorkloadServiceAccount",
-	)
 }
