@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload SBOM to Dependency Track
         if: github.event_name == 'release'
-        uses: OctopusDeploy/upload-sbom-go@v1.0.0
+        uses: OctopusDeploy/upload-sbom-go@v1.2.0
         with:
           dependency-track-url: ${{ secrets.DTRACK_URL }}
           dependency-track-key: ${{ secrets.DTRACK_KEY }}
