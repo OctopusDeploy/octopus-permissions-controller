@@ -45,7 +45,7 @@ jobs:
 
       # Our release process currently does not mesh with the way kubebuilder links the image tag, so we manually update the values.yaml tag here
       - name: Update manager image tag using release version
-        run: yq e -i '.manager.image.tag = ${{ needs.version.outputs.version }}' ./dist/chart/values.yaml
+        run: yq e -i '.manager.image.tag = "${{ needs.version.outputs.version }}"' ./dist/chart/values.yaml
 
       - name: Package Chart
         run: helm package './dist/chart' --version '${{ needs.version.outputs.version }}' --app-version '${{ needs.version.outputs.version }}'
