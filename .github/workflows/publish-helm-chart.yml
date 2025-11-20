@@ -22,8 +22,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         id: release_version
         run: |
-          echo "version=${{ inputs.version }}" >> $GITHUB_ENV
-          echo "package_name=octopus-permissions-controller-chart-${{ inputs.version }}.tgz" >> $GITHUB_ENV
+          tag=${{ inputs.version }}
+          echo "version=${tag#v}" >> $GITHUB_ENV
+          echo "package_name=octopus-permissions-controller-chart-${tag#v}.tgz" >> $GITHUB_ENV
 
       - name: Generate release application version
         if: github.event_name == 'release'
