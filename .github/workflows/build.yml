@@ -54,7 +54,8 @@ jobs:
         if: github.event_name == 'release'
         id: release_version
         run: |
-          echo "version=${{ github.event.release.tag_name }}" >> "$GITHUB_ENV"
+          tag=${{ github.event.release.tag_name }}
+          echo "version=${tag#v}" >> $GITHUB_ENV
 
       - name: Login to Artifactory
         if: github.event_name == 'release' || steps.changed-files-specific.outputs.any_changed == 'true'

@@ -3,7 +3,7 @@ manager:
   replicas: 1
   
   image:
-    repository: controller
+    repository: octopusdeploy/octopus-permissions-controller
     tag: latest
     pullPolicy: IfNotPresent
 
