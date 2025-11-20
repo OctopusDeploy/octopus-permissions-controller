@@ -79,6 +79,8 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		return nil
 	}
 
+	d.injectVersionEnvironmentVariable(pod)
+
 	podlog.Info("Getting scope for pod", "name", pod.GetName())
 
 	scope := getPodScope(pod)
@@ -95,8 +97,6 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 	} else {
 		metrics.IncRequestsTotal("podWebhook", false)
 	}
-
-	d.injectVersionEnvironmentVariable(pod)
 
 	return err
 }
