@@ -8,7 +8,7 @@ on:
       version:
         required: true
         type: string
-        description: "The version of the helm chart to publish (e.g. 1.2.3-preview.1)"
+        description: "The version of the helm chart to publish (e.g. v1.2.3-preview.1)"
 
 jobs:
   version:
@@ -22,15 +22,17 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         id: release_version
         run: |
-          echo "version=${{ inputs.version }}" >> $GITHUB_ENV
-          echo "package_name=octopus-permissions-controller-chart-${{ inputs.version }}.tgz" >> $GITHUB_ENV
+          tag=${{ inputs.version }}
+          echo "version=${tag#v}" >> $GITHUB_ENV
+          echo "package_name=octopus-permissions-controller-chart-${tag#v}.tgz" >> $GITHUB_ENV
 
       - name: Generate release application version
         if: github.event_name == 'release'
         id: workflow_version
         run: |
-          echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "package_name=octopus-permissions-controller-chart-${{ github.event.release.tag_name }}.tgz" >> $GITHUB_ENV
+          tag=${{ github.event.release.tag_name }}
+          echo "version=${tag#v}" >> $GITHUB_ENV
+          echo "package_name=octopus-permissions-controller-chart-${tag#v}.tgz" >> $GITHUB_ENV
 
   package:
     needs: version
@@ -41,6 +43,10 @@ jobs:
 
       - name: Install Helm
         uses: azure/setup-helm@v4
+
+      # Our release process currently does not mesh with the way kubebuilder links the image tag, so we manually update the values.yaml tag here
+      - name: Update manager image tag using release version
+        run: yq e -i '.manager.image.tag = "${{ needs.version.outputs.version }}"' ./dist/chart/values.yaml
 
       - name: Package Chart
         run: helm package './dist/chart' --version '${{ needs.version.outputs.version }}' --app-version '${{ needs.version.outputs.version }}'
