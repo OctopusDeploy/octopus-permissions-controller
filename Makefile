@@ -1,4 +1,5 @@
 # Image URL to use all building/pushing image targets
+# Force a build
 IMG ?= octopusdeploy/octopus-permissions-controller:latest
 
 LDFLAGS := -X main.version=$(VERSION)
