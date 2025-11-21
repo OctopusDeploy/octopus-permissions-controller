@@ -29,8 +29,7 @@ type Engine interface {
 	ResourceManagement
 	NamespaceDiscovery
 	ScopeComputation
-	Reconcile(ctx context.Context) error
-	ReconcileResource(ctx context.Context, resource WSAResource) error
+	ApplyBatchPlan(ctx context.Context, plan interface{}) error
 	CleanupServiceAccounts(ctx context.Context, deletingResource WSAResource) (ctrl.Result, error)
 }
 
@@ -38,7 +37,6 @@ type InMemoryEngine struct {
 	scopeToSA           map[Scope]ServiceAccountName
 	vocabulary          *GlobalVocabulary
 	saToWsaMap          map[ServiceAccountName]map[string]WSAResource
-	wsaToScopesMap      map[string][]Scope          // Tracks previous scopes for each WSA to detect changes
 	deletingSAs         map[ServiceAccountName]bool // Tracks SAs marked for deletion (with deletionTimestamp)
 	targetNamespaces    []string
 	lookupNamespaces    bool
@@ -61,7 +59,6 @@ func NewInMemoryEngine(
 		client:             controllerClient,
 		vocabulary:         &vocab,
 		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
-		wsaToScopesMap:     make(map[string][]Scope),
 		deletingSAs:        make(map[ServiceAccountName]bool),
 		mu:                 &sync.RWMutex{},
 		ResourceManagement: NewResourceManagementServiceWithScheme(controllerClient, scheme),
@@ -82,7 +79,6 @@ func NewInMemoryEngineWithNamespaces(
 		client:             controllerClient,
 		vocabulary:         &vocab,
 		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
-		wsaToScopesMap:     make(map[string][]Scope),
 		deletingSAs:        make(map[ServiceAccountName]bool),
 		mu:                 &sync.RWMutex{},
 		ResourceManagement: NewResourceManagementServiceWithScheme(controllerClient, scheme),
@@ -92,393 +88,34 @@ func NewInMemoryEngineWithNamespaces(
 	return engine
 }
 
-func (i *InMemoryEngine) Reconcile(ctx context.Context) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Fetch ClusterWorkloadServiceAccounts
-	cwsaEnumerable, err := i.GetClusterWorkloadServiceAccounts(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Get our target namespaces
-	if i.lookupNamespaces {
-		targetNamespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
-		if err != nil {
-			return fmt.Errorf("failed to discover target namespaces: %w", err)
-		}
-		i.targetNamespaces = targetNamespaces
-	}
-
-	// Convert both types to WSAResource interface
-	allResources := make([]WSAResource, 0)
-	for wsa := range wsaEnumerable {
-		allResources = append(allResources, NewWSAResource(wsa))
-	}
-	for cwsa := range cwsaEnumerable {
-		allResources = append(allResources, NewClusterWSAResource(cwsa))
-	}
-
-	scopeMap, vocabulary := i.ComputeScopesForWSAs(allResources)
-	*i.vocabulary = vocabulary
-
-	// Generate service accounts
-	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := i.GenerateServiceAccountMappings(scopeMap)
-
-	// Clear and rebuild maps
-	maps.Clear(i.scopeToSA)
-	maps.Clear(i.saToWsaMap)
-	maps.Clear(i.wsaToScopesMap)
-
-	for scope, sa := range scopeToSaNameMap {
-		i.scopeToSA[scope] = sa
-	}
-	for sa, wsa := range saToWsaMap {
-		i.saToWsaMap[sa] = wsa
-	}
-
-	// Track scopes for each WSA to enable scope change detection
-	for scope, wsaMap := range scopeMap {
-		for wsaName := range wsaMap {
-			i.wsaToScopesMap[wsaName] = append(i.wsaToScopesMap[wsaName], scope)
-		}
-	}
-
-	createdRoles, err := i.EnsureRoles(ctx, allResources)
-	if err != nil {
-		return fmt.Errorf("failed to ensure roles: %w", err)
-	}
-
-	err = i.EnsureServiceAccounts(ctx, uniqueServiceAccounts, i.targetNamespaces)
-	if err != nil {
-		return fmt.Errorf("failed to ensure service accounts: %w", err)
-	}
-
-	// For each WSA, bind the roles or created roles to the service accounts in each target namespace
-	if bindErr := i.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToServiceAccountNames, i.targetNamespaces); bindErr != nil {
-		return fmt.Errorf("failed to ensure role bindings: %w", bindErr)
-	}
-
-	// Garbage collect ServiceAccounts that are no longer needed
-	expectedServiceAccounts := set.New[string](len(uniqueServiceAccounts))
-	for _, sa := range uniqueServiceAccounts {
-		expectedServiceAccounts.Insert(sa.Name)
-	}
-	targetNamespacesSet := set.New[string](len(i.targetNamespaces))
-	for _, ns := range i.targetNamespaces {
-		targetNamespacesSet.Insert(ns)
-	}
-	if _, gcErr := i.GarbageCollectServiceAccounts(ctx, expectedServiceAccounts, targetNamespacesSet); gcErr != nil {
-		return fmt.Errorf("failed to garbage collect service accounts: %w", gcErr)
-	}
-
-	// Update the deletingSAs map to track which SAs are marked for deletion
-	if err := i.syncDeletingSAs(ctx); err != nil {
-		// Return error to fail reconciliation and ensure map stays in sync
-		return fmt.Errorf("failed to sync deletingSAs map: %w", err)
-	}
-
-	return nil
-}
-
-// ReconcileResource performs an incremental reconciliation for a single WorkloadServiceAccount or ClusterWorkloadServiceAccount.
-// This should be called during normal reconcile loops when a specific resource changes.
-func (i *InMemoryEngine) ReconcileResource(ctx context.Context, resource WSAResource) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	// Initialize target namespaces if not already set
-	if err := i.initializeTargetNamespaces(ctx); err != nil {
-		return err
-	}
-
-	targetNamespaces := i.targetNamespaces
-
-	// Compute scopes for just this resource
-	scopeMap, newVocabulary := i.ComputeScopesForWSAs([]WSAResource{resource})
-
-	// Detect if scopes have changed for this resource
-	changeInfo := i.detectScopeChanges(resource, scopeMap)
-
-	// If scopes changed, perform full reconciliation
-	if changeInfo.scopesChanged {
-		return i.reconcileWithScopeChanges(ctx, targetNamespaces)
-	}
-
-	// Fast path: Only permissions changed, not scopes
-	return i.reconcilePermissionsOnly(ctx, resource, scopeMap, newVocabulary, changeInfo.newScopes, targetNamespaces)
-}
-
-// initializeTargetNamespaces ensures target namespaces are initialized
-func (i *InMemoryEngine) initializeTargetNamespaces(ctx context.Context) error {
-	// Rediscover namespaces ~every 5 minutes
-	if len(i.targetNamespaces) == 0 || i.lastNamespaceLookup.Add(5*time.Minute).Before(time.Now()) {
-		// Update last lookup time
-		i.lastNamespaceLookup = time.Now()
-		if i.lookupNamespaces {
-			targetNamespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
-			if err != nil {
-				return fmt.Errorf("failed to discover target namespaces: %w", err)
-			}
-			i.targetNamespaces = targetNamespaces
-		}
-		// If still empty after lookup, it's an error
-		if len(i.targetNamespaces) == 0 {
-			return fmt.Errorf("target namespaces not initialized and discovery failed")
-		}
-	}
-	return nil
-}
-
-// scopeChangeInfo contains information about scope changes for a resource
-type scopeChangeInfo struct {
-	previousScopes    []Scope
-	hadPreviousScopes bool
-	newScopes         []Scope
-	scopesChanged     bool
-}
-
-// detectScopeChanges detects if scopes have changed for a resource
-func (i *InMemoryEngine) detectScopeChanges(
-	resource WSAResource, scopeMap map[Scope]map[string]WSAResource,
-) scopeChangeInfo {
-	wsaName := resource.GetName()
-	previousScopes, hadPreviousScopes := i.wsaToScopesMap[wsaName]
-
-	// Extract new scopes for this WSA from the scopeMap
-	newScopes := make([]Scope, 0)
-	for scope := range scopeMap {
-		newScopes = append(newScopes, scope)
-	}
-
-	// Check if scopes have changed
-	scopesChanged := !hadPreviousScopes || scopesChanged(previousScopes, newScopes)
-
-	return scopeChangeInfo{
-		previousScopes:    previousScopes,
-		hadPreviousScopes: hadPreviousScopes,
-		newScopes:         newScopes,
-		scopesChanged:     scopesChanged,
-	}
-}
-
-// reconcileWithScopeChanges performs full reconciliation when scopes have changed
-func (i *InMemoryEngine) reconcileWithScopeChanges(ctx context.Context, targetNamespaces []string) error {
-	allResources, err := i.fetchAllResources(ctx)
-	if err != nil {
-		return err
-	}
-
-	fullScopeMap, fullVocabulary := i.ComputeScopesForWSAs(allResources)
-	*i.vocabulary = fullVocabulary
-
-	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, neededServiceAccounts := i.GenerateServiceAccountMappings(fullScopeMap)
-
-	i.updateInMemoryMaps(scopeToSaNameMap, saToWsaMap, fullScopeMap)
-
-	if err := i.ensureAllRBACResources(ctx, allResources, neededServiceAccounts, wsaToServiceAccountNames, targetNamespaces); err != nil {
-		return err
-	}
-
-	return i.cleanupOrphanedResources(ctx, neededServiceAccounts, targetNamespaces)
-}
-
-func (i *InMemoryEngine) fetchAllResources(ctx context.Context) ([]WSAResource, error) {
-	wsaEnumerable, err := i.GetWorkloadServiceAccounts(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get WorkloadServiceAccounts: %w", err)
-	}
-
-	cwsaEnumerable, err := i.GetClusterWorkloadServiceAccounts(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ClusterWorkloadServiceAccounts: %w", err)
-	}
-
-	allResources := make([]WSAResource, 0)
-	for wsa := range wsaEnumerable {
-		allResources = append(allResources, NewWSAResource(wsa))
-	}
-	for cwsa := range cwsaEnumerable {
-		allResources = append(allResources, NewClusterWSAResource(cwsa))
-	}
-
-	return allResources, nil
-}
-
-func (i *InMemoryEngine) updateInMemoryMaps(
-	scopeToSaNameMap map[Scope]ServiceAccountName,
-	saToWsaMap map[ServiceAccountName]map[string]WSAResource,
-	fullScopeMap map[Scope]map[string]WSAResource,
-) {
-	maps.Clear(i.scopeToSA)
-	maps.Clear(i.saToWsaMap)
-	maps.Clear(i.wsaToScopesMap)
-
-	for scope, sa := range scopeToSaNameMap {
-		i.scopeToSA[scope] = sa
-	}
-	for sa, wsaMap := range saToWsaMap {
-		i.saToWsaMap[sa] = wsaMap
-	}
-
-	for scope, wsaMap := range fullScopeMap {
-		for wsaName := range wsaMap {
-			i.wsaToScopesMap[wsaName] = append(i.wsaToScopesMap[wsaName], scope)
-		}
-	}
-}
-
-func (i *InMemoryEngine) ensureAllRBACResources(
-	ctx context.Context,
-	allResources []WSAResource,
-	neededServiceAccounts []*corev1.ServiceAccount,
-	wsaToServiceAccountNames map[string][]string,
-	targetNamespaces []string,
-) error {
-	createdRoles, err := i.EnsureRoles(ctx, allResources)
-	if err != nil {
-		return fmt.Errorf("failed to ensure roles: %w", err)
-	}
-
-	if err := i.EnsureServiceAccounts(ctx, neededServiceAccounts, targetNamespaces); err != nil {
-		return fmt.Errorf("failed to ensure service accounts: %w", err)
-	}
-
-	for _, sa := range neededServiceAccounts {
-		log.FromContext(ctx).V(1).Info("Expected ServiceAccount",
-			"name", sa.Name,
-			"annotations", sa.Annotations)
-	}
-
-	if err := i.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToServiceAccountNames, targetNamespaces); err != nil {
-		return fmt.Errorf("failed to ensure role bindings: %w", err)
-	}
-
-	return nil
-}
-
-func (i *InMemoryEngine) cleanupOrphanedResources(
-	ctx context.Context,
-	neededServiceAccounts []*corev1.ServiceAccount,
-	targetNamespaces []string,
-) error {
-	neededSet := set.New[string](len(neededServiceAccounts))
-	for _, sa := range neededServiceAccounts {
-		neededSet.Insert(sa.Name)
-	}
-
-	targetNamespacesSet := set.New[string](len(targetNamespaces))
-	for _, ns := range targetNamespaces {
-		targetNamespacesSet.Insert(ns)
-	}
-
-	if _, err := i.GarbageCollectServiceAccounts(ctx, neededSet, targetNamespacesSet); err != nil {
-		return fmt.Errorf("failed to garbage collect service accounts: %w", err)
-	}
-
-	if err := i.syncDeletingSAs(ctx); err != nil {
-		return fmt.Errorf("failed to sync deletingSAs map: %w", err)
-	}
-
-	return nil
-}
-
 func (i *InMemoryEngine) GetTargetNamespaces() []string {
 	return i.targetNamespaces
 }
 
-// reconcilePermissionsOnly performs fast path reconciliation when only permissions changed
-func (i *InMemoryEngine) reconcilePermissionsOnly(
-	ctx context.Context, resource WSAResource, scopeMap map[Scope]map[string]WSAResource,
-	newVocabulary GlobalVocabulary, newScopes []Scope, targetNamespaces []string,
-) error {
-	// Merge new vocabulary dimensions into existing vocabulary
-	i.mergeVocabulary(newVocabulary)
+func (i *InMemoryEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
-	// Generate service account mappings for this resource
-	scopeToSaNameMap, saToWsaMap, wsaToServiceAccountNames, uniqueServiceAccounts := i.GenerateServiceAccountMappings(scopeMap)
-
-	// Update in-memory maps for this resource
-	for scope, sa := range scopeToSaNameMap {
-		i.scopeToSA[scope] = sa
-	}
-	for sa, wsaMap := range saToWsaMap {
-		if i.saToWsaMap[sa] == nil {
-			i.saToWsaMap[sa] = make(map[string]WSAResource)
-		}
-		for wsaName, wsaRes := range wsaMap {
-			i.saToWsaMap[sa][wsaName] = wsaRes
-		}
+	type reconciliationPlan interface {
+		GetScopeToSA() map[Scope]ServiceAccountName
+		GetSAToWSAMap() map[ServiceAccountName]map[string]WSAResource
+		GetVocabulary() *GlobalVocabulary
 	}
 
-	// Update wsaToScopesMap with current scopes
-	wsaName := resource.GetName()
-	i.wsaToScopesMap[wsaName] = newScopes
-
-	// Ensure roles for this resource
-	createdRoles, err := i.EnsureRoles(ctx, []WSAResource{resource})
-	if err != nil {
-		return fmt.Errorf("failed to ensure roles: %w", err)
+	rp, ok := plan.(reconciliationPlan)
+	if !ok {
+		return fmt.Errorf("invalid plan type")
 	}
 
-	// Ensure service accounts for this resource
-	if err := i.EnsureServiceAccounts(ctx, uniqueServiceAccounts, targetNamespaces); err != nil {
-		return fmt.Errorf("failed to ensure service accounts: %w", err)
+	i.scopeToSA = rp.GetScopeToSA()
+	i.saToWsaMap = rp.GetSAToWSAMap()
+	if vocab := rp.GetVocabulary(); vocab != nil {
+		i.vocabulary = vocab
 	}
 
-	// Log what SAs were created for debugging (fast path)
-	for _, sa := range uniqueServiceAccounts {
-		log.FromContext(ctx).V(1).Info("Expected ServiceAccount (fast path)",
-			"name", sa.Name,
-			"annotations", sa.Annotations)
-	}
-
-	// Ensure role bindings for this resource
-	if err := i.EnsureRoleBindings(ctx, []WSAResource{resource}, createdRoles, wsaToServiceAccountNames, targetNamespaces); err != nil {
-		return fmt.Errorf("failed to ensure role bindings: %w", err)
-	}
+	i.ScopeComputation = NewScopeComputationService(i.vocabulary, i.scopeToSA)
 
 	return nil
-}
-
-// mergeVocabulary merges new vocabulary dimensions into the existing vocabulary
-func (i *InMemoryEngine) mergeVocabulary(newVocab GlobalVocabulary) {
-	// Merge each dimension by inserting all values from new vocabulary into existing
-	for dimIndex := DimensionIndex(0); dimIndex < MaxDimensionIndex; dimIndex++ {
-		if newVocab[dimIndex] != nil {
-			for value := range newVocab[dimIndex].Items() {
-				i.vocabulary[dimIndex].Insert(value)
-			}
-		}
-	}
-}
-
-// scopesChanged checks if the scopes for a WSA have changed by comparing old and new scope sets
-func scopesChanged(oldScopes, newScopes []Scope) bool {
-	if len(oldScopes) != len(newScopes) {
-		return true
-	}
-
-	// Create a set of old scopes for efficient lookup
-	oldScopeSet := set.New[Scope](len(oldScopes))
-	for _, scope := range oldScopes {
-		oldScopeSet.Insert(scope)
-	}
-
-	// Check if all new scopes are in the old set
-	for _, scope := range newScopes {
-		if !oldScopeSet.Contains(scope) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // GetServiceAccountForScope retrieves the service account for a given scope with proper locking.
