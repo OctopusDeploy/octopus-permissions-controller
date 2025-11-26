@@ -93,7 +93,7 @@ make undeploy
 
 ## Project Distribution
 
-When changes are make the the kubebuilder configuration, installation files must be regenerated.
+When changes are made to the kubebuilder configuration, installation files must be regenerated.
 
 1. Build the installer for the image built and published in the registry:
 
