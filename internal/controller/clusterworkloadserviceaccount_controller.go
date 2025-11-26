@@ -130,20 +130,17 @@ func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Mana
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{},
 			builder.WithPredicates(GenerationOrDeletePredicate())).
-		Owns(&rbacv1.ClusterRole{}, builder.WithPredicates(OwnedResourcePredicate())).
-		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(OwnedResourcePredicate())).
+		Owns(&rbacv1.ClusterRole{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
+		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
 		Watches(
 			&corev1.ServiceAccount{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToCWSAs),
-			builder.WithPredicates(ManagedServiceAccountPredicate()),
+			builder.WithPredicates(ManagedServiceAccountPredicate(), GenerationOrDeletePredicate()),
 		).
 		Named("clusterworkloadserviceaccount").
 		Complete(r)
 }
 
-// mapServiceAccountToCWSAs maps ServiceAccount events to ClusterWorkloadServiceAccount reconcile requests.
-// When a ServiceAccount changes (especially when marked for deletion), this triggers reconciliation
-// of all related CWSAs so they can complete the two-phase deletion process (remove finalizers if safe).
 func (r *ClusterWorkloadServiceAccountReconciler) mapServiceAccountToCWSAs(
 	ctx context.Context, obj client.Object,
 ) []reconcile.Request {

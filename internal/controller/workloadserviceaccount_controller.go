@@ -30,7 +30,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 type WorkloadServiceAccountReconciler struct {
@@ -129,9 +131,32 @@ func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) er
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.WorkloadServiceAccount{},
 			builder.WithPredicates(GenerationOrDeletePredicate())).
-		Owns(&corev1.ServiceAccount{}, builder.WithPredicates(OwnedResourcePredicate())).
-		Owns(&rbacv1.Role{}, builder.WithPredicates(OwnedResourcePredicate())).
-		Owns(&rbacv1.RoleBinding{}, builder.WithPredicates(OwnedResourcePredicate())).
+		Owns(&rbacv1.ClusterRole{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
+		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
+		Watches(
+			&corev1.ServiceAccount{},
+			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToWSAs),
+			builder.WithPredicates(ManagedServiceAccountPredicate(), GenerationOrDeletePredicate()),
+		).
 		Named("workloadserviceaccount").
 		Complete(r)
+}
+
+func (r *WorkloadServiceAccountReconciler) mapServiceAccountToWSAs(
+	ctx context.Context, obj client.Object,
+) []reconcile.Request {
+	return MapServiceAccountToResources(
+		ctx,
+		obj,
+		r.Client,
+		&agentoctopuscomv1beta1.WorkloadServiceAccountList{},
+		func(list *agentoctopuscomv1beta1.WorkloadServiceAccountList) []*agentoctopuscomv1beta1.WorkloadServiceAccount {
+			result := make([]*agentoctopuscomv1beta1.WorkloadServiceAccount, len(list.Items))
+			for i := range list.Items {
+				result[i] = &list.Items[i]
+			}
+			return result
+		},
+		"WorkloadServiceAccount",
+	)
 }

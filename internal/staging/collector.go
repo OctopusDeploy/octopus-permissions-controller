@@ -80,13 +80,13 @@ func (ec *EventCollector) AddEvent(event *EventInfo) bool {
 		Name:      event.Resource.GetName(),
 	}
 
-	if lastGen, exists := ec.generationCache[key]; exists {
-		if event.Generation <= lastGen {
-			eventsDeduplicated.Inc()
-			ec.mu.Unlock()
-			return false
-		}
-	}
+	//if lastGen, exists := ec.generationCache[key]; exists {
+	//	if event.Generation <= lastGen {
+	//		eventsDeduplicated.Inc()
+	//		ec.mu.Unlock()
+	//		return false
+	//	}
+	//}
 
 	ec.eventMap[key] = event
 	ec.generationCache[key] = event.Generation
