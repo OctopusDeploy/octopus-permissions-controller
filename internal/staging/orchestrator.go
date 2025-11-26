@@ -275,14 +275,11 @@ func (so *StageOrchestrator) requeueFailedResources(ctx context.Context, batch *
 			Timestamp:       time.Now(),
 		}
 
-		if so.collector.AddEvent(event) {
-			requeued++
-		}
+		so.collector.AddEvent(event)
+		requeued++
 	}
 
-	if requeued > 0 {
-		log.Info("Re-queued failed resources for reconciliation", "batchID", batch.ID, "requeued", requeued)
-	}
+	log.Info("Re-queued failed resources for reconciliation", "batchID", batch.ID, "requeued", requeued)
 }
 
 var stageToConditionType = map[string]string{

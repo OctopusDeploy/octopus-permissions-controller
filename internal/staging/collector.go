@@ -22,11 +22,6 @@ var (
 		Help: "Total number of reconciliation events collected",
 	})
 
-	eventsDeduplicated = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "staging_events_deduplicated_total",
-		Help: "Total number of duplicate events filtered out",
-	})
-
 	batchSizeHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "staging_batch_size",
 		Help:    "Size of reconciliation batches processed",
@@ -51,11 +46,9 @@ type EventInfo struct {
 }
 
 type EventCollector struct {
-	eventMap              map[types.NamespacedName]*EventInfo
-	generationCache       map[types.NamespacedName]int64
-	generationCacheAccess map[types.NamespacedName]time.Time
-	debounceInterval      time.Duration
-	maxBatchSize          int
+	eventMap         map[types.NamespacedName]*EventInfo
+	debounceInterval time.Duration
+	maxBatchSize     int
 
 	mu           sync.RWMutex
 	batchReadyCh chan []*EventInfo
@@ -63,16 +56,14 @@ type EventCollector struct {
 
 func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventCollector {
 	return &EventCollector{
-		eventMap:              make(map[types.NamespacedName]*EventInfo),
-		generationCache:       make(map[types.NamespacedName]int64),
-		generationCacheAccess: make(map[types.NamespacedName]time.Time),
-		debounceInterval:      debounceInterval,
-		maxBatchSize:          maxBatchSize,
-		batchReadyCh:          make(chan []*EventInfo, 10),
+		eventMap:         make(map[types.NamespacedName]*EventInfo),
+		debounceInterval: debounceInterval,
+		maxBatchSize:     maxBatchSize,
+		batchReadyCh:     make(chan []*EventInfo, 10),
 	}
 }
 
-func (ec *EventCollector) AddEvent(event *EventInfo) bool {
+func (ec *EventCollector) AddEvent(event *EventInfo) {
 	ec.mu.Lock()
 
 	key := types.NamespacedName{
@@ -80,17 +71,7 @@ func (ec *EventCollector) AddEvent(event *EventInfo) bool {
 		Name:      event.Resource.GetName(),
 	}
 
-	//if lastGen, exists := ec.generationCache[key]; exists {
-	//	if event.Generation <= lastGen {
-	//		eventsDeduplicated.Inc()
-	//		ec.mu.Unlock()
-	//		return false
-	//	}
-	//}
-
 	ec.eventMap[key] = event
-	ec.generationCache[key] = event.Generation
-	ec.generationCacheAccess[key] = time.Now()
 	eventsCollected.Inc()
 
 	shouldTrigger := len(ec.eventMap) >= ec.maxBatchSize
@@ -101,16 +82,11 @@ func (ec *EventCollector) AddEvent(event *EventInfo) bool {
 	} else {
 		ec.mu.Unlock()
 	}
-
-	return true
 }
 
 func (ec *EventCollector) Start(ctx context.Context) error {
 	ticker := time.NewTicker(ec.debounceInterval)
 	defer ticker.Stop()
-
-	cleanupTicker := time.NewTicker(5 * time.Minute)
-	defer cleanupTicker.Stop()
 
 	log.Info("EventCollector started", "debounceInterval", ec.debounceInterval, "maxBatchSize", ec.maxBatchSize)
 
@@ -131,31 +107,7 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 			if batch != nil {
 				ec.sendBatch(batch)
 			}
-		case <-cleanupTicker.C:
-			ec.cleanupStaleEntries()
 		}
-	}
-}
-
-func (ec *EventCollector) cleanupStaleEntries() {
-	ec.mu.Lock()
-	defer ec.mu.Unlock()
-
-	staleThreshold := time.Now().Add(-1 * time.Hour)
-	removedCount := 0
-
-	for key, lastAccess := range ec.generationCacheAccess {
-		if lastAccess.Before(staleThreshold) {
-			delete(ec.generationCache, key)
-			delete(ec.generationCacheAccess, key)
-			removedCount++
-		}
-	}
-
-	if removedCount > 0 {
-		log.V(1).Info("Cleaned up stale generation cache entries",
-			"removed", removedCount,
-			"remaining", len(ec.generationCache))
 	}
 }
 

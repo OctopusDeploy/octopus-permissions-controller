@@ -83,9 +83,8 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 			ResourceVersion: wsa.GetResourceVersion(),
 			Timestamp:       time.Now(),
 		}
-		if r.EventCollector.AddEvent(deleteEvent) {
-			log.Info("Delete event queued for batch processing", "name", wsa.Name, "namespace", wsa.Namespace)
-		}
+		r.EventCollector.AddEvent(deleteEvent)
+		log.Info("Delete event queued for batch processing", "name", wsa.Name, "namespace", wsa.Namespace)
 
 		requeue, err := handleDeletion(ctx, r.Client, r.Engine, wsa)
 		if err != nil {
@@ -114,13 +113,10 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 		Timestamp:       time.Now(),
 	}
 
-	if r.EventCollector.AddEvent(event) {
-		log.V(1).Info("Event added to collector", "generation", wsa.GetGeneration())
-		if r.Recorder != nil {
-			r.Recorder.Event(wsa, corev1.EventTypeNormal, "Queued", "Reconciliation queued for batch processing")
-		}
-	} else {
-		log.V(1).Info("Event deduplicated", "generation", wsa.GetGeneration())
+	r.EventCollector.AddEvent(event)
+	log.V(1).Info("Event added to collector", "generation", wsa.GetGeneration())
+	if r.Recorder != nil {
+		r.Recorder.Event(wsa, corev1.EventTypeNormal, "Queued", "Reconciliation queued for batch processing")
 	}
 
 	log.Info("Successfully queued WorkloadServiceAccount for reconciliation")
