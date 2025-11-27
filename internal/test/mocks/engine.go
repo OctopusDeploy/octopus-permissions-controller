@@ -27,16 +27,6 @@ func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope) (rules.Service
 	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
 }
 
-func (m *MockEngine) Reconcile(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-func (m *MockEngine) ReconcileResource(ctx context.Context, resource rules.WSAResource) error {
-	args := m.Called(ctx, resource)
-	return args.Error(0)
-}
-
 // ScopeComputation interface methods (embedded in Engine interface)
 func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
 	args := m.Called(wsaList)
@@ -51,6 +41,11 @@ func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map
 func (m *MockEngine) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
 	args := m.Called()
 	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)
+}
+
+func (m *MockEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) error {
+	args := m.Called(ctx, plan)
+	return args.Error(0)
 }
 
 // ResourceManagement interface methods
@@ -131,4 +126,19 @@ func (m *MockEngine) GarbageCollectServiceAccounts(
 func (m *MockEngine) CleanupServiceAccounts(ctx context.Context, deletingResource rules.WSAResource) (ctrl.Result, error) {
 	args := m.Called(ctx, deletingResource)
 	return args.Get(0).(ctrl.Result), args.Error(1)
+}
+
+func (m *MockEngine) GarbageCollectRoles(ctx context.Context, resources []rules.WSAResource) error {
+	args := m.Called(ctx, resources)
+	return args.Error(0)
+}
+
+func (m *MockEngine) GarbageCollectRoleBindings(ctx context.Context, resources []rules.WSAResource, targetNamespaces []string) error {
+	args := m.Called(ctx, resources, targetNamespaces)
+	return args.Error(0)
+}
+
+func (m *MockEngine) GarbageCollectClusterRoleBindings(ctx context.Context, resources []rules.WSAResource) error {
+	args := m.Called(ctx, resources)
+	return args.Error(0)
 }

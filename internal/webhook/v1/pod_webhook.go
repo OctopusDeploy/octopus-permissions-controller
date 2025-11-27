@@ -19,14 +19,28 @@ package v1
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+)
+
+var podWebhookDuration = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Namespace: "octopus",
+		Subsystem: "webhook",
+		Name:      "pod_mutation_duration_seconds",
+		Help:      "Duration of pod mutation webhook processing",
+		Buckets:   prometheus.ExponentialBuckets(0.001, 2, 10),
+	},
+	[]string{"result"},
 )
 
 const (
@@ -69,13 +83,21 @@ var _ webhook.CustomDefaulter = &PodCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pod.
 func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	start := time.Now()
+	result := "success"
+
+	defer func() {
+		podWebhookDuration.WithLabelValues(result).Observe(time.Since(start).Seconds())
+	}()
+
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
+		result = "error"
 		return fmt.Errorf("expected an Pod object but got %T", obj)
 	}
 
-	// Only run if labelled
 	if !d.shouldRunOnPod(ctx, pod) {
+		result = "skipped"
 		return nil
 	}
 
@@ -86,6 +108,7 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 	scope := getPodScope(pod)
 
 	if scope.IsEmpty() {
+		result = "skipped"
 		return nil
 	}
 
@@ -95,6 +118,9 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		pod.Spec.ServiceAccountName = string(serviceAccountName)
 		metrics.IncRequestsTotal("podWebhook", true)
 	} else {
+		if err != nil {
+			result = "error"
+		}
 		metrics.IncRequestsTotal("podWebhook", false)
 	}
 
