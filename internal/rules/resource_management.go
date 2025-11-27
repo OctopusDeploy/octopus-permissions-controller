@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -20,6 +21,11 @@ import (
 
 	"github.com/hashicorp/go-set/v3"
 )
+
+// GCTrackerInterface defines the interface for tracking resources being garbage collected.
+type GCTrackerInterface interface {
+	MarkForDeletion(uid types.UID)
+}
 
 // serviceAccountInfo tracks a service account name and namespace
 type serviceAccountInfo struct {
@@ -73,8 +79,9 @@ type ResourceManagement interface {
 }
 
 type ResourceManagementService struct {
-	client client.Client
-	scheme *runtime.Scheme
+	client    client.Client
+	scheme    *runtime.Scheme
+	gcTracker GCTrackerInterface
 }
 
 func NewResourceManagementService(newClient client.Client) ResourceManagementService {
@@ -88,6 +95,17 @@ func NewResourceManagementServiceWithScheme(newClient client.Client, scheme *run
 	return ResourceManagementService{
 		client: newClient,
 		scheme: scheme,
+	}
+}
+
+// SetGCTracker sets the garbage collection tracker for filtering delete events.
+func (r *ResourceManagementService) SetGCTracker(tracker GCTrackerInterface) {
+	r.gcTracker = tracker
+}
+
+func (r ResourceManagementService) markForDeletion(obj client.Object) {
+	if r.gcTracker != nil {
+		r.gcTracker.MarkForDeletion(obj.GetUID())
 	}
 }
 
@@ -309,7 +327,9 @@ func (r ResourceManagementService) EnsureRoleBindings(
 
 // Helper methods for ResourceManagementService
 
-func (r ResourceManagementService) getContextWithTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+func (r ResourceManagementService) getContextWithTimeout(
+	ctx context.Context, timeout time.Duration,
+) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, timeout)
 }
 
@@ -623,6 +643,7 @@ func (r ResourceManagementService) GarbageCollectServiceAccounts(
 		logger.Info("Deleting orphaned ServiceAccount",
 			"name", sa.Name,
 			"namespace", sa.Namespace)
+		r.markForDeletion(sa)
 		if deleteErr := r.client.Delete(ctx, sa); deleteErr != nil && !errors.IsNotFound(deleteErr) {
 			deleteErrors = multierr.Append(deleteErrors, fmt.Errorf("failed to delete ServiceAccount %s/%s: %w",
 				sa.Namespace, sa.Name, deleteErr))
@@ -677,6 +698,7 @@ func (r ResourceManagementService) GarbageCollectRoles(ctx context.Context, reso
 			logger.Info("Deleting orphaned Role",
 				"name", role.Name,
 				"namespace", role.Namespace)
+			r.markForDeletion(role)
 			if deleteErr := r.client.Delete(ctx, role); deleteErr != nil && !errors.IsNotFound(deleteErr) {
 				deleteErrors = multierr.Append(deleteErrors, fmt.Errorf("failed to delete Role %s/%s: %w",
 					role.Namespace, role.Name, deleteErr))
@@ -693,7 +715,9 @@ func (r ResourceManagementService) GarbageCollectRoles(ctx context.Context, reso
 	return deleteErrors
 }
 
-func (r ResourceManagementService) GarbageCollectRoleBindings(ctx context.Context, resources []WSAResource, targetNamespaces []string) error {
+func (r ResourceManagementService) GarbageCollectRoleBindings(
+	ctx context.Context, resources []WSAResource, targetNamespaces []string,
+) error {
 	logger := log.FromContext(ctx).WithName("garbageCollectRoleBindings")
 
 	expectedBindings := set.New[string](len(resources) * len(targetNamespaces))
@@ -708,10 +732,12 @@ func (r ResourceManagementService) GarbageCollectRoleBindings(ctx context.Contex
 			expectedBindings.Insert(bindingKey)
 		}
 
-		for _, roleRef := range resource.GetRoles() {
+		allRoleRefs := append(resource.GetRoles(), resource.GetClusterRoles()...)
+		for _, roleRef := range allRoleRefs {
 			bindingKey := fmt.Sprintf("%s/%s", resource.GetNamespace(), roleBindingName(resource.GetName(), roleRef.Name))
 			expectedBindings.Insert(bindingKey)
 		}
+
 	}
 
 	rbIter, err := r.GetRoleBindings(ctx)
@@ -727,6 +753,7 @@ func (r ResourceManagementService) GarbageCollectRoleBindings(ctx context.Contex
 			logger.Info("Deleting orphaned RoleBinding",
 				"name", rb.Name,
 				"namespace", rb.Namespace)
+			r.markForDeletion(rb)
 			if deleteErr := r.client.Delete(ctx, rb); deleteErr != nil && !errors.IsNotFound(deleteErr) {
 				deleteErrors = multierr.Append(deleteErrors, fmt.Errorf("failed to delete RoleBinding %s/%s: %w",
 					rb.Namespace, rb.Name, deleteErr))
@@ -743,7 +770,9 @@ func (r ResourceManagementService) GarbageCollectRoleBindings(ctx context.Contex
 	return deleteErrors
 }
 
-func (r ResourceManagementService) GarbageCollectClusterRoleBindings(ctx context.Context, resources []WSAResource) error {
+func (r ResourceManagementService) GarbageCollectClusterRoleBindings(
+	ctx context.Context, resources []WSAResource,
+) error {
 	logger := log.FromContext(ctx).WithName("garbageCollectClusterRoleBindings")
 
 	expectedBindings := set.New[string](len(resources))
@@ -775,6 +804,7 @@ func (r ResourceManagementService) GarbageCollectClusterRoleBindings(ctx context
 	for crb := range crbIter {
 		if !expectedBindings.Contains(crb.Name) {
 			logger.Info("Deleting orphaned ClusterRoleBinding", "name", crb.Name)
+			r.markForDeletion(crb)
 			if deleteErr := r.client.Delete(ctx, crb); deleteErr != nil && !errors.IsNotFound(deleteErr) {
 				deleteErrors = multierr.Append(deleteErrors, fmt.Errorf("failed to delete ClusterRoleBinding %s: %w",
 					crb.Name, deleteErr))

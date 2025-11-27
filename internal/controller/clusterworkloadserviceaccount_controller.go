@@ -122,16 +122,24 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ClusterWorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager, gcTracker *GCTracker) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{},
 			builder.WithPredicates(GenerationOrDeletePredicate())).
-		Owns(&rbacv1.ClusterRole{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
-		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
+		Owns(&rbacv1.ClusterRole{},
+			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),
+		).
+		Owns(&rbacv1.ClusterRoleBinding{},
+			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),
+		).
 		Watches(
 			&corev1.ServiceAccount{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToCWSAs),
-			builder.WithPredicates(ManagedServiceAccountPredicate(), GenerationOrDeletePredicate()),
+			builder.WithPredicates(
+				ManagedServiceAccountPredicate(),
+				ExternalChangePredicate(),
+				ExternalDeletePredicate(gcTracker),
+			),
 		).
 		Named("clusterworkloadserviceaccount").
 		Complete(r)

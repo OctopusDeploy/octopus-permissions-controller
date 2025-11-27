@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -123,16 +124,28 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 	return ctrl.Result{}, nil
 }
 
-func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager, gcTracker *GCTracker) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.WorkloadServiceAccount{},
-			builder.WithPredicates(GenerationOrDeletePredicate())).
-		Owns(&rbacv1.ClusterRole{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
-		Owns(&rbacv1.ClusterRoleBinding{}, builder.WithPredicates(OwnedResourcePredicate(), GenerationOrDeletePredicate())).
+			builder.WithPredicates(predicate.Or(
+				predicate.GenerationChangedPredicate{},
+				predicate.LabelChangedPredicate{},
+			)),
+		).
+		Owns(&rbacv1.Role{},
+			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),
+		).
+		Owns(&rbacv1.RoleBinding{},
+			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),
+		).
 		Watches(
 			&corev1.ServiceAccount{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToWSAs),
-			builder.WithPredicates(ManagedServiceAccountPredicate(), GenerationOrDeletePredicate()),
+			builder.WithPredicates(
+				ManagedServiceAccountPredicate(),
+				ExternalChangePredicate(),
+				ExternalDeletePredicate(gcTracker),
+			),
 		).
 		Named("workloadserviceaccount").
 		Complete(r)

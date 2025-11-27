@@ -255,12 +255,18 @@ func main() {
 		targetNamespaceRegex = defaultNamespaceRegex
 	}
 
+	// Create GC tracker for filtering out controller-caused delete events
+	gcTracker := controller.NewGCTracker(30 * time.Second)
+
 	var engine rules.InMemoryEngine
 	if len(targetNamespaces) > 0 {
 		engine = rules.NewInMemoryEngineWithNamespaces(mgr.GetClient(), mgr.GetScheme(), targetNamespaces)
 	} else {
 		engine = rules.NewInMemoryEngine(mgr.GetClient(), mgr.GetScheme(), targetNamespaceRegex)
 	}
+
+	// Wire GC tracker to resource management service
+	engine.SetGCTracker(gcTracker)
 
 	setupLog.Info("Initializing reconciliation",
 		"batchDebounceInterval", batchDebounceInterval,
@@ -297,7 +303,7 @@ func main() {
 		Engine:         &engine,
 		EventCollector: eventCollector,
 		Recorder:       eventRecorder,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, gcTracker); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WorkloadServiceAccount")
 		os.Exit(1)
 	}
@@ -321,7 +327,7 @@ func main() {
 		Engine:         &engine,
 		EventCollector: eventCollector,
 		Recorder:       eventRecorder,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, gcTracker); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterWorkloadServiceAccount")
 		os.Exit(1)
 	}

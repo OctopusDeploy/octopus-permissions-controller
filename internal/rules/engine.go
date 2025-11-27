@@ -84,6 +84,12 @@ func (i *InMemoryEngine) GetTargetNamespaces() []string {
 	return i.targetNamespaces
 }
 
+func (i *InMemoryEngine) SetGCTracker(tracker GCTrackerInterface) {
+	if rms, ok := i.ResourceManagement.(interface{ SetGCTracker(GCTrackerInterface) }); ok {
+		rms.SetGCTracker(tracker)
+	}
+}
+
 func (i *InMemoryEngine) GetOrDiscoverTargetNamespaces(ctx context.Context) ([]string, error) {
 	i.mu.RLock()
 	targetNamespaces := i.targetNamespaces
