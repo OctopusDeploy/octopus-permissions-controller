@@ -67,9 +67,10 @@ func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventC
 }
 
 func (ec *EventCollector) Start(ctx context.Context) error {
-	ec.eventDebouncer = NewDebouncer(ctx, ec.debounceInterval, func() {
+	ec.eventDebouncer = NewDebouncer(ec.debounceInterval, func() {
 		ec.batchTriggerCh <- struct{}{}
 	})
+	ec.eventDebouncer.Start(ctx)
 
 	log.Info("EventCollector started", "debounceInterval", ec.debounceInterval, "maxBatchSize", ec.maxBatchSize)
 

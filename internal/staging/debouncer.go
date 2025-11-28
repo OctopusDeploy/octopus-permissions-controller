@@ -6,18 +6,24 @@ import (
 )
 
 type Debouncer struct {
+	timeout  time.Duration
+	callback func()
 	timeChan chan time.Time
 }
 
-func NewDebouncer(ctx context.Context, timeout time.Duration, callback func()) *Debouncer {
-	d := &Debouncer{
+func NewDebouncer(timeout time.Duration, callback func()) *Debouncer {
+	return &Debouncer{
+		timeout:  timeout,
+		callback: callback,
 		timeChan: make(chan time.Time, 100),
 	}
+}
 
+func (m *Debouncer) Start(ctx context.Context) {
 	go func() {
 		var startedTime *time.Time
 
-		ticker := time.NewTicker(timeout)
+		ticker := time.NewTicker(m.timeout)
 		ticker.Stop()
 		for {
 			select {
@@ -26,18 +32,16 @@ func NewDebouncer(ctx context.Context, timeout time.Duration, callback func()) *
 			case <-ticker.C:
 				ticker.Stop()
 				startedTime = nil
-				callback()
+				m.callback()
 
-			case timestamp := <-d.timeChan:
+			case timestamp := <-m.timeChan:
 				if startedTime == nil {
 					startedTime = &timestamp
-					ticker.Reset(timeout)
+					ticker.Reset(m.timeout)
 				}
 			}
 		}
 	}()
-
-	return d
 }
 
 func (m *Debouncer) Debounce() {

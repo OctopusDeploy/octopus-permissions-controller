@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestDebouncer(t *testing.T) {
@@ -11,62 +14,45 @@ func TestDebouncer(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		called := make(chan struct{}, 1)
-		debouncer := NewDebouncer(ctx, 100*time.Millisecond, func() {
-			called <- struct{}{}
-		})
+		mockObj := NewMockedCallbackObj()
+		debouncer := NewDebouncer(100*time.Millisecond, mockObj.Callback)
+		debouncer.Start(ctx)
 
-		go func() {
-			for range 5 {
-				debouncer.Debounce()
-				time.Sleep(20 * time.Millisecond)
-			}
-		}()
+		for range 5 {
+			debouncer.Debounce()
+			time.Sleep(20 * time.Millisecond)
+		}
 
-		AssertCallbackCalled(t, called)
-
-		// Ensure no additional calls are made
-		AssertCallbackNotCalled(t, called)
+		assert.Eventually(t, func() bool { return mockObj.AssertNumberOfCalls(t, "Callback", 1) }, 1000*time.Millisecond, 100*time.Millisecond)
 	})
 
 	t.Run("multiple callbacks called when requests sent over timeout", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		called := make(chan struct{}, 1)
-		debouncer := NewDebouncer(ctx, 100*time.Millisecond, func() {
-			called <- struct{}{}
-		})
+		mockObj := NewMockedCallbackObj()
+		debouncer := NewDebouncer(100*time.Millisecond, mockObj.Callback)
+		debouncer.Start(ctx)
 
-		go func() {
-			for range 10 {
-				debouncer.Debounce()
-				time.Sleep(20 * time.Millisecond)
-			}
-		}()
+		for range 10 {
+			debouncer.Debounce()
+			time.Sleep(20 * time.Millisecond)
+		}
 
-		AssertCallbackCalled(t, called)
-		AssertCallbackCalled(t, called)
-
-		// Ensure no additional calls are made
-		AssertCallbackNotCalled(t, called)
+		assert.Eventually(t, func() bool { return mockObj.AssertNumberOfCalls(t, "Callback", 2) }, 1000*time.Millisecond, 100*time.Millisecond)
 	})
 }
 
-func AssertCallbackCalled(t *testing.T, called chan struct{}) {
-	select {
-	case <-called:
-		// Success
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Debouncer callback was not called in expected time")
-	}
+func NewMockedCallbackObj() *MockedCallbackObj {
+	mockObj := &MockedCallbackObj{}
+	mockObj.On("Callback").Return()
+	return mockObj
 }
 
-func AssertCallbackNotCalled(t *testing.T, called chan struct{}) {
-	select {
-	case <-called:
-		t.Fatal("Debouncer callback was called more than once")
-	case <-time.After(500 * time.Millisecond):
-		// Success
-	}
+type MockedCallbackObj struct {
+	mock.Mock
+}
+
+func (m *MockedCallbackObj) Callback() {
+	m.Called()
 }
