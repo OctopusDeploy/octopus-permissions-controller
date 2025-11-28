@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	internaltypes "github.com/octopusdeploy/octopus-permissions-controller/internal/types"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -13,6 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+const namespaceCacheKey = "namespaces"
 
 type Scope = internaltypes.Scope
 
@@ -35,7 +39,7 @@ type InMemoryEngine struct {
 	vocabulary       *GlobalVocabulary
 	saToWsaMap       map[ServiceAccountName]map[types.NamespacedName]WSAResource
 	targetNamespaces []string
-	lookupNamespaces bool
+	namespaceCache   *expirable.LRU[string, []string]
 	client           client.Client
 	mu               *sync.RWMutex // Protects in-memory state
 	ScopeComputation
@@ -44,13 +48,16 @@ type InMemoryEngine struct {
 }
 
 func NewInMemoryEngine(
-	controllerClient client.Client, scheme *runtime.Scheme, targetNamespaceRegex *regexp.Regexp,
+	controllerClient client.Client,
+	scheme *runtime.Scheme,
+	targetNamespaceRegex *regexp.Regexp,
+	namespaceCacheTTL time.Duration,
 ) InMemoryEngine {
 	vocab := NewGlobalVocabulary()
 	engine := InMemoryEngine{
 		scopeToSA:          make(map[Scope]ServiceAccountName),
 		targetNamespaces:   []string{},
-		lookupNamespaces:   true,
+		namespaceCache:     expirable.NewLRU[string, []string](1, nil, namespaceCacheTTL),
 		client:             controllerClient,
 		vocabulary:         &vocab,
 		saToWsaMap:         make(map[ServiceAccountName]map[types.NamespacedName]WSAResource),
@@ -69,7 +76,7 @@ func NewInMemoryEngineWithNamespaces(
 	engine := InMemoryEngine{
 		scopeToSA:          make(map[Scope]ServiceAccountName),
 		targetNamespaces:   targetNamespaces,
-		lookupNamespaces:   len(targetNamespaces) == 0,
+		namespaceCache:     nil,
 		client:             controllerClient,
 		vocabulary:         &vocab,
 		saToWsaMap:         make(map[ServiceAccountName]map[types.NamespacedName]WSAResource),
@@ -92,24 +99,22 @@ func (i *InMemoryEngine) SetGCTracker(tracker GCTrackerInterface) {
 }
 
 func (i *InMemoryEngine) GetOrDiscoverTargetNamespaces(ctx context.Context) ([]string, error) {
-	i.mu.RLock()
-	targetNamespaces := i.targetNamespaces
-	lookupNamespaces := i.lookupNamespaces
-	i.mu.RUnlock()
-
-	if len(targetNamespaces) > 0 {
-		return targetNamespaces, nil
+	// Set as nil to skip caching if target namespaces are explicitly provided
+	if i.namespaceCache == nil {
+		return i.targetNamespaces, nil
 	}
 
-	if lookupNamespaces {
-		namespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
-		if err != nil {
-			return nil, fmt.Errorf("failed to discover target namespaces: %w", err)
-		}
+	if namespaces, ok := i.namespaceCache.Get(namespaceCacheKey); ok {
 		return namespaces, nil
 	}
 
-	return targetNamespaces, nil
+	namespaces, err := i.DiscoverTargetNamespaces(ctx, i.client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover target namespaces: %w", err)
+	}
+
+	i.namespaceCache.Add(namespaceCacheKey, namespaces)
+	return namespaces, nil
 }
 
 func (i *InMemoryEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) error {

@@ -34,12 +34,7 @@ func (es *ExecutionStage) Execute(ctx context.Context, batch *staging.Batch) err
 
 	targetNamespaces := batch.Plan.TargetNamespaces
 	if len(targetNamespaces) == 0 {
-		targetNamespaces = es.engine.GetTargetNamespaces()
-	}
-
-	if len(targetNamespaces) == 0 {
-		log.Info("No target namespaces configured, skipping resource creation")
-		return nil
+		return fmt.Errorf("no target namespaces in plan")
 	}
 
 	allResources := batch.Plan.AllResources
