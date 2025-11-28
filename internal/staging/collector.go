@@ -50,43 +50,28 @@ type EventCollector struct {
 	debounceInterval time.Duration
 	maxBatchSize     int
 
-	mu           sync.RWMutex
-	batchReadyCh chan []*EventInfo
+	mu             sync.RWMutex
+	batchReadyCh   chan []*EventInfo
+	batchTriggerCh chan struct{}
+	eventDebouncer *Debouncer
 }
 
 func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventCollector {
+	batchTriggerCh := make(chan struct{}, 1)
 	return &EventCollector{
 		eventMap:         make(map[types.NamespacedName]*EventInfo),
 		debounceInterval: debounceInterval,
 		maxBatchSize:     maxBatchSize,
 		batchReadyCh:     make(chan []*EventInfo, 10),
-	}
-}
-
-func (ec *EventCollector) AddEvent(event *EventInfo) {
-	ec.mu.Lock()
-
-	key := types.NamespacedName{
-		Namespace: event.Resource.GetNamespace(),
-		Name:      event.Resource.GetName(),
-	}
-
-	ec.eventMap[key] = event
-	eventsCollected.Inc()
-
-	shouldTrigger := len(ec.eventMap) >= ec.maxBatchSize
-	if shouldTrigger {
-		batch := ec.prepareBatch()
-		ec.mu.Unlock()
-		ec.sendBatch(batch)
-	} else {
-		ec.mu.Unlock()
+		batchTriggerCh:   batchTriggerCh,
+		eventDebouncer: NewDebouncer(debounceInterval, func() {
+			batchTriggerCh <- struct{}{}
+		}),
 	}
 }
 
 func (ec *EventCollector) Start(ctx context.Context) error {
-	ticker := time.NewTicker(ec.debounceInterval)
-	defer ticker.Stop()
+	ec.eventDebouncer.Start(ctx)
 
 	log.Info("EventCollector started", "debounceInterval", ec.debounceInterval, "maxBatchSize", ec.maxBatchSize)
 
@@ -96,24 +81,41 @@ func (ec *EventCollector) Start(ctx context.Context) error {
 			close(ec.batchReadyCh)
 			log.Info("EventCollector stopped")
 			return nil
-		case <-ticker.C:
-			ec.mu.Lock()
-			var batch []*EventInfo
-			if len(ec.eventMap) > 0 {
-				batch = ec.prepareBatch()
-			}
-			ec.mu.Unlock()
-
-			if batch != nil {
-				ec.sendBatch(batch)
-			}
+		case <-ec.batchTriggerCh:
+			ec.FlushEvents()
 		}
 	}
 }
 
-// prepareBatch extracts events from eventMap and clears the map.
-// Caller must hold ec.mu.Lock()
-func (ec *EventCollector) prepareBatch() []*EventInfo {
+func (ec *EventCollector) AddEvent(event *EventInfo) {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	ec.eventMap[event.Resource.GetNamespacedName()] = event
+	eventsCollected.Inc()
+	ec.eventDebouncer.Debounce()
+
+	if len(ec.eventMap) >= ec.maxBatchSize {
+		ec.batchTriggerCh <- struct{}{}
+	}
+}
+
+// FlushEvents forces any pending events to be sent as a batch immediately.
+func (ec *EventCollector) FlushEvents() {
+	batch := ec.collectEventsIntoBatch()
+	if batch != nil {
+		ec.sendBatch(batch)
+	}
+}
+
+// collectEventsIntoBatch extracts events from eventMap and clears the map.
+func (ec *EventCollector) collectEventsIntoBatch() []*EventInfo {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	if len(ec.eventMap) == 0 {
+		return nil
+	}
+
 	batch := make([]*EventInfo, 0, len(ec.eventMap))
 	for _, event := range ec.eventMap {
 		batch = append(batch, event)
@@ -121,20 +123,6 @@ func (ec *EventCollector) prepareBatch() []*EventInfo {
 
 	ec.eventMap = make(map[types.NamespacedName]*EventInfo)
 	return batch
-}
-
-// Flush forces any pending events to be sent as a batch immediately.
-// Returns true if a batch was sent, false if there were no pending events.
-func (ec *EventCollector) Flush() bool {
-	ec.mu.Lock()
-	if len(ec.eventMap) == 0 {
-		ec.mu.Unlock()
-		return false
-	}
-	batch := ec.prepareBatch()
-	ec.mu.Unlock()
-	ec.sendBatch(batch)
-	return true
 }
 
 // sendBatch attempts to send the batch to the channel without blocking.
@@ -149,10 +137,7 @@ func (ec *EventCollector) sendBatch(batch []*EventInfo) {
 		log.Info("Batch channel full, events will be retried on next tick", "droppedBatchSize", len(batch))
 		ec.mu.Lock()
 		for _, event := range batch {
-			key := types.NamespacedName{
-				Namespace: event.Resource.GetNamespace(),
-				Name:      event.Resource.GetName(),
-			}
+			key := event.Resource.GetNamespacedName()
 			if existing, exists := ec.eventMap[key]; !exists || event.Generation > existing.Generation {
 				ec.eventMap[key] = event
 			}
