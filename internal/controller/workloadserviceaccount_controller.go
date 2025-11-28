@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -127,10 +126,7 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager, gcTracker *GCTracker) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentoctopuscomv1beta1.WorkloadServiceAccount{},
-			builder.WithPredicates(predicate.Or(
-				predicate.GenerationChangedPredicate{},
-				predicate.LabelChangedPredicate{},
-			)),
+			builder.WithPredicates(GenerationOrDeletePredicate()),
 		).
 		Owns(&rbacv1.Role{},
 			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),

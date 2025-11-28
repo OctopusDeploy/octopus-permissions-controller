@@ -280,10 +280,17 @@ func main() {
 	stagingStages := []staging.Stage{
 		stages.NewPlanningStage(&engine),
 		stages.NewValidationStage(mgr.GetClient(), &engine, targetNamespaces),
-		stages.NewExecutionStage(&engine, eventRecorder),
+		stages.NewExecutionStage(&engine),
 	}
 
-	orchestrator := staging.NewStageOrchestrator(stagingStages, eventCollector, &engine, mgr.GetClient(), stageTimeout)
+	orchestrator := staging.NewStageOrchestrator(
+		stagingStages,
+		eventCollector,
+		&engine,
+		mgr.GetClient(),
+		stageTimeout,
+		eventRecorder,
+	)
 
 	if err := mgr.Add(orchestrator); err != nil {
 		setupLog.Error(err, "unable to add stage orchestrator")

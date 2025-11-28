@@ -7,21 +7,16 @@ import (
 	"github.com/hashicorp/go-set/v3"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
-	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 )
 
 type ExecutionStage struct {
-	engine   *rules.InMemoryEngine
-	recorder record.EventRecorder
+	engine *rules.InMemoryEngine
 }
 
-func NewExecutionStage(engine *rules.InMemoryEngine, recorder record.EventRecorder) *ExecutionStage {
+func NewExecutionStage(engine *rules.InMemoryEngine) *ExecutionStage {
 	return &ExecutionStage{
-		engine:   engine,
-		recorder: recorder,
+		engine: engine,
 	}
 }
 
@@ -84,25 +79,8 @@ func (es *ExecutionStage) Execute(ctx context.Context, batch *staging.Batch) err
 
 	log.V(1).Info("In-memory state updated", "batchID", batch.ID)
 
-	es.recordReconcileEvents(batch, len(batch.Plan.UniqueAccounts), len(allResources), len(targetNamespaces))
-
 	log.Info("Execution completed successfully", "batchID", batch.ID)
 	return nil
-}
-
-func (es *ExecutionStage) recordReconcileEvents(batch *staging.Batch, saCount, resourceCount, nsCount int) {
-	if es.recorder == nil {
-		return
-	}
-
-	message := fmt.Sprintf("Reconciled %d ServiceAccounts across %d namespaces with %d resources",
-		saCount, nsCount, resourceCount)
-
-	for _, resource := range batch.Resources {
-		if obj, ok := resource.GetOwnerObject().(runtime.Object); ok {
-			es.recorder.Event(obj, corev1.EventTypeNormal, "Reconciled", message)
-		}
-	}
 }
 
 func (es *ExecutionStage) ensureRoleBindings(ctx context.Context, batch *staging.Batch, allResources []rules.WSAResource, createdRoles map[string]rbacv1.Role, targetNamespaces []string) error {

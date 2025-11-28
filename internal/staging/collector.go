@@ -27,6 +27,16 @@ var (
 		Help:    "Size of reconciliation batches processed",
 		Buckets: prometheus.LinearBuckets(1, 10, 20), // 1-200 with step 10
 	})
+
+	eventQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "staging_event_queue_depth",
+		Help: "Current number of events pending in the collector",
+	})
+
+	batchChannelBackpressure = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "staging_batch_channel_backpressure_total",
+		Help: "Times batch channel was full (backpressure)",
+	})
 )
 
 type EventType string
@@ -36,6 +46,16 @@ const (
 	EventTypeUpdate EventType = "Update"
 	EventTypeDelete EventType = "Delete"
 )
+
+type BatchID uuid.UUID
+
+func NewBatchID() BatchID {
+	return BatchID(uuid.New())
+}
+
+func (id BatchID) String() string {
+	return uuid.UUID(id).String()
+}
 
 type EventInfo struct {
 	Resource        rules.WSAResource
@@ -93,6 +113,7 @@ func (ec *EventCollector) AddEvent(event *EventInfo) {
 
 	ec.eventMap[event.Resource.GetNamespacedName()] = event
 	eventsCollected.Inc()
+	eventQueueDepth.Set(float64(len(ec.eventMap)))
 	ec.eventDebouncer.Debounce()
 
 	if len(ec.eventMap) >= ec.maxBatchSize {
@@ -122,6 +143,7 @@ func (ec *EventCollector) collectEventsIntoBatch() []*EventInfo {
 	}
 
 	ec.eventMap = make(map[types.NamespacedName]*EventInfo)
+	eventQueueDepth.Set(0)
 	return batch
 }
 
@@ -135,6 +157,7 @@ func (ec *EventCollector) sendBatch(batch []*EventInfo) {
 		log.V(1).Info("Batch sent to orchestrator", "size", len(batch))
 	default:
 		log.Info("Batch channel full, events will be retried on next tick", "droppedBatchSize", len(batch))
+		batchChannelBackpressure.Inc()
 		ec.mu.Lock()
 		for _, event := range batch {
 			key := event.Resource.GetNamespacedName()
@@ -151,12 +174,11 @@ func (ec *EventCollector) BatchChannel() <-chan []*EventInfo {
 }
 
 type Batch struct {
-	ID               string
+	ID               BatchID
 	Resources        []rules.WSAResource
 	StartTime        time.Time
 	Plan             *ReconciliationPlan
 	ValidationResult *ValidationResult
-	RetryCount       int
 	LastError        error
 	RequeueAfter     time.Duration
 }
@@ -168,7 +190,7 @@ func NewBatch(events []*EventInfo) *Batch {
 	}
 
 	return &Batch{
-		ID:        uuid.New().String(),
+		ID:        NewBatchID(),
 		Resources: resources,
 		StartTime: time.Now(),
 	}

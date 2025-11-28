@@ -3,15 +3,18 @@ package staging
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"k8s.io/apimachinery/pkg/api/meta"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -53,16 +56,6 @@ var (
 		Name: "staging_batches_retried_total",
 		Help: "Total number of batch retry attempts",
 	})
-
-	retryQueueDroppedTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "staging_retry_queue_dropped_total",
-		Help: "Total number of batches dropped due to full retry queue",
-	})
-)
-
-const (
-	defaultRetryQueueSize = 100
-	retryQueueSendTimeout = 30 * time.Second
 )
 
 type Stage interface {
@@ -78,14 +71,9 @@ type StageOrchestrator struct {
 	stageTimeout    time.Duration
 	shutdownTimeout time.Duration
 	maxRetries      int
-	retryDelay      time.Duration
-	retryQueue      chan *retryItem
+	retryQueue      BatchQueue
 	triggerCh       chan struct{}
-}
-
-type retryItem struct {
-	batch      *Batch
-	retryAfter time.Time
+	recorder        record.EventRecorder
 }
 
 func NewStageOrchestrator(
@@ -94,6 +82,7 @@ func NewStageOrchestrator(
 	engine *rules.InMemoryEngine,
 	c client.Client,
 	stageTimeout time.Duration,
+	recorder record.EventRecorder,
 ) *StageOrchestrator {
 	return &StageOrchestrator{
 		stages:          stages,
@@ -103,9 +92,9 @@ func NewStageOrchestrator(
 		stageTimeout:    stageTimeout,
 		shutdownTimeout: 30 * time.Second,
 		maxRetries:      3,
-		retryDelay:      time.Second,
-		retryQueue:      make(chan *retryItem, defaultRetryQueueSize),
+		retryQueue:      NewBatchQueue(),
 		triggerCh:       make(chan struct{}, 10),
+		recorder:        recorder,
 	}
 }
 
@@ -123,6 +112,11 @@ func (so *StageOrchestrator) Start(ctx context.Context) error {
 		if err := so.collector.Start(collectorCtx); err != nil {
 			log.Error(err, "EventCollector failed")
 		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		so.retryQueue.ShutDown()
 	}()
 
 	go so.processRetryQueue(ctx)
@@ -150,36 +144,19 @@ func (so *StageOrchestrator) Start(ctx context.Context) error {
 }
 
 func (so *StageOrchestrator) processRetryQueue(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error(fmt.Errorf("panic in retry queue processor: %v", r), "Retry queue processor crashed, restarting")
-			go so.processRetryQueue(ctx)
-		}
-	}()
-
 	for {
-		select {
-		case <-ctx.Done():
-			log.Info("Retry queue processor shutting down")
+		batch, shutdown := so.retryQueue.Get()
+		if shutdown {
+			log.Info("Retry queue shutting down")
 			return
-		case item := <-so.retryQueue:
-			waitTime := time.Until(item.retryAfter)
-			if waitTime > 0 {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(waitTime):
-				}
-			}
-
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				batchesRetriedTotal.Inc()
-				so.processBatchWithRetry(ctx, item.batch)
-			}
 		}
+		if batch == nil {
+			continue
+		}
+
+		batchesRetriedTotal.Inc()
+		so.processBatchWithRetry(ctx, batch)
+		so.retryQueue.Done(batch)
 	}
 }
 
@@ -188,48 +165,38 @@ func (so *StageOrchestrator) processBatchWithRetry(ctx context.Context, batch *B
 
 	if err != nil {
 		batch.LastError = err
-		batch.RetryCount++
+		retryCount := so.retryQueue.NumRequeues(batch) + 1
 
-		if batch.RetryCount <= so.maxRetries {
-			retryDelay := so.retryDelay * time.Duration(1<<uint(batch.RetryCount-1))
-			log.Info("Batch processing failed, queueing for retry",
+		if retryCount <= so.maxRetries {
+			log.Info("Batch failed, queueing for retry",
 				"batchID", batch.ID,
-				"retryCount", batch.RetryCount,
+				"retryCount", retryCount,
 				"maxRetries", so.maxRetries,
-				"retryAfter", retryDelay,
 				"error", err.Error())
 
-			item := &retryItem{
-				batch:      batch,
-				retryAfter: time.Now().Add(retryDelay),
-			}
+			so.emitEvent(batch, corev1.EventTypeWarning, "RetryQueued",
+				fmt.Sprintf("Queued for retry %d/%d: %s", retryCount, so.maxRetries, err.Error()))
 
-			select {
-			case so.retryQueue <- item:
-				log.V(1).Info("Batch queued for retry", "batchID", batch.ID)
-			case <-time.After(retryQueueSendTimeout):
-				log.Error(nil, "Retry queue blocked, triggering state rebuild",
-					"batchID", batch.ID,
-					"timeout", retryQueueSendTimeout)
-				retryQueueDroppedTotal.Inc()
-				so.handlePermanentFailure(ctx, batch, fmt.Errorf("retry queue timeout after %v", retryQueueSendTimeout))
-			case <-ctx.Done():
-				log.Info("Context cancelled while queueing retry", "batchID", batch.ID)
-			}
+			so.retryQueue.AddRateLimited(batch)
 		} else {
-			so.handlePermanentFailure(ctx, batch, err)
+			so.retryQueue.Forget(batch)
+			so.handlePermanentFailure(ctx, batch, retryCount, err)
 		}
 	} else {
+		so.retryQueue.Forget(batch)
 		batchesProcessed.Inc()
 	}
 }
 
-func (so *StageOrchestrator) handlePermanentFailure(ctx context.Context, batch *Batch, err error) {
+func (so *StageOrchestrator) handlePermanentFailure(ctx context.Context, batch *Batch, retryCount int, err error) {
 	log.Error(err, "Batch processing failed permanently",
 		"batchID", batch.ID,
 		"resourceCount", len(batch.Resources),
-		"retryCount", batch.RetryCount)
+		"retryCount", retryCount)
 	batchesFailedTotal.Inc()
+
+	so.emitEvent(batch, corev1.EventTypeWarning, "ReconcileFailed",
+		fmt.Sprintf("Permanent failure after %d retries: %s (batch %s)", retryCount, err.Error(), batch.ID))
 
 	log.Info("Rebuilding state from cluster after permanent failure", "batchID", batch.ID)
 	if rebuildErr := so.engine.RebuildStateFromCluster(ctx); rebuildErr != nil {
@@ -302,13 +269,15 @@ func (so *StageOrchestrator) processBatch(ctx context.Context, batch *Batch) err
 
 	log.Info("Processing batch", "batchID", batch.ID, "resourceCount", len(batch.Resources))
 
-	completedStages := make([]string, 0, len(so.stages))
 	var failedStage string
 	var stageErr error
 
 	for _, stage := range so.stages {
-		stageCtx, cancel := context.WithTimeout(ctx, so.stageTimeout)
+		so.updateStageStatus(ctx, batch, stage.Name(), ReasonInProgress, "Processing")
+		so.emitEvent(batch, corev1.EventTypeNormal, "StageStarted",
+			fmt.Sprintf("Stage %s started (batch %s)", stage.Name(), batch.ID))
 
+		stageCtx, cancel := context.WithTimeout(ctx, so.stageTimeout)
 		stageStart := time.Now()
 		err := stage.Execute(stageCtx, batch)
 		cancel()
@@ -316,20 +285,26 @@ func (so *StageOrchestrator) processBatch(ctx context.Context, batch *Batch) err
 		stageDuration.WithLabelValues(stage.Name()).Observe(time.Since(stageStart).Seconds())
 
 		if err != nil {
+			so.updateStageStatus(ctx, batch, stage.Name(), ReasonFailed, err.Error())
+			so.emitEvent(batch, corev1.EventTypeWarning, "StageFailed",
+				fmt.Sprintf("Stage %s failed: %s (batch %s)", stage.Name(), err.Error(), batch.ID))
 			failedStage = stage.Name()
 			stageErr = err
 			break
 		}
 
-		completedStages = append(completedStages, stage.Name())
-		log.V(1).Info("Stage completed", "stage", stage.Name(), "batchID", batch.ID, "duration", time.Since(stageStart))
+		so.updateStageStatus(ctx, batch, stage.Name(), ReasonSucceeded, "Complete")
+		so.emitEvent(batch, corev1.EventTypeNormal, "StageCompleted",
+			fmt.Sprintf("Stage %s completed (batch %s, duration %v)", stage.Name(), batch.ID, time.Since(stageStart)))
 	}
 
-	so.updateFinalConditions(ctx, batch, completedStages, failedStage, stageErr)
+	so.updateFinalConditions(ctx, batch, failedStage, stageErr)
 
 	if stageErr != nil {
 		return fmt.Errorf("stage %s failed: %w", failedStage, stageErr)
 	}
+
+	so.emitReconcileEvents(batch)
 
 	if batch.RequeueAfter > 0 {
 		log.Info("Scheduling follow-up reconciliation", "batchID", batch.ID, "requeueAfter", batch.RequeueAfter)
@@ -342,17 +317,82 @@ func (so *StageOrchestrator) processBatch(ctx context.Context, batch *Batch) err
 	return nil
 }
 
-func (so *StageOrchestrator) updateFinalConditions(ctx context.Context, batch *Batch, completedStages []string, failedStage string, err error) {
-	for _, stageName := range completedStages {
-		if conditionType := stageToConditionType[stageName]; conditionType != "" {
-			so.updateConditions(ctx, batch, conditionType, metav1.ConditionTrue, ReasonSucceeded, "Complete")
-		}
+func (so *StageOrchestrator) updateStageStatus(ctx context.Context, batch *Batch, stageName, reason, message string) {
+	conditionType := stageToConditionType[stageName]
+	if conditionType == "" {
+		return
 	}
 
-	if failedStage != "" {
-		if conditionType := stageToConditionType[failedStage]; conditionType != "" {
-			so.updateConditions(ctx, batch, conditionType, metav1.ConditionFalse, ReasonFailed, err.Error())
+	status := metav1.ConditionFalse
+	switch reason {
+	case ReasonSucceeded:
+		status = metav1.ConditionTrue
+	case ReasonInProgress:
+		status = metav1.ConditionUnknown
+	}
+
+	so.updateConditions(ctx, batch, conditionType, status, reason, message)
+}
+
+func (so *StageOrchestrator) emitEvent(batch *Batch, eventType, reason, message string) {
+	if so.recorder == nil {
+		return
+	}
+	for _, res := range batch.Resources {
+		if obj, ok := res.GetOwnerObject().(runtime.Object); ok {
+			so.recorder.Event(obj, eventType, reason, message)
 		}
+	}
+}
+
+func (so *StageOrchestrator) emitReconcileEvents(batch *Batch) {
+	if so.recorder == nil || batch.Plan == nil {
+		return
+	}
+
+	targetNamespaces := batch.Plan.TargetNamespaces
+	if len(targetNamespaces) == 0 {
+		targetNamespaces = so.engine.GetTargetNamespaces()
+	}
+
+	for _, resource := range batch.Resources {
+		obj, ok := resource.GetOwnerObject().(runtime.Object)
+		if !ok {
+			continue
+		}
+
+		var wsaKey string
+		if resource.IsClusterScoped() {
+			wsaKey = resource.GetName()
+		} else {
+			wsaKey = resource.GetNamespace() + "/" + resource.GetName()
+		}
+
+		saNames := batch.Plan.WSAToSANames[wsaKey]
+		if len(saNames) == 0 {
+			so.recorder.Event(obj, corev1.EventTypeNormal, "Reconciled",
+				"No ServiceAccounts generated (no matching scopes)")
+			continue
+		}
+
+		saNameStrings := make([]string, len(saNames))
+		for i, sa := range saNames {
+			saNameStrings[i] = string(sa)
+		}
+
+		message := fmt.Sprintf("Reconciled %d ServiceAccount(s): %s across %d namespace(s)",
+			len(saNames),
+			strings.Join(saNameStrings, ", "),
+			len(targetNamespaces))
+
+		so.recorder.Event(obj, corev1.EventTypeNormal, "Reconciled", message)
+	}
+}
+
+func (so *StageOrchestrator) updateFinalConditions(
+	ctx context.Context, batch *Batch, failedStage string, err error,
+) {
+	if failedStage != "" {
 		message := fmt.Sprintf("Stage %s failed: %s", failedStage, err.Error())
 		so.updateConditions(ctx, batch, ConditionTypeReady, metav1.ConditionFalse, ReasonFailed, message)
 	} else {
@@ -369,60 +409,17 @@ func (so *StageOrchestrator) triggerReconcile() {
 	}
 }
 
-func (so *StageOrchestrator) updateConditions(ctx context.Context, batch *Batch, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (so *StageOrchestrator) updateConditions(
+	ctx context.Context, batch *Batch, conditionType string, status metav1.ConditionStatus, reason, message string,
+) {
 	for _, res := range batch.Resources {
-		key := types.NamespacedName{Namespace: res.GetNamespace(), Name: res.GetName()}
-		obj := newWSAClientObject(res)
-
-		if err := so.client.Get(ctx, key, obj); err != nil {
-			log.V(1).Info("Failed to get resource for condition update", "key", key, "error", err)
-			continue
-		}
-
-		var currentConditions []metav1.Condition
-		switch o := obj.(type) {
-		case *agentoctopuscomv1beta1.WorkloadServiceAccount:
-			currentConditions = o.Status.Conditions
-		case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount:
-			currentConditions = o.Status.Conditions
-		}
-
-		newCondition := metav1.Condition{
-			Type:               conditionType,
-			Status:             status,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: obj.GetGeneration(),
-		}
-
-		if conditionUnchanged(currentConditions, newCondition) {
-			log.V(2).Info("Skipping condition update, no change", "key", key, "conditionType", conditionType)
-			continue
-		}
-
-		var conditions *[]metav1.Condition
-		switch o := obj.(type) {
-		case *agentoctopuscomv1beta1.WorkloadServiceAccount:
-			conditions = &o.Status.Conditions
-		case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount:
-			conditions = &o.Status.Conditions
-		}
-
-		meta.SetStatusCondition(conditions, newCondition)
-
-		if err := so.client.Status().Update(ctx, obj); err != nil {
-			log.V(1).Info("Failed to update condition", "key", key, "conditionType", conditionType, "error", err)
+		if err := res.UpdateCondition(ctx, so.client, conditionType, status, reason, message); err != nil {
+			log.V(1).Info("Failed to update condition",
+				"resource", res.GetNamespace()+"/"+res.GetName(),
+				"conditionType", conditionType,
+				"error", err)
 		}
 	}
-}
-
-func conditionUnchanged(conditions []metav1.Condition, newCondition metav1.Condition) bool {
-	for _, c := range conditions {
-		if c.Type == newCondition.Type {
-			return c.Status == newCondition.Status && c.Reason == newCondition.Reason
-		}
-	}
-	return false
 }
 
 func newWSAClientObject(res rules.WSAResource) client.Object {

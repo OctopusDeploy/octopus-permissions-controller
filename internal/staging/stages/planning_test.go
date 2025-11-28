@@ -167,7 +167,7 @@ var _ = Describe("PlanningStage", func() {
 				stage = NewPlanningStage(engine)
 
 				batch := &staging.Batch{
-					ID: "test-batch",
+					ID: staging.NewBatchID(),
 				}
 
 				err := stage.Execute(ctx, batch)

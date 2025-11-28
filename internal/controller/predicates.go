@@ -17,23 +17,24 @@ func ManagedResourcePredicate() predicate.Predicate {
 	})
 }
 
-func OwnedResourcePredicate() predicate.Predicate {
+func GenerationOrDeletePredicate() predicate.Predicate {
 	return predicate.Or(
-		ManagedResourcePredicate(),
+		predicate.Or(
+			predicate.GenerationChangedPredicate{},
+			ExternalChangePredicate(),
+		),
 		predicate.Funcs{
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				return true
 			},
-		},
-	)
-}
-
-func GenerationOrDeletePredicate() predicate.Predicate {
-	return predicate.Or(
-		predicate.GenerationChangedPredicate{},
-		predicate.Funcs{
-			DeleteFunc: func(e event.DeleteEvent) bool {
-				return true
+			CreateFunc: func(e event.CreateEvent) bool {
+				return false
+			},
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				return false
+			},
+			GenericFunc: func(e event.GenericEvent) bool {
+				return false
 			},
 		},
 	)
