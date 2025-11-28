@@ -269,7 +269,6 @@ func (so *StageOrchestrator) processBatch(ctx context.Context, batch *Batch) err
 
 	log.Info("Processing batch", "batchID", batch.ID, "resourceCount", len(batch.Resources))
 
-	completedStages := make([]string, 0, len(so.stages))
 	var failedStage string
 	var stageErr error
 
@@ -294,13 +293,12 @@ func (so *StageOrchestrator) processBatch(ctx context.Context, batch *Batch) err
 			break
 		}
 
-		completedStages = append(completedStages, stage.Name())
 		so.updateStageStatus(ctx, batch, stage.Name(), ReasonSucceeded, "Complete")
 		so.emitEvent(batch, corev1.EventTypeNormal, "StageCompleted",
 			fmt.Sprintf("Stage %s completed (batch %s, duration %v)", stage.Name(), batch.ID, time.Since(stageStart)))
 	}
 
-	so.updateFinalConditions(ctx, batch, completedStages, failedStage, stageErr)
+	so.updateFinalConditions(ctx, batch, failedStage, stageErr)
 
 	if stageErr != nil {
 		return fmt.Errorf("stage %s failed: %w", failedStage, stageErr)
@@ -326,9 +324,10 @@ func (so *StageOrchestrator) updateStageStatus(ctx context.Context, batch *Batch
 	}
 
 	status := metav1.ConditionFalse
-	if reason == ReasonSucceeded {
+	switch reason {
+	case ReasonSucceeded:
 		status = metav1.ConditionTrue
-	} else if reason == ReasonInProgress {
+	case ReasonInProgress:
 		status = metav1.ConditionUnknown
 	}
 
@@ -391,7 +390,7 @@ func (so *StageOrchestrator) emitReconcileEvents(batch *Batch) {
 }
 
 func (so *StageOrchestrator) updateFinalConditions(
-	ctx context.Context, batch *Batch, completedStages []string, failedStage string, err error,
+	ctx context.Context, batch *Batch, failedStage string, err error,
 ) {
 	if failedStage != "" {
 		message := fmt.Sprintf("Stage %s failed: %s", failedStage, err.Error())
