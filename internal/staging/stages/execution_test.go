@@ -12,6 +12,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -132,7 +133,7 @@ var _ = Describe("ExecutionStage", func() {
 					"EnsureRoles should return non-nil map")
 				Expect(createdRoles).To(HaveLen(1),
 					"Expected one role to be created for WSA with inline permissions")
-				Expect(createdRoles).To(HaveKey("test-wsa"),
+				Expect(createdRoles).To(HaveKey(types.NamespacedName{Namespace: "default", Name: "test-wsa"}),
 					"Expected role to be keyed by WSA name")
 			})
 		})

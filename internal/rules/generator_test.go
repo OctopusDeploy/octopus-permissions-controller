@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type FindAllPossibleResourceScopesTest struct {
@@ -96,14 +97,15 @@ var _ = Describe("Service Account Deduplication", func() {
 		It("Should create only one service account for that set of WSAs", func() {
 			By("Creating a WSA that appears in multiple scopes")
 			wsa1 := &v1beta1.WorkloadServiceAccount{
-				ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
+				ObjectMeta: metav1.ObjectMeta{Name: "wsa1", Namespace: "default"},
 			}
-			scopeMap := map[Scope]map[string]WSAResource{
+			wsa1Key := types.NamespacedName{Namespace: "default", Name: "wsa1"}
+			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": NewWSAResource(wsa1),
+					wsa1Key: NewWSAResource(wsa1),
 				},
 				{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": NewWSAResource(wsa1),
+					wsa1Key: NewWSAResource(wsa1),
 				},
 			}
 
@@ -111,25 +113,28 @@ var _ = Describe("Service Account Deduplication", func() {
 			_, _, wsaToSANames, _ := GenerateServiceAccountMappings(scopeMap)
 
 			By("Verifying only one service account is created")
-			Expect(wsaToSANames).To(HaveKey("wsa1"))
-			Expect(wsaToSANames["wsa1"]).To(HaveLen(1))
+			Expect(wsaToSANames).To(HaveKey(wsa1Key))
+			Expect(wsaToSANames[wsa1Key]).To(HaveLen(1))
 		})
 	})
 })
 
 var _ = Describe("GenerateServiceAccountMappings", func() {
 	var wsa1, wsa2 *v1beta1.WorkloadServiceAccount
+	var wsa1Key, wsa2Key types.NamespacedName
 
 	BeforeEach(func() {
-		wsa1 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1"}}
-		wsa2 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2"}}
+		wsa1 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1", Namespace: "default"}}
+		wsa2 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2", Namespace: "default"}}
+		wsa1Key = types.NamespacedName{Namespace: "default", Name: "wsa1"}
+		wsa2Key = types.NamespacedName{Namespace: "default", Name: "wsa2"}
 	})
 
 	Context("When generating service account mappings", func() {
 		It("Should handle single scope with one WSA", func() {
-			scopeMap := map[Scope]map[string]WSAResource{
+			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": NewWSAResource(wsa1),
+					wsa1Key: NewWSAResource(wsa1),
 				},
 			}
 
@@ -141,13 +146,13 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 		})
 
 		It("Should handle multiple scopes with overlapping WSAs", func() {
-			scopeMap := map[Scope]map[string]WSAResource{
+			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": NewWSAResource(wsa1),
-					"wsa2": NewWSAResource(wsa2),
+					wsa1Key: NewWSAResource(wsa1),
+					wsa2Key: NewWSAResource(wsa2),
 				},
 				{Project: "proj2", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": NewWSAResource(wsa1),
+					wsa1Key: NewWSAResource(wsa1),
 				},
 			}
 
@@ -159,10 +164,10 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 		})
 
 		It("Should create one service account for identical scopes", func() {
-			scopeMap := map[Scope]map[string]WSAResource{
+			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
-					"wsa1": NewWSAResource(&v1beta1.WorkloadServiceAccount{
-						ObjectMeta: metav1.ObjectMeta{Name: "wsa1"},
+					wsa1Key: NewWSAResource(&v1beta1.WorkloadServiceAccount{
+						ObjectMeta: metav1.ObjectMeta{Name: "wsa1", Namespace: "default"},
 					}),
 				},
 			}
@@ -175,7 +180,7 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 		})
 
 		It("Should handle empty scope map", func() {
-			scopeMap := map[Scope]map[string]WSAResource{}
+			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{}
 
 			scopeToSA, _, _, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
 
@@ -188,10 +193,10 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 // verifyServiceAccountMappings is a helper to verify the consistency of service account mappings
 func verifyServiceAccountMappings(
 	scopeToSA map[Scope]ServiceAccountName,
-	saToWSAs map[ServiceAccountName]map[string]WSAResource,
-	wsaToSANames map[string][]string,
+	saToWSAs map[ServiceAccountName]map[types.NamespacedName]WSAResource,
+	wsaToSANames map[types.NamespacedName][]string,
 	serviceAccounts []*corev1.ServiceAccount,
-	originalScopeMap map[Scope]map[string]WSAResource,
+	originalScopeMap map[Scope]map[types.NamespacedName]WSAResource,
 ) {
 	// Verify consistency between maps
 	for scope, sa := range scopeToSA {
@@ -211,16 +216,16 @@ func verifyServiceAccountMappings(
 
 		// Verify WSAs in the mapping exist in the original scope
 		originalWSAs := originalScopeMap[scope]
-		for wsaName, wsa := range wsaMap {
-			originalWSA, wsaExists := originalWSAs[wsaName]
-			Expect(wsaExists).To(BeTrue(), "WSA %s should exist in original scope %v", wsaName, scope)
+		for wsaKey, wsa := range wsaMap {
+			originalWSA, wsaExists := originalWSAs[wsaKey]
+			Expect(wsaExists).To(BeTrue(), "WSA %s should exist in original scope %v", wsaKey, scope)
 			Expect(wsa).To(Equal(originalWSA), "WSA pointer should match original")
 		}
 
 		// Verify reverse mapping (WSA to service account names)
-		for wsaName := range wsaMap {
-			saNames, exists := wsaToSANames[wsaName]
-			Expect(exists).To(BeTrue(), "WSA %s should have service account mapping", wsaName)
+		for wsaKey := range wsaMap {
+			saNames, exists := wsaToSANames[wsaKey]
+			Expect(exists).To(BeTrue(), "WSA %s should have service account mapping", wsaKey)
 			Expect(saNames).To(ContainElement(string(sa)), "WSA should map back to service account")
 		}
 	}

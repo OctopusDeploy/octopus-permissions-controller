@@ -62,13 +62,13 @@ type ResourceManagement interface {
 	GetClusterRoles(ctx context.Context) (iter.Seq[*rbacv1.ClusterRole], error)
 	GetRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.RoleBinding], error)
 	GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbacv1.ClusterRoleBinding], error)
-	EnsureRoles(ctx context.Context, resources []WSAResource) (map[string]rbacv1.Role, error)
+	EnsureRoles(ctx context.Context, resources []WSAResource) (map[types.NamespacedName]rbacv1.Role, error)
 	EnsureServiceAccounts(
 		ctx context.Context, serviceAccounts []*corev1.ServiceAccount, targetNamespaces []string,
 	) error
 	EnsureRoleBindings(
-		ctx context.Context, resources []WSAResource, createdRoles map[string]rbacv1.Role,
-		wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+		ctx context.Context, resources []WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role,
+		wsaToServiceAccounts map[types.NamespacedName][]string, targetNamespaces []string,
 	) error
 	GarbageCollectServiceAccounts(
 		ctx context.Context, expectedServiceAccounts *set.Set[string], targetNamespaces *set.Set[string],
@@ -253,8 +253,8 @@ func (r ResourceManagementService) GetClusterRoleBindings(ctx context.Context) (
 
 func (r ResourceManagementService) EnsureRoles(
 	ctx context.Context, resources []WSAResource,
-) (map[string]rbacv1.Role, error) {
-	createdRoles := make(map[string]rbacv1.Role)
+) (map[types.NamespacedName]rbacv1.Role, error) {
+	createdRoles := make(map[types.NamespacedName]rbacv1.Role)
 	var err error
 
 	for _, resource := range resources {
@@ -262,7 +262,7 @@ func (r ResourceManagementService) EnsureRoles(
 		if role, createErr := r.createRoleIfNeeded(ctxWithTimeout, resource); createErr != nil {
 			err = multierr.Append(err, createErr)
 		} else if role.Name != "" {
-			createdRoles[resource.GetName()] = role
+			createdRoles[resource.GetNamespacedName()] = role
 		}
 		cancel()
 	}
@@ -291,15 +291,15 @@ func (r ResourceManagementService) EnsureServiceAccounts(
 
 // EnsureRoleBindings creates role bindings to connect service accounts with roles for all WSAs
 func (r ResourceManagementService) EnsureRoleBindings(
-	ctx context.Context, resources []WSAResource, createdRoles map[string]rbacv1.Role,
-	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+	ctx context.Context, resources []WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role,
+	wsaToServiceAccounts map[types.NamespacedName][]string, targetNamespaces []string,
 ) error {
 	logger := log.FromContext(ctx).WithName("ensureRoleBindings")
 	var err error
 
 	// Loop over resources and create role bindings for each
 	for _, resource := range resources {
-		serviceAccounts, exists := wsaToServiceAccounts[resource.GetName()]
+		serviceAccounts, exists := wsaToServiceAccounts[resource.GetNamespacedName()]
 		if !exists || len(serviceAccounts) == 0 {
 			continue
 		}
@@ -474,7 +474,7 @@ func (r ResourceManagementService) createServiceAccount(
 // createRoleBindingsForResource creates all role bindings for a resource with all its service accounts as subjects
 func (r ResourceManagementService) createRoleBindingsForResource(
 	ctx context.Context, resource WSAResource, serviceAccounts []serviceAccountInfo,
-	createdRoles map[string]rbacv1.Role,
+	createdRoles map[types.NamespacedName]rbacv1.Role,
 ) error {
 	logger := log.FromContext(ctx).WithName("createRoleBindingsForResource")
 	var err error
@@ -497,7 +497,7 @@ func (r ResourceManagementService) createRoleBindingsForResource(
 	}
 
 	// Create role binding for inline permissions (if role was created)
-	if createdRole, exists := createdRoles[resource.GetName()]; exists {
+	if createdRole, exists := createdRoles[resource.GetNamespacedName()]; exists {
 		if resource.IsClusterScoped() {
 			// For cluster-scoped resources with inline permissions, create ClusterRoleBinding
 			roleRef := rbacv1.RoleRef{

@@ -8,6 +8,7 @@ import (
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type ExecutionStage struct {
@@ -48,7 +49,7 @@ func (es *ExecutionStage) Execute(ctx context.Context, batch *staging.Batch) err
 		"resourceCount", len(allResources),
 		"namespaceCount", len(targetNamespaces))
 
-	var createdRoles map[string]rbacv1.Role
+	var createdRoles map[types.NamespacedName]rbacv1.Role
 	if len(allResources) > 0 {
 		log.V(1).Info("Ensuring roles", "resourceCount", len(allResources))
 		var err error
@@ -83,8 +84,8 @@ func (es *ExecutionStage) Execute(ctx context.Context, batch *staging.Batch) err
 	return nil
 }
 
-func (es *ExecutionStage) ensureRoleBindings(ctx context.Context, batch *staging.Batch, allResources []rules.WSAResource, createdRoles map[string]rbacv1.Role, targetNamespaces []string) error {
-	wsaToServiceAccountNames := make(map[string][]string, len(batch.Plan.WSAToSANames))
+func (es *ExecutionStage) ensureRoleBindings(ctx context.Context, batch *staging.Batch, allResources []rules.WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role, targetNamespaces []string) error {
+	wsaToServiceAccountNames := make(map[types.NamespacedName][]string, len(batch.Plan.WSAToSANames))
 	for wsa, saNames := range batch.Plan.WSAToSANames {
 		names := make([]string, len(saNames))
 		for i, name := range saNames {

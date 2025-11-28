@@ -68,16 +68,14 @@ func (ps *PlanningStage) Execute(ctx context.Context, batch *staging.Batch) erro
 }
 
 func updateBatchResourceVersions(batchResources, freshResources []rules.WSAResource) []rules.WSAResource {
-	freshByKey := make(map[string]rules.WSAResource, len(freshResources))
+	freshByKey := make(map[types.NamespacedName]rules.WSAResource, len(freshResources))
 	for _, r := range freshResources {
-		key := types.NamespacedName{Namespace: r.GetNamespace(), Name: r.GetName()}.String()
-		freshByKey[key] = r
+		freshByKey[r.GetNamespacedName()] = r
 	}
 
 	updated := make([]rules.WSAResource, 0, len(batchResources))
 	for _, r := range batchResources {
-		key := types.NamespacedName{Namespace: r.GetNamespace(), Name: r.GetName()}.String()
-		if fresh, ok := freshByKey[key]; ok {
+		if fresh, ok := freshByKey[r.GetNamespacedName()]; ok {
 			updated = append(updated, fresh)
 		} else {
 			updated = append(updated, r)
@@ -114,8 +112,8 @@ func (ps *PlanningStage) getAllResources(ctx context.Context) ([]rules.WSAResour
 	return allResources, nil
 }
 
-func convertWSAToSANames(wsaToSANames map[string][]string) map[string][]rules.ServiceAccountName {
-	result := make(map[string][]rules.ServiceAccountName, len(wsaToSANames))
+func convertWSAToSANames(wsaToSANames map[types.NamespacedName][]string) map[types.NamespacedName][]rules.ServiceAccountName {
+	result := make(map[types.NamespacedName][]rules.ServiceAccountName, len(wsaToSANames))
 	for wsa, saNames := range wsaToSANames {
 		converted := make([]rules.ServiceAccountName, len(saNames))
 		for i, name := range saNames {

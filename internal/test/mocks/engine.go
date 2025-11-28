@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -28,14 +29,14 @@ func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope) (rules.Service
 }
 
 // ScopeComputation interface methods (embedded in Engine interface)
-func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
+func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[types.NamespacedName]rules.WSAResource, rules.GlobalVocabulary) {
 	args := m.Called(wsaList)
-	return args.Get(0).(map[rules.Scope]map[string]rules.WSAResource), args.Get(1).(rules.GlobalVocabulary)
+	return args.Get(0).(map[rules.Scope]map[types.NamespacedName]rules.WSAResource), args.Get(1).(rules.GlobalVocabulary)
 }
 
-func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[string]rules.WSAResource) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
+func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[types.NamespacedName]rules.WSAResource) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource, map[types.NamespacedName][]string, []*corev1.ServiceAccount) {
 	args := m.Called(scopeMap)
-	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[string]rules.WSAResource), args.Get(2).(map[string][]string), args.Get(3).([]*corev1.ServiceAccount)
+	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource), args.Get(2).(map[types.NamespacedName][]string), args.Get(3).([]*corev1.ServiceAccount)
 }
 
 func (m *MockEngine) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
@@ -86,9 +87,9 @@ func (m *MockEngine) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbac
 
 func (m *MockEngine) EnsureRoles(
 	ctx context.Context, resources []rules.WSAResource,
-) (map[string]rbacv1.Role, error) {
+) (map[types.NamespacedName]rbacv1.Role, error) {
 	args := m.Called(ctx, resources)
-	return args.Get(0).(map[string]rbacv1.Role), args.Error(1)
+	return args.Get(0).(map[types.NamespacedName]rbacv1.Role), args.Error(1)
 }
 
 func (m *MockEngine) EnsureServiceAccounts(
@@ -99,8 +100,8 @@ func (m *MockEngine) EnsureServiceAccounts(
 }
 
 func (m *MockEngine) EnsureRoleBindings(
-	ctx context.Context, resources []rules.WSAResource, createdRoles map[string]rbacv1.Role,
-	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+	ctx context.Context, resources []rules.WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role,
+	wsaToServiceAccounts map[types.NamespacedName][]string, targetNamespaces []string,
 ) error {
 	args := m.Called(ctx, resources, createdRoles, wsaToServiceAccounts, targetNamespaces)
 	return args.Error(0)

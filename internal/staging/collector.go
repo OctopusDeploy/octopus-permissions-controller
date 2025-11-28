@@ -198,8 +198,8 @@ func NewBatch(events []*EventInfo) *Batch {
 
 type ReconciliationPlan struct {
 	ScopeToSA        map[rules.Scope]rules.ServiceAccountName
-	SAToWSAMap       map[rules.ServiceAccountName]map[string]rules.WSAResource
-	WSAToSANames     map[string][]rules.ServiceAccountName
+	SAToWSAMap       map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource
+	WSAToSANames     map[types.NamespacedName][]rules.ServiceAccountName
 	Vocabulary       *rules.GlobalVocabulary
 	UniqueAccounts   []*v1.ServiceAccount
 	AllResources     []rules.WSAResource
@@ -210,7 +210,7 @@ func (rp *ReconciliationPlan) GetScopeToSA() map[rules.Scope]rules.ServiceAccoun
 	return rp.ScopeToSA
 }
 
-func (rp *ReconciliationPlan) GetSAToWSAMap() map[rules.ServiceAccountName]map[string]rules.WSAResource {
+func (rp *ReconciliationPlan) GetSAToWSAMap() map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource {
 	return rp.SAToWSAMap
 }
 
