@@ -29,16 +29,16 @@ func OwnedResourcePredicate() predicate.Predicate {
 }
 
 func GenerationOrDeletePredicate() predicate.Predicate {
-	return predicate.And(
+	return predicate.Or(
 		predicate.Or(
 			predicate.GenerationChangedPredicate{},
-			predicate.Funcs{
-				DeleteFunc: func(e event.DeleteEvent) bool {
-					return true
-				},
-			},
+			ExternalChangePredicate(),
 		),
-		ExternalChangePredicate(),
+		predicate.Funcs{
+			DeleteFunc: func(e event.DeleteEvent) bool {
+				return true
+			},
+		},
 	)
 }
 
