@@ -57,19 +57,20 @@ type EventCollector struct {
 }
 
 func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventCollector {
+	batchTriggerCh := make(chan struct{}, 1)
 	return &EventCollector{
 		eventMap:         make(map[types.NamespacedName]*EventInfo),
 		debounceInterval: debounceInterval,
 		maxBatchSize:     maxBatchSize,
 		batchReadyCh:     make(chan []*EventInfo, 10),
-		batchTriggerCh:   make(chan struct{}, 1),
+		batchTriggerCh:   batchTriggerCh,
+		eventDebouncer: NewDebouncer(debounceInterval, func() {
+			batchTriggerCh <- struct{}{}
+		}),
 	}
 }
 
 func (ec *EventCollector) Start(ctx context.Context) error {
-	ec.eventDebouncer = NewDebouncer(ec.debounceInterval, func() {
-		ec.batchTriggerCh <- struct{}{}
-	})
 	ec.eventDebouncer.Start(ctx)
 
 	log.Info("EventCollector started", "debounceInterval", ec.debounceInterval, "maxBatchSize", ec.maxBatchSize)
