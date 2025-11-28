@@ -27,6 +27,15 @@ func GenerationOrDeletePredicate() predicate.Predicate {
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				return true
 			},
+			CreateFunc: func(e event.CreateEvent) bool {
+				return false
+			},
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				return false
+			},
+			GenericFunc: func(e event.GenericEvent) bool {
+				return false
+			},
 		},
 	)
 }
