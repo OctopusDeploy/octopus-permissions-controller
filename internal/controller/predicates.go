@@ -17,17 +17,6 @@ func ManagedResourcePredicate() predicate.Predicate {
 	})
 }
 
-func OwnedResourcePredicate() predicate.Predicate {
-	return predicate.Or(
-		ManagedResourcePredicate(),
-		predicate.Funcs{
-			DeleteFunc: func(e event.DeleteEvent) bool {
-				return true
-			},
-		},
-	)
-}
-
 func GenerationOrDeletePredicate() predicate.Predicate {
 	return predicate.Or(
 		predicate.Or(
