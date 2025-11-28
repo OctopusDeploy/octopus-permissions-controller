@@ -1,9 +1,14 @@
 package rules
 
 import (
+	"context"
+
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/condition"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // WSAResource is an internal interface that abstracts over both WorkloadServiceAccount
@@ -35,6 +40,12 @@ type WSAResource interface {
 
 	// GetOwnerObject returns the underlying WSA or CWSA object for owner references
 	GetOwnerObject() interface{}
+
+	// UpdateCondition applies a status condition using SSA and updates the in-memory resource
+	UpdateCondition(
+		ctx context.Context, c client.Client, conditionType string, status metav1.ConditionStatus,
+		reason, message string,
+	) error
 }
 
 // wsaAdapter wraps a WorkloadServiceAccount to implement WSAResource
@@ -86,6 +97,36 @@ func (w *wsaAdapter) GetOwnerObject() interface{} {
 	return w.wsa
 }
 
+func (w *wsaAdapter) GetConditions() []metav1.Condition {
+	return w.wsa.Status.Conditions
+}
+
+func (w *wsaAdapter) SetConditions(conditions []metav1.Condition) {
+	w.wsa.Status.Conditions = conditions
+}
+
+func (w *wsaAdapter) SetResourceVersion(rv string) {
+	w.wsa.ResourceVersion = rv
+}
+
+func (w *wsaAdapter) GetAPIVersion() string {
+	return v1beta1.GroupVersion.String()
+}
+
+func (w *wsaAdapter) GetKind() string {
+	return "WorkloadServiceAccount"
+}
+
+func (w *wsaAdapter) GetObject() *v1beta1.WorkloadServiceAccount {
+	return w.wsa
+}
+
+func (w *wsaAdapter) UpdateCondition(
+	ctx context.Context, c client.Client, conditionType string, status metav1.ConditionStatus, reason, message string,
+) error {
+	return condition.Apply[*v1beta1.WorkloadServiceAccount](ctx, c, w, conditionType, status, reason, message)
+}
+
 // clusterWSAAdapter wraps a ClusterWorkloadServiceAccount to implement WSAResource
 type clusterWSAAdapter struct {
 	cwsa *v1beta1.ClusterWorkloadServiceAccount
@@ -135,4 +176,34 @@ func (c *clusterWSAAdapter) IsClusterScoped() bool {
 
 func (c *clusterWSAAdapter) GetOwnerObject() interface{} {
 	return c.cwsa
+}
+
+func (c *clusterWSAAdapter) GetConditions() []metav1.Condition {
+	return c.cwsa.Status.Conditions
+}
+
+func (c *clusterWSAAdapter) SetConditions(conditions []metav1.Condition) {
+	c.cwsa.Status.Conditions = conditions
+}
+
+func (c *clusterWSAAdapter) SetResourceVersion(rv string) {
+	c.cwsa.ResourceVersion = rv
+}
+
+func (c *clusterWSAAdapter) GetAPIVersion() string {
+	return v1beta1.GroupVersion.String()
+}
+
+func (c *clusterWSAAdapter) GetKind() string {
+	return "ClusterWorkloadServiceAccount"
+}
+
+func (c *clusterWSAAdapter) GetObject() *v1beta1.ClusterWorkloadServiceAccount {
+	return c.cwsa
+}
+
+func (c *clusterWSAAdapter) UpdateCondition(
+	ctx context.Context, cl client.Client, conditionType string, status metav1.ConditionStatus, reason, message string,
+) error {
+	return condition.Apply[*v1beta1.ClusterWorkloadServiceAccount](ctx, cl, c, conditionType, status, reason, message)
 }

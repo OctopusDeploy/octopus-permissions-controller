@@ -4,23 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-var (
-	validationConflictsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "staging_validation_conflicts_total",
-		Help: "Total number of resource version conflicts detected during validation",
-	})
 )
 
 type ValidationStage struct {
@@ -50,10 +40,6 @@ func (vs *ValidationStage) Execute(ctx context.Context, batch *staging.Batch) er
 		Warnings: []staging.ValidationWarning{},
 	}
 
-	if err := vs.checkResourceVersions(ctx, batch); err != nil {
-		return fmt.Errorf("failed to check resource versions: %w", err)
-	}
-
 	if err := vs.checkOwnerReferences(ctx, batch, result); err != nil {
 		return fmt.Errorf("failed to check owner references: %w", err)
 	}
@@ -74,47 +60,6 @@ func (vs *ValidationStage) Execute(ctx context.Context, batch *staging.Batch) er
 		log.Info("Validation completed successfully", "batchID", batch.ID)
 	}
 
-	return nil
-}
-
-func (vs *ValidationStage) checkResourceVersions(ctx context.Context, batch *staging.Batch) error {
-	for _, resource := range batch.Resources {
-		key := types.NamespacedName{
-			Name:      resource.GetName(),
-			Namespace: resource.GetNamespace(),
-		}
-
-		var current client.Object
-		if resource.IsClusterScoped() {
-			current = &agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}
-		} else {
-			current = &agentoctopuscomv1beta1.WorkloadServiceAccount{}
-		}
-
-		err := vs.client.Get(ctx, key, current)
-		if apierrors.IsNotFound(err) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("failed to check resource version for %s/%s: %w", resource.GetNamespace(), resource.GetName(), err)
-		}
-
-		originalOwner := resource.GetOwnerObject()
-		var originalResourceVersion string
-		switch o := originalOwner.(type) {
-		case *agentoctopuscomv1beta1.WorkloadServiceAccount:
-			originalResourceVersion = o.ResourceVersion
-		case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount:
-			originalResourceVersion = o.ResourceVersion
-		}
-
-		if originalResourceVersion != "" && current.GetResourceVersion() != originalResourceVersion {
-			validationConflictsTotal.Inc()
-			return fmt.Errorf("resource %s/%s was modified concurrently (expected %s, got %s)",
-				resource.GetNamespace(), resource.GetName(),
-				originalResourceVersion, current.GetResourceVersion())
-		}
-	}
 	return nil
 }
 

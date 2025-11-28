@@ -39,10 +39,10 @@ var _ = Describe("ExecutionStage", func() {
 				fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 				e := rules.NewInMemoryEngineWithNamespaces(fakeClient, scheme, []string{"test-ns"})
 				engine = &e
-				stage = NewExecutionStage(engine, nil)
+				stage = NewExecutionStage(engine)
 
 				batch := &staging.Batch{
-					ID:   "test-batch",
+					ID:   staging.NewBatchID(),
 					Plan: nil,
 				}
 
@@ -57,10 +57,10 @@ var _ = Describe("ExecutionStage", func() {
 				fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 				e := rules.NewInMemoryEngineWithNamespaces(fakeClient, scheme, []string{})
 				engine = &e
-				stage = NewExecutionStage(engine, nil)
+				stage = NewExecutionStage(engine)
 
 				batch := &staging.Batch{
-					ID: "test-batch",
+					ID: staging.NewBatchID(),
 					Plan: &staging.ReconciliationPlan{
 						TargetNamespaces: []string{},
 						AllResources:     []rules.WSAResource{},
@@ -77,10 +77,10 @@ var _ = Describe("ExecutionStage", func() {
 				fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 				e := rules.NewInMemoryEngineWithNamespaces(fakeClient, scheme, []string{"test-ns"})
 				engine = &e
-				stage = NewExecutionStage(engine, nil)
+				stage = NewExecutionStage(engine)
 
 				batch := &staging.Batch{
-					ID: "test-batch",
+					ID: staging.NewBatchID(),
 					Plan: &staging.ReconciliationPlan{
 						TargetNamespaces: []string{"test-ns"},
 						AllResources:     []rules.WSAResource{},
@@ -99,7 +99,7 @@ var _ = Describe("ExecutionStage", func() {
 				fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 				e := rules.NewInMemoryEngineWithNamespaces(fakeClient, scheme, []string{"test-ns"})
 				engine = &e
-				stage = NewExecutionStage(engine, nil)
+				stage = NewExecutionStage(engine)
 				_ = stage // stage is created to ensure the setup is consistent
 
 				wsa := &v1beta1.WorkloadServiceAccount{
@@ -142,7 +142,7 @@ var _ = Describe("ExecutionStage", func() {
 				fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 				e := rules.NewInMemoryEngineWithNamespaces(fakeClient, scheme, []string{"test-ns"})
 				engine = &e
-				stage = NewExecutionStage(engine, nil)
+				stage = NewExecutionStage(engine)
 				_ = stage // stage is created to ensure the setup is consistent
 
 				wsa := &v1beta1.WorkloadServiceAccount{
