@@ -97,34 +97,10 @@ func (w *wsaAdapter) GetOwnerObject() interface{} {
 	return w.wsa
 }
 
-func (w *wsaAdapter) GetConditions() []metav1.Condition {
-	return w.wsa.Status.Conditions
-}
-
-func (w *wsaAdapter) SetConditions(conditions []metav1.Condition) {
-	w.wsa.Status.Conditions = conditions
-}
-
-func (w *wsaAdapter) SetResourceVersion(rv string) {
-	w.wsa.ResourceVersion = rv
-}
-
-func (w *wsaAdapter) GetAPIVersion() string {
-	return v1beta1.GroupVersion.String()
-}
-
-func (w *wsaAdapter) GetKind() string {
-	return "WorkloadServiceAccount"
-}
-
-func (w *wsaAdapter) GetObject() *v1beta1.WorkloadServiceAccount {
-	return w.wsa
-}
-
 func (w *wsaAdapter) UpdateCondition(
 	ctx context.Context, c client.Client, conditionType string, status metav1.ConditionStatus, reason, message string,
 ) error {
-	return condition.Apply[*v1beta1.WorkloadServiceAccount](ctx, c, w, conditionType, status, reason, message)
+	return condition.Apply(ctx, c, w.wsa, &w.wsa.Status.Conditions, conditionType, status, reason, message)
 }
 
 // clusterWSAAdapter wraps a ClusterWorkloadServiceAccount to implement WSAResource
@@ -178,32 +154,8 @@ func (c *clusterWSAAdapter) GetOwnerObject() interface{} {
 	return c.cwsa
 }
 
-func (c *clusterWSAAdapter) GetConditions() []metav1.Condition {
-	return c.cwsa.Status.Conditions
-}
-
-func (c *clusterWSAAdapter) SetConditions(conditions []metav1.Condition) {
-	c.cwsa.Status.Conditions = conditions
-}
-
-func (c *clusterWSAAdapter) SetResourceVersion(rv string) {
-	c.cwsa.ResourceVersion = rv
-}
-
-func (c *clusterWSAAdapter) GetAPIVersion() string {
-	return v1beta1.GroupVersion.String()
-}
-
-func (c *clusterWSAAdapter) GetKind() string {
-	return "ClusterWorkloadServiceAccount"
-}
-
-func (c *clusterWSAAdapter) GetObject() *v1beta1.ClusterWorkloadServiceAccount {
-	return c.cwsa
-}
-
 func (c *clusterWSAAdapter) UpdateCondition(
 	ctx context.Context, cl client.Client, conditionType string, status metav1.ConditionStatus, reason, message string,
 ) error {
-	return condition.Apply[*v1beta1.ClusterWorkloadServiceAccount](ctx, cl, c, conditionType, status, reason, message)
+	return condition.Apply(ctx, cl, c.cwsa, &c.cwsa.Status.Conditions, conditionType, status, reason, message)
 }
