@@ -136,7 +136,7 @@ func (so *StageOrchestrator) Start(ctx context.Context) error {
 			return nil
 		case <-so.triggerCh:
 			log.V(1).Info("Received reconciliation trigger, flushing pending events")
-			so.collector.Flush()
+			so.collector.FlushEvents()
 		case events, ok := <-batchChan:
 			if !ok {
 				log.Info("Batch channel closed, exiting")

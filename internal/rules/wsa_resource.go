@@ -3,6 +3,7 @@ package rules
 import (
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // WSAResource is an internal interface that abstracts over both WorkloadServiceAccount
@@ -13,6 +14,9 @@ type WSAResource interface {
 
 	// GetNamespace returns the namespace (empty string for cluster-scoped resources)
 	GetNamespace() string
+
+	// GetNamespacedName returns the NamespacedName of the resource
+	GetNamespacedName() types.NamespacedName
 
 	// GetScope returns the scope configuration
 	GetScope() v1beta1.WorkloadServiceAccountScope
@@ -49,6 +53,13 @@ func (w *wsaAdapter) GetName() string {
 
 func (w *wsaAdapter) GetNamespace() string {
 	return w.wsa.Namespace
+}
+
+func (w *wsaAdapter) GetNamespacedName() types.NamespacedName {
+	return types.NamespacedName{
+		Name:      w.wsa.Name,
+		Namespace: w.wsa.Namespace,
+	}
 }
 
 func (w *wsaAdapter) GetScope() v1beta1.WorkloadServiceAccountScope {
@@ -92,6 +103,13 @@ func (c *clusterWSAAdapter) GetName() string {
 func (c *clusterWSAAdapter) GetNamespace() string {
 	// Cluster-scoped resources don't have a namespace
 	return ""
+}
+
+func (c *clusterWSAAdapter) GetNamespacedName() types.NamespacedName {
+	return types.NamespacedName{
+		Name:      c.cwsa.Name,
+		Namespace: "",
+	}
 }
 
 func (c *clusterWSAAdapter) GetScope() v1beta1.WorkloadServiceAccountScope {
