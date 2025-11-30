@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/clock"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -86,7 +87,7 @@ func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventC
 		batchTriggerCh:   batchTriggerCh,
 		eventDebouncer: NewDebouncer(debounceInterval, func() {
 			batchTriggerCh <- struct{}{}
-		}),
+		}, clock.RealClock{}),
 	}
 }
 

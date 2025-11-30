@@ -3,19 +3,23 @@ package staging
 import (
 	"context"
 	"time"
+
+	"k8s.io/utils/clock"
 )
 
 type Debouncer struct {
 	timeout  time.Duration
 	callback func()
 	timeChan chan time.Time
+	clock    clock.Clock
 }
 
-func NewDebouncer(timeout time.Duration, callback func()) *Debouncer {
+func NewDebouncer(timeout time.Duration, callback func(), clk clock.Clock) *Debouncer {
 	return &Debouncer{
 		timeout:  timeout,
 		callback: callback,
 		timeChan: make(chan time.Time, 100),
+		clock:    clk,
 	}
 }
 
@@ -23,21 +27,21 @@ func (m *Debouncer) Start(ctx context.Context) {
 	go func() {
 		var startedTime *time.Time
 
-		ticker := time.NewTicker(m.timeout)
-		ticker.Stop()
+		timer := m.clock.NewTimer(m.timeout)
+		timer.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
-				ticker.Stop()
+			case <-timer.C():
+				timer.Stop()
 				startedTime = nil
 				m.callback()
 
 			case timestamp := <-m.timeChan:
 				if startedTime == nil {
 					startedTime = &timestamp
-					ticker.Reset(m.timeout)
+					timer.Reset(m.timeout)
 				}
 			}
 		}
@@ -45,5 +49,5 @@ func (m *Debouncer) Start(ctx context.Context) {
 }
 
 func (m *Debouncer) Debounce() {
-	m.timeChan <- time.Now()
+	m.timeChan <- m.clock.Now()
 }
