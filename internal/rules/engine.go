@@ -254,8 +254,7 @@ func (i *InMemoryEngine) CleanupServiceAccounts(
 	logger := log.FromContext(ctx).WithName("cleanupServiceAccounts")
 
 	logger.Info("Resource deletion acknowledged, staging will handle cleanup",
-		"name", deletingResource.GetName(),
-		"namespace", deletingResource.GetNamespace(),
+		"resource", deletingResource.GetNamespacedName().String(),
 		"isClusterScoped", deletingResource.IsClusterScoped())
 
 	return ctrl.Result{}, nil

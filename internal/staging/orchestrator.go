@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -211,7 +210,7 @@ func (so *StageOrchestrator) handlePermanentFailure(ctx context.Context, batch *
 func (so *StageOrchestrator) requeueFailedResources(ctx context.Context, batch *Batch) {
 	requeued := 0
 	for _, res := range batch.Resources {
-		key := types.NamespacedName{Namespace: res.GetNamespace(), Name: res.GetName()}
+		key := res.GetNamespacedName()
 		obj := newWSAClientObject(res)
 
 		if err := so.client.Get(ctx, key, obj); err != nil {
@@ -406,7 +405,7 @@ func (so *StageOrchestrator) updateConditions(
 	for _, res := range batch.Resources {
 		if err := res.UpdateCondition(ctx, so.client, conditionType, status, reason, message); err != nil {
 			log.V(1).Info("Failed to update condition",
-				"resource", res.GetNamespace()+"/"+res.GetName(),
+				"resource", res.GetNamespacedName().String(),
 				"conditionType", conditionType,
 				"error", err)
 		}
