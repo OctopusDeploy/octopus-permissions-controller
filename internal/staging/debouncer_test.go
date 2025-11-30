@@ -63,6 +63,7 @@ func TestDebouncer(t *testing.T) {
 	})
 }
 
+// nolint:unparam // count is always 1 in current tests, but keeping it for possible future tests
 func waitForWaiters(fakeClock *clocktesting.FakeClock, count int) {
 	for range 100 {
 		if fakeClock.HasWaiters() && fakeClock.Waiters() >= count {
