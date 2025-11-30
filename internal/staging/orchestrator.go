@@ -351,9 +351,6 @@ func (so *StageOrchestrator) emitReconcileEvents(batch *Batch) {
 	}
 
 	targetNamespaces := batch.Plan.TargetNamespaces
-	if len(targetNamespaces) == 0 {
-		targetNamespaces = so.engine.GetTargetNamespaces()
-	}
 
 	for _, resource := range batch.Resources {
 		obj, ok := resource.GetOwnerObject().(runtime.Object)

@@ -255,6 +255,15 @@ func main() {
 		targetNamespaceRegex = defaultNamespaceRegex
 	}
 
+	namespaceCacheTTL := 5 * time.Minute
+	if ttlStr := os.Getenv("NAMESPACE_CACHE_TTL"); ttlStr != "" {
+		if parsed, parseErr := time.ParseDuration(ttlStr); parseErr == nil {
+			namespaceCacheTTL = parsed
+		} else {
+			setupLog.Error(parseErr, "invalid NAMESPACE_CACHE_TTL, using default 5m")
+		}
+	}
+
 	// Create GC tracker for filtering out controller-caused delete events
 	gcTracker := controller.NewGCTracker(30 * time.Second)
 
@@ -262,7 +271,7 @@ func main() {
 	if len(targetNamespaces) > 0 {
 		engine = rules.NewInMemoryEngineWithNamespaces(mgr.GetClient(), mgr.GetScheme(), targetNamespaces)
 	} else {
-		engine = rules.NewInMemoryEngine(mgr.GetClient(), mgr.GetScheme(), targetNamespaceRegex)
+		engine = rules.NewInMemoryEngine(mgr.GetClient(), mgr.GetScheme(), targetNamespaceRegex, namespaceCacheTTL)
 	}
 
 	// Wire GC tracker to resource management service
@@ -279,7 +288,7 @@ func main() {
 
 	stagingStages := []staging.Stage{
 		stages.NewPlanningStage(&engine),
-		stages.NewValidationStage(mgr.GetClient(), &engine, targetNamespaces),
+		stages.NewValidationStage(mgr.GetClient()),
 		stages.NewExecutionStage(&engine),
 	}
 

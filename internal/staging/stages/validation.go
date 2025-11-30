@@ -14,16 +14,12 @@ import (
 )
 
 type ValidationStage struct {
-	client           client.Client
-	engine           *rules.InMemoryEngine
-	targetNamespaces []string
+	client client.Client
 }
 
-func NewValidationStage(c client.Client, engine *rules.InMemoryEngine, targetNamespaces []string) *ValidationStage {
+func NewValidationStage(c client.Client) *ValidationStage {
 	return &ValidationStage{
-		client:           c,
-		engine:           engine,
-		targetNamespaces: targetNamespaces,
+		client: c,
 	}
 }
 
@@ -44,7 +40,7 @@ func (vs *ValidationStage) Execute(ctx context.Context, batch *staging.Batch) er
 		return fmt.Errorf("failed to check owner references: %w", err)
 	}
 
-	if err := vs.checkNamespaceExistence(ctx, result); err != nil {
+	if err := vs.checkNamespaceExistence(ctx, batch, result); err != nil {
 		return fmt.Errorf("failed to check namespace existence: %w", err)
 	}
 
@@ -69,7 +65,7 @@ func (vs *ValidationStage) checkOwnerReferences(ctx context.Context, batch *stag
 	}
 
 	for _, sa := range batch.Plan.UniqueAccounts {
-		for _, namespace := range vs.getTargetNamespaces() {
+		for _, namespace := range batch.Plan.TargetNamespaces {
 			existing := &v1.ServiceAccount{}
 			err := vs.client.Get(ctx, types.NamespacedName{
 				Name:      sa.Name,
@@ -127,8 +123,12 @@ func (vs *ValidationStage) checkOwnerReferences(ctx context.Context, batch *stag
 	return nil
 }
 
-func (vs *ValidationStage) checkNamespaceExistence(ctx context.Context, result *staging.ValidationResult) error {
-	for _, namespace := range vs.getTargetNamespaces() {
+func (vs *ValidationStage) checkNamespaceExistence(ctx context.Context, batch *staging.Batch, result *staging.ValidationResult) error {
+	if batch.Plan == nil {
+		return fmt.Errorf("batch plan is nil")
+	}
+
+	for _, namespace := range batch.Plan.TargetNamespaces {
 		ns := &v1.Namespace{}
 		err := vs.client.Get(ctx, types.NamespacedName{Name: namespace}, ns)
 
@@ -147,13 +147,6 @@ func (vs *ValidationStage) checkNamespaceExistence(ctx context.Context, result *
 	}
 
 	return nil
-}
-
-func (vs *ValidationStage) getTargetNamespaces() []string {
-	if len(vs.targetNamespaces) > 0 {
-		return vs.targetNamespaces
-	}
-	return vs.engine.GetTargetNamespaces()
 }
 
 func (vs *ValidationStage) isOctopusManaged(labels map[string]string) bool {

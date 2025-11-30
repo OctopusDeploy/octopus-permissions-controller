@@ -54,7 +54,7 @@ var _ = Describe("ExecutionStage", func() {
 		})
 
 		Context("with empty target namespaces", func() {
-			It("should skip execution gracefully", func() {
+			It("should return error when plan has no target namespaces", func() {
 				fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
 				e := rules.NewInMemoryEngineWithNamespaces(fakeClient, scheme, []string{})
 				engine = &e
@@ -69,7 +69,8 @@ var _ = Describe("ExecutionStage", func() {
 				}
 
 				err := stage.Execute(ctx, batch)
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no target namespaces in plan"))
 			})
 		})
 
