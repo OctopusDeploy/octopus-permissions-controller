@@ -361,13 +361,7 @@ func (so *StageOrchestrator) emitReconcileEvents(batch *Batch) {
 			continue
 		}
 
-		var wsaKey string
-		if resource.IsClusterScoped() {
-			wsaKey = resource.GetName()
-		} else {
-			wsaKey = resource.GetNamespace() + "/" + resource.GetName()
-		}
-
+		wsaKey := resource.GetNamespacedName()
 		saNames := batch.Plan.WSAToSANames[wsaKey]
 		if len(saNames) == 0 {
 			so.recorder.Event(obj, corev1.EventTypeNormal, "Reconciled",

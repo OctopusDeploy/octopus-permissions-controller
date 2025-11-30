@@ -6,14 +6,15 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/types"
+	internaltypes "github.com/octopusdeploy/octopus-permissions-controller/internal/types"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type Scope = types.Scope
+type Scope = internaltypes.Scope
 
 type AgentName string
 
@@ -32,7 +33,7 @@ type Engine interface {
 type InMemoryEngine struct {
 	scopeToSA        map[Scope]ServiceAccountName
 	vocabulary       *GlobalVocabulary
-	saToWsaMap       map[ServiceAccountName]map[string]WSAResource
+	saToWsaMap       map[ServiceAccountName]map[types.NamespacedName]WSAResource
 	targetNamespaces []string
 	lookupNamespaces bool
 	client           client.Client
@@ -52,7 +53,7 @@ func NewInMemoryEngine(
 		lookupNamespaces:   true,
 		client:             controllerClient,
 		vocabulary:         &vocab,
-		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
+		saToWsaMap:         make(map[ServiceAccountName]map[types.NamespacedName]WSAResource),
 		mu:                 &sync.RWMutex{},
 		ResourceManagement: NewResourceManagementServiceWithScheme(controllerClient, scheme),
 		NamespaceDiscovery: NamespaceDiscoveryService{TargetNamespaceRegex: targetNamespaceRegex},
@@ -71,7 +72,7 @@ func NewInMemoryEngineWithNamespaces(
 		lookupNamespaces:   len(targetNamespaces) == 0,
 		client:             controllerClient,
 		vocabulary:         &vocab,
-		saToWsaMap:         make(map[ServiceAccountName]map[string]WSAResource),
+		saToWsaMap:         make(map[ServiceAccountName]map[types.NamespacedName]WSAResource),
 		mu:                 &sync.RWMutex{},
 		ResourceManagement: NewResourceManagementServiceWithScheme(controllerClient, scheme),
 		NamespaceDiscovery: NamespaceDiscoveryService{},
@@ -119,7 +120,7 @@ func (i *InMemoryEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) e
 
 	type reconciliationPlan interface {
 		GetScopeToSA() map[Scope]ServiceAccountName
-		GetSAToWSAMap() map[ServiceAccountName]map[string]WSAResource
+		GetSAToWSAMap() map[ServiceAccountName]map[types.NamespacedName]WSAResource
 		GetVocabulary() *GlobalVocabulary
 	}
 
@@ -224,16 +225,13 @@ func (i *InMemoryEngine) GetServiceAccountForScope(scope Scope) (ServiceAccountN
 
 // IsWSAInMaps checks if a WSA is still present in the in-memory state.
 // This is used to determine if staging has processed a deletion event.
-// The wsaKey should be a namespaced name string (namespace/name or just name for cluster-scoped).
-func (i *InMemoryEngine) IsWSAInMaps(wsaKey string) bool {
+func (i *InMemoryEngine) IsWSAInMaps(wsaKey types.NamespacedName) bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	for _, wsaMap := range i.saToWsaMap {
-		for key := range wsaMap {
-			if key == wsaKey {
-				return true
-			}
+		if _, exists := wsaMap[wsaKey]; exists {
+			return true
 		}
 	}
 	return false

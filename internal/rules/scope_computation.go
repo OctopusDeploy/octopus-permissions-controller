@@ -2,16 +2,17 @@ package rules
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // ScopeComputation defines the interface for computing scopes and service account mappings
 type ScopeComputation interface {
 	GetServiceAccountForScope(scope Scope) (ServiceAccountName, error)
-	ComputeScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary)
-	GenerateServiceAccountMappings(scopeMap map[Scope]map[string]WSAResource) (
+	ComputeScopesForWSAs(wsaList []WSAResource) (map[Scope]map[types.NamespacedName]WSAResource, GlobalVocabulary)
+	GenerateServiceAccountMappings(scopeMap map[Scope]map[types.NamespacedName]WSAResource) (
 		map[Scope]ServiceAccountName,
-		map[ServiceAccountName]map[string]WSAResource,
-		map[string][]string,
+		map[ServiceAccountName]map[types.NamespacedName]WSAResource,
+		map[types.NamespacedName][]string,
 		[]*corev1.ServiceAccount,
 	)
 	GetScopeToSA() map[Scope]ServiceAccountName
@@ -40,7 +41,7 @@ func (s ScopeComputationService) GetServiceAccountForScope(scope Scope) (Service
 	return "", nil
 }
 
-func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary) {
+func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []WSAResource) (map[Scope]map[types.NamespacedName]WSAResource, GlobalVocabulary) {
 	// Build global vocabulary of all possible scope values
 	vocabulary := buildGlobalVocabulary(wsaList)
 
@@ -49,7 +50,7 @@ func (s ScopeComputationService) ComputeScopesForWSAs(wsaList []WSAResource) (ma
 	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
 
-func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[string]WSAResource) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[string]WSAResource, map[string][]string, []*corev1.ServiceAccount) {
+func (s ScopeComputationService) GenerateServiceAccountMappings(scopeMap map[Scope]map[types.NamespacedName]WSAResource) (map[Scope]ServiceAccountName, map[ServiceAccountName]map[types.NamespacedName]WSAResource, map[types.NamespacedName][]string, []*corev1.ServiceAccount) {
 	// Delegate to the standalone function which has the grouped implementation
 	return GenerateServiceAccountMappings(scopeMap)
 }

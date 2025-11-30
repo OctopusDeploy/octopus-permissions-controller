@@ -23,6 +23,7 @@ import (
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -72,18 +73,14 @@ func handleDeletion[T WSAResource](
 	}
 
 	// Use full namespace/name key to correctly identify the resource.
-	// For cluster-scoped resources (namespace is empty), this will just be the name.
-	wsaKey := resource.GetName()
-	if ns := resource.GetNamespace(); ns != "" {
-		wsaKey = ns + "/" + resource.GetName()
-	}
+	wsaKey := types.NamespacedName{Namespace: resource.GetNamespace(), Name: resource.GetName()}
 
 	// Wait for staging to process this deletion.
 	// Staging excludes resources with DeletionTimestamp and will update saToWsaMap.
 	// GC runs as part of the staging batch and will delete orphaned SAs.
 	if engine.IsWSAInMaps(wsaKey) {
 		log.Info("Waiting for staging to process deletion",
-			"key", wsaKey)
+			"key", wsaKey.String())
 		return true, nil
 	}
 
