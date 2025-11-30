@@ -316,8 +316,8 @@ func (r ResourceManagementService) EnsureRoleBindings(
 
 		ctxWithTimeout, cancel := r.getContextWithTimeout(ctx, time.Second*30)
 		if bindErr := r.createRoleBindingsForResource(ctxWithTimeout, resource, allNamespacedServiceAccounts, createdRoles); bindErr != nil {
-			logger.Error(bindErr, "failed to create role bindings for resource", "name", resource.GetName())
-			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for resource %s: %w", resource.GetName(), bindErr))
+			logger.Error(bindErr, "failed to create role bindings for resource", "resource", resource.GetNamespacedName().String())
+			err = multierr.Append(err, fmt.Errorf("failed to ensure role bindings for resource %s: %w", resource.GetNamespacedName().String(), bindErr))
 		}
 		cancel()
 	}
@@ -536,7 +536,7 @@ func (r ResourceManagementService) createRoleBindingsForResource(
 		}
 	}
 
-	logger.Info("Created role bindings for resource", "name", resource.GetName(), "namespace", resource.GetNamespace(), "serviceAccounts", len(serviceAccounts))
+	logger.Info("Created role bindings for resource", "resource", resource.GetNamespacedName().String(), "serviceAccounts", len(serviceAccounts))
 	return err
 }
 
@@ -576,7 +576,7 @@ func (r ResourceManagementService) createRoleBinding(
 		return fmt.Errorf("failed to apply RoleBinding %s in namespace %s: %w", name, namespace, err)
 	}
 
-	logger.Info("Applied RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "resource", resource.GetName())
+	logger.Info("Applied RoleBinding", "name", name, "namespace", namespace, "roleRef", roleRef.Name, "resource", resource.GetNamespacedName().String())
 	return nil
 }
 
@@ -614,7 +614,7 @@ func (r ResourceManagementService) createClusterRoleBinding(
 		return fmt.Errorf("failed to apply ClusterRoleBinding %s: %w", name, err)
 	}
 
-	logger.Info("Applied ClusterRoleBinding", "name", name, "roleRef", roleRef.Name, "resource", resource.GetName())
+	logger.Info("Applied ClusterRoleBinding", "name", name, "roleRef", roleRef.Name, "resource", resource.GetNamespacedName().String())
 	return nil
 }
 
@@ -720,7 +720,7 @@ func (r ResourceManagementService) GarbageCollectRoleBindings(
 ) error {
 	logger := log.FromContext(ctx).WithName("garbageCollectRoleBindings")
 
-	expectedBindings := set.New[string](len(resources) * len(targetNamespaces))
+	expectedBindings := set.New[types.NamespacedName](len(resources) * len(targetNamespaces))
 	for _, resource := range resources {
 		if resource.IsClusterScoped() {
 			continue
@@ -728,16 +728,21 @@ func (r ResourceManagementService) GarbageCollectRoleBindings(
 
 		permissions := resource.GetPermissionRules()
 		if len(permissions) > 0 {
-			bindingKey := fmt.Sprintf("%s/%s", resource.GetNamespace(), roleBindingName(resource.GetName(), roleName(permissions)))
+			bindingKey := types.NamespacedName{
+				Namespace: resource.GetNamespace(),
+				Name:      roleBindingName(resource.GetName(), roleName(permissions)),
+			}
 			expectedBindings.Insert(bindingKey)
 		}
 
 		allRoleRefs := append(resource.GetRoles(), resource.GetClusterRoles()...)
 		for _, roleRef := range allRoleRefs {
-			bindingKey := fmt.Sprintf("%s/%s", resource.GetNamespace(), roleBindingName(resource.GetName(), roleRef.Name))
+			bindingKey := types.NamespacedName{
+				Namespace: resource.GetNamespace(),
+				Name:      roleBindingName(resource.GetName(), roleRef.Name),
+			}
 			expectedBindings.Insert(bindingKey)
 		}
-
 	}
 
 	rbIter, err := r.GetRoleBindings(ctx)
@@ -748,15 +753,17 @@ func (r ResourceManagementService) GarbageCollectRoleBindings(
 	var deleteErrors error
 	deletedCount := 0
 	for rb := range rbIter {
-		bindingKey := fmt.Sprintf("%s/%s", rb.Namespace, rb.Name)
+		bindingKey := types.NamespacedName{
+			Namespace: rb.Namespace,
+			Name:      rb.Name,
+		}
 		if !expectedBindings.Contains(bindingKey) {
 			logger.Info("Deleting orphaned RoleBinding",
-				"name", rb.Name,
-				"namespace", rb.Namespace)
+				"roleBinding", bindingKey.String())
 			r.markForDeletion(rb)
 			if deleteErr := r.client.Delete(ctx, rb); deleteErr != nil && !errors.IsNotFound(deleteErr) {
-				deleteErrors = multierr.Append(deleteErrors, fmt.Errorf("failed to delete RoleBinding %s/%s: %w",
-					rb.Namespace, rb.Name, deleteErr))
+				deleteErrors = multierr.Append(deleteErrors, fmt.Errorf("failed to delete RoleBinding %s: %w",
+					bindingKey, deleteErr))
 			} else {
 				deletedCount++
 			}
@@ -775,6 +782,7 @@ func (r ResourceManagementService) GarbageCollectClusterRoleBindings(
 ) error {
 	logger := log.FromContext(ctx).WithName("garbageCollectClusterRoleBindings")
 
+	// Since ClusterRoleBindings are global, we only need to track by name, not NamespacedName
 	expectedBindings := set.New[string](len(resources))
 	for _, resource := range resources {
 		permissions := resource.GetPermissionRules()
