@@ -9,7 +9,6 @@ import (
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -177,7 +176,7 @@ type Batch struct {
 	ID               BatchID
 	Resources        []rules.WSAResource
 	StartTime        time.Time
-	Plan             *ReconciliationPlan
+	Plan             *rules.ReconciliationPlan
 	ValidationResult *ValidationResult
 	LastError        error
 	RequeueAfter     time.Duration
@@ -194,28 +193,6 @@ func NewBatch(events []*EventInfo) *Batch {
 		Resources: resources,
 		StartTime: time.Now(),
 	}
-}
-
-type ReconciliationPlan struct {
-	ScopeToSA        map[rules.Scope]rules.ServiceAccountName
-	SAToWSAMap       map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource
-	WSAToSANames     map[types.NamespacedName][]rules.ServiceAccountName
-	Vocabulary       *rules.GlobalVocabulary
-	UniqueAccounts   []*v1.ServiceAccount
-	AllResources     []rules.WSAResource
-	TargetNamespaces []string
-}
-
-func (rp *ReconciliationPlan) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
-	return rp.ScopeToSA
-}
-
-func (rp *ReconciliationPlan) GetSAToWSAMap() map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource {
-	return rp.SAToWSAMap
-}
-
-func (rp *ReconciliationPlan) GetVocabulary() *rules.GlobalVocabulary {
-	return rp.Vocabulary
 }
 
 type ValidationResult struct {

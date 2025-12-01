@@ -51,7 +51,7 @@ func (ps *PlanningStage) Execute(ctx context.Context, batch *staging.Batch) erro
 		"saCount", len(saToWSAMap),
 		"uniqueAccounts", len(uniqueAccounts))
 
-	batch.Plan = &staging.ReconciliationPlan{
+	batch.Plan = &rules.ReconciliationPlan{
 		ScopeToSA:        scopeToSA,
 		SAToWSAMap:       saToWSAMap,
 		WSAToSANames:     convertWSAToSANames(wsaToSANames),

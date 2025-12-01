@@ -44,7 +44,7 @@ func (m *MockEngine) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
 	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)
 }
 
-func (m *MockEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) error {
+func (m *MockEngine) ApplyBatchPlan(ctx context.Context, plan *rules.ReconciliationPlan) error {
 	args := m.Called(ctx, plan)
 	return args.Error(0)
 }

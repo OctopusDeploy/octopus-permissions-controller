@@ -30,7 +30,7 @@ type Engine interface {
 	ResourceManagement
 	NamespaceDiscovery
 	ScopeComputation
-	ApplyBatchPlan(ctx context.Context, plan interface{}) error
+	ApplyBatchPlan(ctx context.Context, plan *ReconciliationPlan) error
 	CleanupServiceAccounts(ctx context.Context, deletingResource WSAResource) (ctrl.Result, error)
 }
 
@@ -117,26 +117,15 @@ func (i *InMemoryEngine) GetOrDiscoverTargetNamespaces(ctx context.Context) ([]s
 	return namespaces, nil
 }
 
-func (i *InMemoryEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) error {
+func (i *InMemoryEngine) ApplyBatchPlan(ctx context.Context, plan *ReconciliationPlan) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	logger := log.FromContext(ctx).WithName("applyBatchPlan")
 
-	type reconciliationPlan interface {
-		GetScopeToSA() map[Scope]ServiceAccountName
-		GetSAToWSAMap() map[ServiceAccountName]map[types.NamespacedName]WSAResource
-		GetVocabulary() *GlobalVocabulary
-	}
-
-	rp, ok := plan.(reconciliationPlan)
-	if !ok {
-		return fmt.Errorf("invalid plan type")
-	}
-
-	planScopeToSA := rp.GetScopeToSA()
-	planSAToWSAMap := rp.GetSAToWSAMap()
-	planVocab := rp.GetVocabulary()
+	planScopeToSA := plan.GetScopeToSA()
+	planSAToWSAMap := plan.GetSAToWSAMap()
+	planVocab := plan.GetVocabulary()
 
 	oldScopeCount := len(i.scopeToSA)
 	oldSACount := len(i.saToWsaMap)

@@ -62,7 +62,7 @@ var _ = Describe("ExecutionStage", func() {
 
 				batch := &staging.Batch{
 					ID: staging.NewBatchID(),
-					Plan: &staging.ReconciliationPlan{
+					Plan: &rules.ReconciliationPlan{
 						TargetNamespaces: []string{},
 						AllResources:     []rules.WSAResource{},
 					},
@@ -83,7 +83,7 @@ var _ = Describe("ExecutionStage", func() {
 
 				batch := &staging.Batch{
 					ID: staging.NewBatchID(),
-					Plan: &staging.ReconciliationPlan{
+					Plan: &rules.ReconciliationPlan{
 						TargetNamespaces: []string{"test-ns"},
 						AllResources:     []rules.WSAResource{},
 					},
