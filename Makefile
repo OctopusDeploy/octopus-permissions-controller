@@ -4,6 +4,18 @@ IMG ?= octopusdeploy/octopus-permissions-controller:latest
 
 LDFLAGS := -X main.version=$(VERSION)
 
+# Adapted from k/k, simplified to use the go.mod and the Makefile:
+# https://github.com/kubernetes/kubernetes/blob/17854f0e0a153b06f9d0db096e2cd8ab2fa89c11/hack/lib/golang.sh#L510-L520
+# Set the GOTOOLCHAIN to force the toolchain defined in go.mod
+GOTOOLCHAIN ?= auto
+ifeq (auto,$(GOTOOLCHAIN)) # User didn't specify the GOTOOLCHAIN, or is set to auto.
+ifeq (,$(FORCE_HOST_GO)) # User didn't provide FORCE_HOST_GO, use go.mod's toolchain
+	export GOTOOLCHAIN=$(shell grep '^toolchain go' go.mod | cut -d' ' -f2)
+else # User provided FORCE_HOST_GO, use the local version
+	export GOTOOLCHAIN=local
+endif
+endif
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -194,6 +206,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+
+.PHONY: deploy-tests
+deploy-tests: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default-test | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.

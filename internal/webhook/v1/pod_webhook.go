@@ -19,14 +19,28 @@ package v1
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+)
+
+var podWebhookDuration = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Namespace: "octopus",
+		Subsystem: "webhook",
+		Name:      "pod_mutation_duration_seconds",
+		Help:      "Duration of pod mutation webhook processing",
+		Buckets:   prometheus.ExponentialBuckets(0.001, 2, 10),
+	},
+	[]string{"result"},
 )
 
 const (
@@ -36,6 +50,7 @@ const (
 	TenantAnnotationKey      = "agent.octopus.com/tenant"
 	StepAnnotationKey        = "agent.octopus.com/step"
 	SpaceAnnotationKey       = "agent.octopus.com/space"
+	OPCVersionEnvVarKey      = "OCTOPUS__K8STENTACLE__OPCVERSION"
 )
 
 // nolint:unused
@@ -43,10 +58,11 @@ const (
 var podlog = logf.Log.WithName("pod-resource")
 
 // SetupPodWebhookWithManager registers the webhook for Pod in the manager.
-func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine) error {
+func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine, version string) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&corev1.Pod{}).
 		WithDefaulter(&PodCustomDefaulter{
-			engine: engine,
+			engine:  engine,
+			version: version,
 		}).
 		Complete()
 }
@@ -59,28 +75,40 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
 type PodCustomDefaulter struct {
-	engine rules.Engine
+	engine  rules.Engine
+	version string
 }
 
 var _ webhook.CustomDefaulter = &PodCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pod.
 func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	start := time.Now()
+	result := "success"
+
+	defer func() {
+		podWebhookDuration.WithLabelValues(result).Observe(time.Since(start).Seconds())
+	}()
+
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
+		result = "error"
 		return fmt.Errorf("expected an Pod object but got %T", obj)
 	}
 
-	// Only run if labelled
 	if !d.shouldRunOnPod(ctx, pod) {
+		result = "skipped"
 		return nil
 	}
+
+	d.injectVersionEnvironmentVariable(pod)
 
 	podlog.Info("Getting scope for pod", "name", pod.GetName())
 
 	scope := getPodScope(pod)
 
 	if scope.IsEmpty() {
+		result = "skipped"
 		return nil
 	}
 
@@ -90,8 +118,12 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		pod.Spec.ServiceAccountName = string(serviceAccountName)
 		metrics.IncRequestsTotal("podWebhook", true)
 	} else {
+		if err != nil {
+			result = "error"
+		}
 		metrics.IncRequestsTotal("podWebhook", false)
 	}
+
 	return err
 }
 
@@ -126,4 +158,48 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 	}
 
 	return scope
+}
+
+func (d *PodCustomDefaulter) injectVersionEnvironmentVariable(pod *corev1.Pod) {
+	versionEnvVar := corev1.EnvVar{
+		Name:  OPCVersionEnvVarKey,
+		Value: d.version,
+	}
+
+	// Inject into all containers
+	for i := range pod.Spec.Containers {
+		container := &pod.Spec.Containers[i]
+
+		envVarExists := false
+		for j, envVar := range container.Env {
+			if envVar.Name == OPCVersionEnvVarKey {
+				container.Env[j].Value = d.version
+				envVarExists = true
+				break
+			}
+		}
+
+		if !envVarExists {
+			container.Env = append(container.Env, versionEnvVar)
+		}
+	}
+
+	for i := range pod.Spec.InitContainers {
+		container := &pod.Spec.InitContainers[i]
+
+		envVarExists := false
+		for j, envVar := range container.Env {
+			if envVar.Name == OPCVersionEnvVarKey {
+				container.Env[j].Value = d.version
+				envVarExists = true
+				break
+			}
+		}
+
+		if !envVarExists {
+			container.Env = append(container.Env, versionEnvVar)
+		}
+	}
+
+	podlog.Info("Injected OPC version environment variable", "name", pod.GetName(), "version", d.version)
 }

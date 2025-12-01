@@ -22,9 +22,11 @@ import (
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,17 +37,21 @@ import (
 
 type WorkloadServiceAccountReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Engine rules.Engine
+	Scheme         *runtime.Scheme
+	Engine         *rules.InMemoryEngine
+	EventCollector *staging.EventCollector
+	Recorder       record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete;escalate;bind
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch;create;update;patch;delete;escalate;bind
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=agent.octopus.com,resources=workloadserviceaccounts/finalizers,verbs=update
@@ -63,52 +69,84 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 	if wsa == nil {
+		log.V(1).Info("Resource not found", "name", req.Name, "namespace", req.Namespace)
 		return ctrl.Result{}, nil
 	}
 
-	if isBeingDeleted(wsa) {
-		wsaResource := rules.NewWSAResource(wsa)
-		return handleDeletion(ctx, r.Client, req, wsa, r.Engine, wsaResource)
-	}
+	wsaResource := rules.NewWSAResource(wsa)
 
-	if ensureFinalizer(ctx, r.Client, wsa) {
-		wsa, err = fetchResource(ctx, r.Client, req, wsa)
+	if isBeingDeleted(wsa) {
+		deleteEvent := &staging.EventInfo{
+			Resource:        wsaResource,
+			EventType:       staging.EventTypeDelete,
+			Generation:      wsa.GetGeneration(),
+			ResourceVersion: wsa.GetResourceVersion(),
+			Timestamp:       time.Now(),
+		}
+		r.EventCollector.AddEvent(deleteEvent)
+		log.Info("Delete event queued for batch processing", "name", wsa.Name, "namespace", wsa.Namespace)
+
+		requeue, err := handleDeletion(ctx, r.Client, r.Engine, wsa)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		if requeue {
+			return ctrl.Result{RequeueAfter: deleteCheckRequeueDelay}, nil
+		}
+		return ctrl.Result{}, nil
 	}
 
-	wsaResource := rules.NewWSAResource(wsa)
-	if err := r.Engine.ReconcileResource(ctx, wsaResource); err != nil {
-		log.Error(err, "failed to reconcile ServiceAccounts from WorkloadServiceAccount")
-		updateStatusOnFailure(ctx, r.Client, wsa, &wsa.Status, err)
+	if err := ensureFinalizer(ctx, r.Client, wsa); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	updateStatusOnSuccess(ctx, r.Client, wsa, &wsa.Status,
-		"All ServiceAccounts, Roles, and RoleBindings successfully reconciled")
-	log.Info("Successfully reconciled WorkloadServiceAccount")
+	eventType := staging.EventTypeUpdate
+	if wsa.GetGeneration() == 1 {
+		eventType = staging.EventTypeCreate
+	}
+
+	event := &staging.EventInfo{
+		Resource:        wsaResource,
+		EventType:       eventType,
+		Generation:      wsa.GetGeneration(),
+		ResourceVersion: wsa.GetResourceVersion(),
+		Timestamp:       time.Now(),
+	}
+
+	r.EventCollector.AddEvent(event)
+	log.V(1).Info("Event added to collector", "generation", wsa.GetGeneration())
+	if r.Recorder != nil {
+		r.Recorder.Event(wsa, corev1.EventTypeNormal, "Queued", "Reconciliation queued for batch processing")
+	}
+
+	log.Info("Successfully queued WorkloadServiceAccount for reconciliation")
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *WorkloadServiceAccountReconciler) SetupWithManager(mgr ctrl.Manager, gcTracker *GCTracker) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&agentoctopuscomv1beta1.WorkloadServiceAccount{}).
-		Owns(&rbacv1.Role{}, builder.WithPredicates(SuppressOwnedResourceDeletes())).
-		Owns(&rbacv1.RoleBinding{}, builder.WithPredicates(SuppressOwnedResourceDeletes())).
+		For(&agentoctopuscomv1beta1.WorkloadServiceAccount{},
+			builder.WithPredicates(GenerationOrDeletePredicate()),
+		).
+		Owns(&rbacv1.Role{},
+			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),
+		).
+		Owns(&rbacv1.RoleBinding{},
+			builder.WithPredicates(ExternalChangePredicate(), ExternalDeletePredicate(gcTracker)),
+		).
 		Watches(
 			&corev1.ServiceAccount{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceAccountToWSAs),
-			builder.WithPredicates(ServiceAccountDeletionPredicate()),
+			builder.WithPredicates(
+				ManagedServiceAccountPredicate(),
+				ExternalChangePredicate(),
+				ExternalDeletePredicate(gcTracker),
+			),
 		).
 		Named("workloadserviceaccount").
 		Complete(r)
 }
 
-// mapServiceAccountToWSAs maps ServiceAccount events to WorkloadServiceAccount reconcile requests.
-// When a ServiceAccount changes (especially when marked for deletion), this triggers reconciliation
-// of all WSAs so they can complete the two-phase deletion process (remove finalizers if safe).
 func (r *WorkloadServiceAccountReconciler) mapServiceAccountToWSAs(
 	ctx context.Context, obj client.Object,
 ) []reconcile.Request {

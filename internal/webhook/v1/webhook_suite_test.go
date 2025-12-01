@@ -112,7 +112,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	mockEngine = &mocks.MockEngine{}
-	err = SetupPodWebhookWithManager(mgr, mockEngine)
+	err = SetupPodWebhookWithManager(mgr, mockEngine, "v1.0.0-test")
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:webhook

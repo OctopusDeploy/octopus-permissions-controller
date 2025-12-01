@@ -1,0 +1,34 @@
+# Permissions assigned for your-application-namespace-1
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: sample-wsa
+  namespace: your-application-namespace-1
+spec:
+  scope:
+    spaces: [default]
+    projects: [guestbook]
+    environments: [dev-a, dev-b]
+  permissions:
+    permissions:
+      - verbs: ["*"]
+        apiGroups: ["*"]
+        resources: ["*"]
+
+---
+# Same permissions assigned for your-application-namespace-2
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: sample-wsa
+  namespace: your-application-namespace-2
+spec:
+  scope:
+    spaces: [default]
+    projects: [guestbook]
+    environments: [dev-a, dev-b]
+  permissions:
+    permissions:
+      - verbs: ["*"]
+        apiGroups: ["*"]
+        resources: ["*"]

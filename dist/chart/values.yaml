@@ -3,7 +3,7 @@ manager:
   replicas: 1
   
   image:
-    repository: controller
+    repository: octopusdeploy/octopus-permissions-controller
     tag: latest
     pullPolicy: IfNotPresent
 
@@ -12,7 +12,11 @@ manager:
     - --leader-elect
 
   # Environment variables
-  env: []
+  env:
+    - name: TARGET_NAMESPACES
+      value: ""
+    - name: TARGET_NAMESPACE_REGEX
+      value: ""
 
   # Pod-level security settings
   podSecurityContext:

@@ -59,7 +59,8 @@ jobs:
         if: github.event_name == 'release'
         id: release_version
         run: |
-          echo "version=${{ github.event.release.tag_name }}" >> "$GITHUB_ENV"
+          tag=${{ github.event.release.tag_name }}
+          echo "version=${tag#v}" >> $GITHUB_ENV
 
       - name: Login to Artifactory
         if: github.event_name == 'release' || steps.changed-files-specific.outputs.any_changed == 'true'
@@ -113,7 +114,7 @@ jobs:
 
       - name: Upload SBOM to Dependency Track
         if: github.event_name == 'release'
-        uses: OctopusDeploy/upload-sbom-go@v1.0.0
+        uses: OctopusDeploy/upload-sbom-go@v1.2.0
         with:
           dependency-track-url: ${{ secrets.DTRACK_URL }}
           dependency-track-key: ${{ secrets.DTRACK_KEY }}

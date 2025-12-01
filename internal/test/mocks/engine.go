@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -27,30 +28,25 @@ func (m *MockEngine) GetServiceAccountForScope(scope rules.Scope) (rules.Service
 	return args.Get(0).(rules.ServiceAccountName), args.Error(1)
 }
 
-func (m *MockEngine) Reconcile(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-func (m *MockEngine) ReconcileResource(ctx context.Context, resource rules.WSAResource) error {
-	args := m.Called(ctx, resource)
-	return args.Error(0)
-}
-
 // ScopeComputation interface methods (embedded in Engine interface)
-func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[string]rules.WSAResource, rules.GlobalVocabulary) {
+func (m *MockEngine) ComputeScopesForWSAs(wsaList []rules.WSAResource) (map[rules.Scope]map[types.NamespacedName]rules.WSAResource, rules.GlobalVocabulary) {
 	args := m.Called(wsaList)
-	return args.Get(0).(map[rules.Scope]map[string]rules.WSAResource), args.Get(1).(rules.GlobalVocabulary)
+	return args.Get(0).(map[rules.Scope]map[types.NamespacedName]rules.WSAResource), args.Get(1).(rules.GlobalVocabulary)
 }
 
-func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[string]rules.WSAResource) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[string]rules.WSAResource, map[string][]string, []*corev1.ServiceAccount) {
+func (m *MockEngine) GenerateServiceAccountMappings(scopeMap map[rules.Scope]map[types.NamespacedName]rules.WSAResource) (map[rules.Scope]rules.ServiceAccountName, map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource, map[types.NamespacedName][]string, []*corev1.ServiceAccount) {
 	args := m.Called(scopeMap)
-	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[string]rules.WSAResource), args.Get(2).(map[string][]string), args.Get(3).([]*corev1.ServiceAccount)
+	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName), args.Get(1).(map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource), args.Get(2).(map[types.NamespacedName][]string), args.Get(3).([]*corev1.ServiceAccount)
 }
 
 func (m *MockEngine) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
 	args := m.Called()
 	return args.Get(0).(map[rules.Scope]rules.ServiceAccountName)
+}
+
+func (m *MockEngine) ApplyBatchPlan(ctx context.Context, plan interface{}) error {
+	args := m.Called(ctx, plan)
+	return args.Error(0)
 }
 
 // ResourceManagement interface methods
@@ -91,9 +87,9 @@ func (m *MockEngine) GetClusterRoleBindings(ctx context.Context) (iter.Seq[*rbac
 
 func (m *MockEngine) EnsureRoles(
 	ctx context.Context, resources []rules.WSAResource,
-) (map[string]rbacv1.Role, error) {
+) (map[types.NamespacedName]rbacv1.Role, error) {
 	args := m.Called(ctx, resources)
-	return args.Get(0).(map[string]rbacv1.Role), args.Error(1)
+	return args.Get(0).(map[types.NamespacedName]rbacv1.Role), args.Error(1)
 }
 
 func (m *MockEngine) EnsureServiceAccounts(
@@ -104,8 +100,8 @@ func (m *MockEngine) EnsureServiceAccounts(
 }
 
 func (m *MockEngine) EnsureRoleBindings(
-	ctx context.Context, resources []rules.WSAResource, createdRoles map[string]rbacv1.Role,
-	wsaToServiceAccounts map[string][]string, targetNamespaces []string,
+	ctx context.Context, resources []rules.WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role,
+	wsaToServiceAccounts map[types.NamespacedName][]string, targetNamespaces []string,
 ) error {
 	args := m.Called(ctx, resources, createdRoles, wsaToServiceAccounts, targetNamespaces)
 	return args.Error(0)
@@ -131,4 +127,19 @@ func (m *MockEngine) GarbageCollectServiceAccounts(
 func (m *MockEngine) CleanupServiceAccounts(ctx context.Context, deletingResource rules.WSAResource) (ctrl.Result, error) {
 	args := m.Called(ctx, deletingResource)
 	return args.Get(0).(ctrl.Result), args.Error(1)
+}
+
+func (m *MockEngine) GarbageCollectRoles(ctx context.Context, resources []rules.WSAResource) error {
+	args := m.Called(ctx, resources)
+	return args.Error(0)
+}
+
+func (m *MockEngine) GarbageCollectRoleBindings(ctx context.Context, resources []rules.WSAResource, targetNamespaces []string) error {
+	args := m.Called(ctx, resources, targetNamespaces)
+	return args.Error(0)
+}
+
+func (m *MockEngine) GarbageCollectClusterRoleBindings(ctx context.Context, resources []rules.WSAResource) error {
+	args := m.Called(ctx, resources)
+	return args.Error(0)
 }

@@ -17,7 +17,7 @@ spec:
     steps: [step-1]
   permissions:
     permissions:
-      - verbs: [GET, LIST]
+      - verbs: [get, list]
         apiGroups: [""]
         resources: [pods]
 
@@ -33,7 +33,7 @@ spec:
     projects: [project-2]
   permissions:
     permissions:
-      - verbs: [GET, LIST, CREATE]
+      - verbs: [get, list, create]
         apiGroups: [apps]
         resources: [deployments]
 
@@ -50,7 +50,7 @@ spec:
     tenants: [global-tenant]
   permissions:
     permissions:
-      - verbs: [GET, LIST]
+      - verbs: [get, list]
         apiGroups: [""]
         resources: [nodes]
 
@@ -65,6 +65,6 @@ spec:
     steps: [deploy, test]
   permissions:
     permissions:
-      - verbs: [GET, LIST]
+      - verbs: [get, list]
         apiGroups: [rbac.authorization.k8s.io]
         resources: [clusterroles]

@@ -45,10 +45,8 @@ func (nds NamespaceDiscoveryService) DiscoverTargetNamespaces(
 		}
 	}
 
-	// Use default namespace as fallback for local testing if no tentacle deployments found
 	if len(namespaces) == 0 {
-		namespaces = []string{"default"}
-		discoveryLog.Info("No octopus tentacle deployments found, using default namespace as fallback")
+		discoveryLog.Info("No octopus tentacle deployments found")
 	} else {
 		discoveryLog.Info("Discovered target namespaces for service account creation",
 			"count", len(namespaces),

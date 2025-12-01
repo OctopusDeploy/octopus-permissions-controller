@@ -1,13 +1,38 @@
-# octopus-permissions-controller
-// TODO(user): Add simple overview of use/purpose
+# Octopus Permissions Controller
+
+Octopus Permissions Controller connects your [Octopus Deploy](https://octopus.com) deployments with granular Kubernetes
+RBAC controls.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
 
-## Getting Started
+Octopus Permissions Controller processes custom resources (`WorkloadServiceAccount`) into a set of Kubernetes 
+`ServiceAccounts`, with `Roles` and `RoleBindings` attached. These `ServiceAccounts` are then assigned to deployments 
+performed by the [Kubernetes agent](https://octopus.com/docs/kubernetes/targets/kubernetes-agent) based on the scope 
+of the deployment.
+
+## Documentation
+
+Documentation and installation instructions can be found at
+[octopus.com/docs](https://oc.to/octopus-permissions-controller).
+
+## Did you find a bug?
+
+If the bug is a security vulnerability in Octopus Deploy, please refer to our 
+[security policy](https://github.com/OctopusDeploy/.github/blob/main/SECURITY.md).
+
+Search our [public Issues repository](https://github.com/OctopusDeploy/Issues) to ensure the bug was not already
+reported.
+
+If you're unable to find an open issue addressing the problem, please follow our 
+[support guidelines](https://github.com/OctopusDeploy/.github/blob/main/SUPPORT.md).
+
+## Development
+
+This project is scaffolded using [Kubebuilder](https://github.com/kubernetes-sigs/kubebuilder), please refer
+to [Kubebuilder documentation](https://book.kubebuilder.io/introduction.html) for details.
 
 ### Prerequisites
-- go version v1.24.0+
+- go version v1.25.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
@@ -68,33 +93,15 @@ make undeploy
 
 ## Project Distribution
 
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
+When changes are made to the kubebuilder configuration, installation files must be regenerated.
 
 1. Build the installer for the image built and published in the registry:
 
 ```sh
-make build-installer IMG=<some-registry>/octopus-permissions-controller:tag
+make build-installer
 ```
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/octopus-permissions-controller/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
+2. Build the chart using the optional helm plugin
 
 ```sh
 kubebuilder edit --plugins=helm/v2-alpha
@@ -104,18 +111,14 @@ kubebuilder edit --plugins=helm/v2-alpha
 can obtain this solution from there.
 
 **NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
+using the same command above to sync the latest changes. Furthermore, you may 
+need to use the above command with the '--force' flag and manually ensure that
+any custom configuration previously added to 'dist/chart/values.yaml' or 
+'dist/chart/manager/manager.yaml' is manually re-applied afterwards.
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+## 🤝 Contributions
 
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for information about how to get involved in this project.
 
 ## License
 

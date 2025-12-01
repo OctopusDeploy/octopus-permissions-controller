@@ -9,11 +9,12 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/hashicorp/go-set/v3"
 )
 
-func getScopesForWSAs(wsaList []WSAResource) (map[Scope]map[string]WSAResource, GlobalVocabulary) {
+func getScopesForWSAs(wsaList []WSAResource) (map[Scope]map[types.NamespacedName]WSAResource, GlobalVocabulary) {
 	vocabulary := buildGlobalVocabulary(wsaList)
 	return computeMinimalServiceAccountScopes(wsaList, vocabulary), vocabulary
 }
@@ -109,9 +110,9 @@ func buildGlobalVocabulary(resources []WSAResource) GlobalVocabulary {
 // It creates service accounts only for scope intersections where multiple WSAs could apply
 func computeMinimalServiceAccountScopes(
 	wsaList []WSAResource, vocabulary GlobalVocabulary,
-) map[Scope]map[string]WSAResource {
+) map[Scope]map[types.NamespacedName]WSAResource {
 	if len(wsaList) == 0 {
-		return make(map[Scope]map[string]WSAResource)
+		return make(map[Scope]map[types.NamespacedName]WSAResource)
 	}
 
 	// Create sets for each WSA representing all scopes it covers
@@ -207,16 +208,16 @@ func findScopeIntersections(coverageSets []*set.Set[Scope]) map[Scope]*set.Set[i
 // buildScopeToWSAMapping builds the final mapping from intersections
 func buildScopeToWSAMapping(
 	scopeIntersections map[Scope]*set.Set[int], wsaList []WSAResource,
-) map[Scope]map[string]WSAResource {
-	result := make(map[Scope]map[string]WSAResource)
+) map[Scope]map[types.NamespacedName]WSAResource {
+	result := make(map[Scope]map[types.NamespacedName]WSAResource)
 
 	for scope, wsaIndices := range scopeIntersections {
 		// Only create service accounts for scopes with at least one WSA
 		if wsaIndices.Size() > 0 {
-			wsaMap := make(map[string]WSAResource)
+			wsaMap := make(map[types.NamespacedName]WSAResource)
 			for _, wsaIndex := range wsaIndices.Slice() {
 				resource := wsaList[wsaIndex]
-				wsaMap[resource.GetName()] = resource
+				wsaMap[resource.GetNamespacedName()] = resource
 			}
 			result[scope] = wsaMap
 		}
@@ -235,14 +236,20 @@ type GroupedDimensions struct {
 }
 
 // groupScopesByWSASet reverses the scope map to group by WSA sets
-func groupScopesByWSASet(scopeMap map[Scope]map[string]WSAResource) map[string][]Scope {
+func groupScopesByWSASet(scopeMap map[Scope]map[types.NamespacedName]WSAResource) map[string][]Scope {
 	wsaSetToScopes := make(map[string][]Scope)
 
 	for scope, wsaMap := range scopeMap {
-		// Create canonical key for WSA set (sorted names)
-		wsaNames := slices.Collect(maps.Keys(wsaMap))
-		slices.Sort(wsaNames)
-		wsaSetKey := strings.Join(wsaNames, ",")
+		// Create canonical key for WSA set (sorted by string representation)
+		wsaKeys := slices.Collect(maps.Keys(wsaMap))
+		slices.SortFunc(wsaKeys, func(a, b types.NamespacedName) int {
+			return strings.Compare(a.String(), b.String())
+		})
+		keyStrings := make([]string, len(wsaKeys))
+		for i, k := range wsaKeys {
+			keyStrings[i] = k.String()
+		}
+		wsaSetKey := strings.Join(keyStrings, ",")
 
 		wsaSetToScopes[wsaSetKey] = append(wsaSetToScopes[wsaSetKey], scope)
 	}
@@ -300,17 +307,17 @@ func collectDimensionValues(scopes []Scope) GroupedDimensions {
 // GenerateServiceAccountMappings processes the scope map and generates the required mappings
 // for service account creation and management.
 func GenerateServiceAccountMappings(
-	scopeMap map[Scope]map[string]WSAResource,
+	scopeMap map[Scope]map[types.NamespacedName]WSAResource,
 ) (
 	map[Scope]ServiceAccountName,
-	map[ServiceAccountName]map[string]WSAResource,
-	map[string][]string,
+	map[ServiceAccountName]map[types.NamespacedName]WSAResource,
+	map[types.NamespacedName][]string,
 	[]*v1.ServiceAccount,
 ) {
 	scopeToServiceAccount := make(map[Scope]ServiceAccountName)
-	serviceAccountToWSAs := make(map[ServiceAccountName]map[string]WSAResource)
+	serviceAccountToWSAs := make(map[ServiceAccountName]map[types.NamespacedName]WSAResource)
 	uniqueServiceAccounts := make(map[ServiceAccountName]*v1.ServiceAccount)
-	wsaToServiceAccountNamesSet := make(map[string]*set.Set[string])
+	wsaToServiceAccountNamesSet := make(map[types.NamespacedName]*set.Set[string])
 
 	// Group scopes by their WSA sets
 	wsaSetToScopes := groupScopesByWSASet(scopeMap)
@@ -356,7 +363,7 @@ func GenerateServiceAccountMappings(
 	}
 
 	// Convert from set to slice for wsaToServiceAccountNames
-	wsaToServiceAccountNames := make(map[string][]string, len(wsaToServiceAccountNamesSet))
+	wsaToServiceAccountNames := make(map[types.NamespacedName][]string, len(wsaToServiceAccountNamesSet))
 	for wsa, wsaSet := range wsaToServiceAccountNamesSet {
 		wsaToServiceAccountNames[wsa] = wsaSet.Slice()
 	}

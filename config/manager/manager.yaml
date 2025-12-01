@@ -64,6 +64,11 @@ spec:
           - --leader-elect
           - --health-probe-bind-address=:8081
         image: controller:latest
+        env:
+          - name: TARGET_NAMESPACES
+            value: ""
+          - name: TARGET_NAMESPACE_REGEX
+            value: ""
         name: manager
         ports: []
         securityContext:

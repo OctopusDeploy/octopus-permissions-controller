@@ -1,8 +1,14 @@
 package rules
 
 import (
+	"context"
+
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/condition"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // WSAResource is an internal interface that abstracts over both WorkloadServiceAccount
@@ -13,6 +19,9 @@ type WSAResource interface {
 
 	// GetNamespace returns the namespace (empty string for cluster-scoped resources)
 	GetNamespace() string
+
+	// GetNamespacedName returns the NamespacedName of the resource
+	GetNamespacedName() types.NamespacedName
 
 	// GetScope returns the scope configuration
 	GetScope() v1beta1.WorkloadServiceAccountScope
@@ -31,6 +40,12 @@ type WSAResource interface {
 
 	// GetOwnerObject returns the underlying WSA or CWSA object for owner references
 	GetOwnerObject() interface{}
+
+	// UpdateCondition applies a status condition using SSA and updates the in-memory resource
+	UpdateCondition(
+		ctx context.Context, c client.Client, conditionType string, status metav1.ConditionStatus,
+		reason, message string,
+	) error
 }
 
 // wsaAdapter wraps a WorkloadServiceAccount to implement WSAResource
@@ -49,6 +64,13 @@ func (w *wsaAdapter) GetName() string {
 
 func (w *wsaAdapter) GetNamespace() string {
 	return w.wsa.Namespace
+}
+
+func (w *wsaAdapter) GetNamespacedName() types.NamespacedName {
+	return types.NamespacedName{
+		Name:      w.wsa.Name,
+		Namespace: w.wsa.Namespace,
+	}
 }
 
 func (w *wsaAdapter) GetScope() v1beta1.WorkloadServiceAccountScope {
@@ -75,6 +97,12 @@ func (w *wsaAdapter) GetOwnerObject() interface{} {
 	return w.wsa
 }
 
+func (w *wsaAdapter) UpdateCondition(
+	ctx context.Context, c client.Client, conditionType string, status metav1.ConditionStatus, reason, message string,
+) error {
+	return condition.Apply(ctx, c, w.wsa, &w.wsa.Status.Conditions, conditionType, status, reason, message)
+}
+
 // clusterWSAAdapter wraps a ClusterWorkloadServiceAccount to implement WSAResource
 type clusterWSAAdapter struct {
 	cwsa *v1beta1.ClusterWorkloadServiceAccount
@@ -92,6 +120,13 @@ func (c *clusterWSAAdapter) GetName() string {
 func (c *clusterWSAAdapter) GetNamespace() string {
 	// Cluster-scoped resources don't have a namespace
 	return ""
+}
+
+func (c *clusterWSAAdapter) GetNamespacedName() types.NamespacedName {
+	return types.NamespacedName{
+		Name:      c.cwsa.Name,
+		Namespace: "",
+	}
 }
 
 func (c *clusterWSAAdapter) GetScope() v1beta1.WorkloadServiceAccountScope {
@@ -117,4 +152,10 @@ func (c *clusterWSAAdapter) IsClusterScoped() bool {
 
 func (c *clusterWSAAdapter) GetOwnerObject() interface{} {
 	return c.cwsa
+}
+
+func (c *clusterWSAAdapter) UpdateCondition(
+	ctx context.Context, cl client.Client, conditionType string, status metav1.ConditionStatus, reason, message string,
+) error {
+	return condition.Apply(ctx, cl, c.cwsa, &c.cwsa.Status.Conditions, conditionType, status, reason, message)
 }

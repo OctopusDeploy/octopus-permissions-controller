@@ -1,0 +1,84 @@
+# All deployments in space `default` can GET any resource in your-development-namespace
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: default-space-get-access
+  namespace: your-development-namespace
+spec:
+  scope:
+    spaces: [default]
+  permissions:
+    permissions:
+      - verbs: ["GET", "LIST"]
+        apiGroups: ["*"]
+        resources: ["*"]
+
+---
+# All deployments in space `default` can GET any resource in your-production-namespace
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: default-space-get-access
+  namespace: your-production-namespace
+spec:
+  scope:
+    spaces: [default]
+  permissions:
+    permissions:
+      - verbs: ["GET", "LIST"]
+        apiGroups: ["*"]
+        resources: ["*"]
+
+---
+# All deployments in space `default` and a `development` environment have CRUD permissions in your-development-namespace
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: development-full-access
+  namespace: your-development-namespace
+spec:
+  scope:
+    spaces: [default]
+    environments: [development]
+  permissions:
+    permissions:
+      - verbs:
+          - GET
+          - LIST
+          - CREATE
+          - UPDATE
+          - DELETE
+        apiGroups:
+          - apps/v1
+        resources:
+          - deployments
+          - replicasets
+          - statefulsets
+          - daemonsets
+
+---
+# All deployments in space `default` and a `production` environment have CRUD permissions in your-production-namespace
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: production-full-access
+  namespace: your-production-namespace
+spec:
+  scope:
+    spaces: [default]
+    environments: [production]
+  permissions:
+    permissions:
+      - verbs:
+          - GET
+          - LIST
+          - CREATE
+          - UPDATE
+          - DELETE
+        apiGroups:
+          - apps/v1
+        resources:
+          - deployments
+          - replicasets
+          - statefulsets
+          - daemonsets

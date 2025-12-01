@@ -36,7 +36,7 @@ var _ = Describe("Metrics Test", func() {
 	Context("When creating metrics collector", func() {
 		BeforeEach(func() {
 			By("creating the new metrics collector")
-			engine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex)
+			engine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex, 5*time.Minute)
 			collector := NewOctopusMetricsCollector(k8sClient, &engine)
 			Expect(collector).NotTo(BeNil())
 		})
@@ -45,7 +45,7 @@ var _ = Describe("Metrics Test", func() {
 		})
 		It("should successfully create the metrics collector", func() {
 			By("Creating collector with prometheus.Collector interface")
-			engine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex)
+			engine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex, 5*time.Minute)
 			collector := NewOctopusMetricsCollector(k8sClient, &engine)
 			Expect(collector).NotTo(BeNil())
 		})
@@ -58,7 +58,7 @@ var _ = Describe("Metrics Test", func() {
 
 		BeforeEach(func() {
 			By("Setting up metrics collector and test environment")
-			inMemoryEngine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex)
+			inMemoryEngine := rules.NewInMemoryEngine(k8sClient, scheme.Scheme, targetNamespaceRegex, 5*time.Minute)
 			engine = &inMemoryEngine
 			collector = NewOctopusMetricsCollector(k8sClient, engine)
 			Expect(collector).NotTo(BeNil())

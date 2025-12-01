@@ -52,33 +52,61 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
-		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		By("installing CRDs")
+		cmd := exec.Command("make", "install")
 		_, err := utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+
+		By("deploying the controller-manager")
+		cmd = exec.Command("make", "deploy-tests", fmt.Sprintf("IMG=%s", projectImage))
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 
 		By("labeling the namespace to enforce the restricted security policy")
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
-
-		By("installing CRDs")
-		cmd = exec.Command("make", "install")
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
-
-		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
 	AfterAll(func() {
+		By("removing finalizers from all managed resources to prevent cleanup hangs")
+		// Remove finalizers from WorkloadServiceAccounts
+		wsaScript := `kubectl get workloadserviceaccounts -A -o json 2>/dev/null | ` +
+			`jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)"' | while read item; do
+				ns=$(echo "$item" | cut -d'/' -f1)
+				name=$(echo "$item" | cut -d'/' -f2)
+				kubectl patch workloadserviceaccount "$name" -n "$ns" --type=json \
+					-p='[{"op": "remove", "path": "/metadata/finalizers"}]' 2>/dev/null || true
+			done`
+		cmd := exec.Command("bash", "-c", wsaScript)
+		_, _ = utils.Run(cmd)
+
+		// Remove finalizers from ClusterWorkloadServiceAccounts
+		cwsaScript := `kubectl get clusterworkloadserviceaccounts -o json 2>/dev/null | ` +
+			`jq -r '.items[].metadata.name' | while read name; do
+				kubectl patch clusterworkloadserviceaccount "$name" --type=json \
+					-p='[{"op": "remove", "path": "/metadata/finalizers"}]' 2>/dev/null || true
+			done`
+		cmd = exec.Command("bash", "-c", cwsaScript)
+		_, _ = utils.Run(cmd)
+
+		// Remove finalizers from managed ServiceAccounts
+		saScript := `kubectl get serviceaccounts -A ` +
+			`-l app.kubernetes.io/managed-by=octopus-permissions-controller -o json 2>/dev/null | ` +
+			`jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)"' | while read item; do
+				ns=$(echo "$item" | cut -d'/' -f1)
+				name=$(echo "$item" | cut -d'/' -f2)
+				kubectl patch serviceaccount "$name" -n "$ns" --type=json \
+					-p='[{"op": "remove", "path": "/metadata/finalizers"}]' 2>/dev/null || true
+			done`
+		cmd = exec.Command("bash", "-c", saScript)
+		_, _ = utils.Run(cmd)
+
 		By("undeploying the controller-manager")
-		cmd := exec.Command("make", "undeploy")
+		cmd = exec.Command("make", "undeploy")
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
