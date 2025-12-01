@@ -2,7 +2,7 @@
 name: "Bug Report"
 about: Report a reproducible bug or regression.
 title: "[BUG]"
-labels: ''
+labels: 'bug'
 assignees: ''
 
 ---
@@ -17,6 +17,9 @@ Provide a detailed list of steps that reproduce the issue.
 
 1.
 2.
+
+**Sample WorkloadServiceAccount yaml**
+(Optional) Provide a sample of the CRD that is causing the issue
 
 **Expected Behavior**
 A clear and concise description of what you expected to happen.
