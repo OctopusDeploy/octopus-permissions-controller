@@ -11,12 +11,6 @@ import (
 
 const controllerFieldOwner = "octopus-permissions-controller"
 
-func ManagedResourcePredicate() predicate.Predicate {
-	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
-		return rules.IsOctopusManaged(obj.GetLabels())
-	})
-}
-
 func GenerationOrDeletePredicate() predicate.Predicate {
 	return predicate.Or(
 		predicate.Or(
@@ -50,14 +44,6 @@ func ManagedServiceAccountPredicate() predicate.Predicate {
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return IsManagedServiceAccount(e.Object)
-		},
-	}
-}
-
-func SuppressOwnedResourceDeletes() predicate.Predicate {
-	return predicate.Funcs{
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
 		},
 	}
 }
