@@ -81,7 +81,6 @@ func main() {
 	var batchDebounceInterval time.Duration
 	var batchMaxSize int
 	var stageTimeout time.Duration
-	var executionConcurrency int
 	var cacheSyncPeriod time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -90,8 +89,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	flag.BoolVar(&secureMetrics, "metrics-secure", false,
+		"If set to true, the metrics endpoint is served securely via HTTPS.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
@@ -107,8 +106,6 @@ func main() {
 		"Maximum batch size for reconciliation")
 	flag.DurationVar(&stageTimeout, "stage-timeout", 30*time.Second,
 		"Maximum duration for stage execution")
-	flag.IntVar(&executionConcurrency, "execution-concurrency", 10,
-		"Maximum concurrent Kubernetes operations during execution")
 	flag.DurationVar(&cacheSyncPeriod, "cache-sync-period", 10*time.Hour,
 		"Minimum frequency at which watched resources are reconciled (default 10h). "+
 			"Lower values correct drift faster but increase API server load.")

@@ -1,0 +1,10 @@
+resources:
+  - ../default
+
+patches:
+  - path: target_namespaces_patch.yaml
+    target:
+      kind: Deployment
+  - path: secure_metrics_patch.yaml
+    target:
+      kind: Deployment
