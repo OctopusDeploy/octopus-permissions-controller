@@ -1,11 +1,11 @@
-name: Test Chart
+name: Helm Chart Tests
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  test-e2e:
+  test-chart:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
     steps:
