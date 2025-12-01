@@ -19,8 +19,8 @@ func TestEventCollector(t *testing.T) {
 		manualDebouncer := NewFakeDebouncer(func() {})
 		collector := NewEventCollectorWithDebouncer(time.Second, 10, manualDebouncer)
 
-		collector.AddEvent(createEventInfo("test1", "default"))
-		collector.AddEvent(createEventInfo("test2", "default"))
+		collector.AddEvent(createEventInfo("test1"))
+		collector.AddEvent(createEventInfo("test2"))
 
 		select {
 		case batch := <-collector.BatchChannel():
@@ -52,8 +52,8 @@ func TestEventCollector(t *testing.T) {
 		manualDebouncer := NewFakeDebouncer(func() {})
 		collector := NewEventCollectorWithDebouncer(time.Second, 10, manualDebouncer)
 
-		collector.AddEvent(createEventInfo("test1", "default"))
-		newerEvent := createEventInfo("test1", "default")
+		collector.AddEvent(createEventInfo("test1"))
+		newerEvent := createEventInfo("test1")
 		newerEvent.Generation = 2
 		collector.AddEvent(newerEvent)
 
@@ -89,13 +89,13 @@ func TestEventCollector(t *testing.T) {
 		// Create back pressure by filling the batch channel
 		for i := 0; i < 10; i++ {
 			batch := []*EventInfo{
-				createEventInfo("filler", "default"),
+				createEventInfo("filler"),
 			}
 			collector.batchReadyCh <- batch
 		}
 
-		collector.AddEvent(createEventInfo("test1", "default"))
-		collector.AddEvent(createEventInfo("test2", "default"))
+		collector.AddEvent(createEventInfo("test1"))
+		collector.AddEvent(createEventInfo("test2"))
 
 		collector.FlushEvents()
 
@@ -148,11 +148,11 @@ func NewEventCollectorWithDebouncer(debounceInterval time.Duration, maxBatchSize
 	}
 }
 
-func createEventInfo(name, namespace string) *EventInfo {
+func createEventInfo(name string) *EventInfo {
 	wsa := &v1beta1.WorkloadServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: "default",
 		},
 	}
 	resource := rules.NewWSAResource(wsa)
