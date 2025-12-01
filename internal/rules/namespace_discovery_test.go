@@ -23,7 +23,7 @@ var _ = Describe("NamespaceDiscoveryService", func() {
 
 	Describe("DiscoverTargetNamespaces", func() {
 		Context("When discovering target namespaces from deployments", func() {
-			It("Should return default namespace when no deployments exist", func() {
+			It("Should not return default namespace when no deployments exist", func() {
 				fakeClient := fake.NewClientBuilder().
 					WithScheme(scheme).
 					Build()
@@ -33,7 +33,7 @@ var _ = Describe("NamespaceDiscoveryService", func() {
 				result, err := service.DiscoverTargetNamespaces(context.Background(), fakeClient)
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(ConsistOf("default"))
+				Expect(result).To(BeEmpty())
 			})
 
 			It("Should return unique namespaces when multiple deployments share namespaces", func() {
