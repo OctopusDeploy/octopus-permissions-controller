@@ -1,0 +1,7 @@
+resources:
+  - ../default
+
+patches:
+  - path: target_namespaces_patch.yaml
+    target:
+      kind: Deployment

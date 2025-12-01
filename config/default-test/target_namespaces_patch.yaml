@@ -1,0 +1,6 @@
+# This patch adds the env to allow targeting the default namespace
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: TARGET_NAMESPACES
+    value: "default"

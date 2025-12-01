@@ -935,6 +935,11 @@ spec:
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         command:
         - /manager
+        env:
+        - name: TARGET_NAMESPACES
+          value: ""
+        - name: TARGET_NAMESPACE_REGEX
+          value: ""
         image: octopusdeploy/octopus-permissions-controller:latest
         livenessProbe:
           httpGet:
