@@ -10,6 +10,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -244,14 +245,14 @@ var _ = Describe("ResourceManagementService", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(createdRoles).To(HaveLen(1))
 
-				for wsaName, role := range createdRoles {
+				for wsaKey, role := range createdRoles {
 					Expect(role.Name).NotTo(BeEmpty())
 					Expect(role.Name).To(ContainSubstring("octopus-role-"))
 					Expect(role.Labels[ManagedByLabel]).To(Equal(ManagedByValue))
 
 					var correspondingWSA *v1beta1.WorkloadServiceAccount
 					for _, wsa := range wsaList {
-						if wsa.Name == wsaName {
+						if wsa.Name == wsaKey.Name && wsa.Namespace == wsaKey.Namespace {
 							correspondingWSA = wsa
 							break
 						}
@@ -505,7 +506,7 @@ var _ = Describe("ResourceManagementService", func() {
 					Build()
 
 				service := NewResourceManagementService(fakeClient)
-				err := service.EnsureRoleBindings(context.Background(), []WSAResource{}, map[string]rbacv1.Role{}, map[string][]string{}, []string{"default"})
+				err := service.EnsureRoleBindings(context.Background(), []WSAResource{}, map[types.NamespacedName]rbacv1.Role{}, map[types.NamespacedName][]string{}, []string{"default"})
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -536,8 +537,8 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				createdRoles := map[string]rbacv1.Role{
-					"test-wsa-1": {
+				createdRoles := map[types.NamespacedName]rbacv1.Role{
+					{Namespace: "default", Name: "test-wsa-1"}: {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "octopus-role-test",
 							Namespace: "default",
@@ -552,8 +553,8 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				wsaToServiceAccounts := map[string][]string{
-					"test-wsa-1": {"test-sa-1"},
+				wsaToServiceAccounts := map[types.NamespacedName][]string{
+					{Namespace: "default", Name: "test-wsa-1"}: {"test-sa-1"},
 				}
 
 				fakeClient := fake.NewClientBuilder().
@@ -606,7 +607,7 @@ var _ = Describe("ResourceManagementService", func() {
 				for i, wsa := range wsaList {
 					wsaResources[i] = NewWSAResource(wsa)
 				}
-				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[string]rbacv1.Role{}, map[string][]string{"test-wsa-1": {"test-sa-1"}}, []string{"default"})
+				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[types.NamespacedName]rbacv1.Role{}, map[types.NamespacedName][]string{{Namespace: "default", Name: "test-wsa-1"}: {"test-sa-1"}}, []string{"default"})
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -646,7 +647,7 @@ var _ = Describe("ResourceManagementService", func() {
 				for i, wsa := range wsaList {
 					wsaResources[i] = NewWSAResource(wsa)
 				}
-				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[string]rbacv1.Role{}, map[string][]string{"test-wsa-1": {"test-sa-1"}}, []string{"default"})
+				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[types.NamespacedName]rbacv1.Role{}, map[types.NamespacedName][]string{{Namespace: "default", Name: "test-wsa-1"}: {"test-sa-1"}}, []string{"default"})
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -698,7 +699,7 @@ var _ = Describe("ResourceManagementService", func() {
 				for i, wsa := range wsaList {
 					wsaResources[i] = NewWSAResource(wsa)
 				}
-				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[string]rbacv1.Role{}, map[string][]string{"test-wsa-1": {"test-sa-1"}}, []string{"default"})
+				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[types.NamespacedName]rbacv1.Role{}, map[types.NamespacedName][]string{{Namespace: "default", Name: "test-wsa-1"}: {"test-sa-1"}}, []string{"default"})
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -738,7 +739,7 @@ var _ = Describe("ResourceManagementService", func() {
 				for i, wsa := range wsaList {
 					wsaResources[i] = NewWSAResource(wsa)
 				}
-				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[string]rbacv1.Role{}, map[string][]string{}, []string{"default"})
+				err := service.EnsureRoleBindings(context.Background(), wsaResources, map[types.NamespacedName]rbacv1.Role{}, map[types.NamespacedName][]string{}, []string{"default"})
 
 				Expect(err).NotTo(HaveOccurred())
 

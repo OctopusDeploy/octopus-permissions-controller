@@ -16,7 +16,10 @@
         "./certificates",
         "--metrics-bind-address=:8444",
         "--metrics-secure=false"
-      ]
+      ],
+      "env": {
+        "TARGET_NAMESPACES": "default"
+      }
     },
     {
       "name": "Run E2E Tests",

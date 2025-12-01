@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-set/v3"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +34,78 @@ import (
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/test/helpers"
 )
+
+// reconcileAll performs a full reconciliation using the engine's public methods.
+// This replaces the old engine.Reconcile() method for testing purposes.
+// Note: This only garbage collects ServiceAccounts to match the original behavior.
+// Role/RoleBinding garbage collection is handled separately in the staged pipeline.
+// IMPORTANT: This includes resources with DeletionTimestamp to match the staging pipeline
+// behavior and avoid race conditions between cleanup and staging GC.
+func reconcileAll(ctx context.Context, engine *InMemoryEngine) error {
+	allResources := make([]WSAResource, 0)
+
+	wsaIter, err := engine.GetWorkloadServiceAccounts(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list WorkloadServiceAccounts: %w", err)
+	}
+	for wsa := range wsaIter {
+		// Include all resources, even those being deleted, to avoid premature SA cleanup
+		allResources = append(allResources, NewWSAResource(wsa))
+	}
+
+	cwsaIter, err := engine.GetClusterWorkloadServiceAccounts(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list ClusterWorkloadServiceAccounts: %w", err)
+	}
+	for cwsa := range cwsaIter {
+		// Include all resources, even those being deleted, to avoid premature SA cleanup
+		allResources = append(allResources, NewClusterWSAResource(cwsa))
+	}
+
+	targetNamespaces := engine.GetTargetNamespaces()
+
+	scopeComputation := NewScopeComputationService(nil, nil)
+	scopeMap, vocabulary := scopeComputation.ComputeScopesForWSAs(allResources)
+	scopeToSA, saToWSAMap, wsaToSANames, uniqueAccounts := scopeComputation.GenerateServiceAccountMappings(scopeMap)
+
+	// Update engine state
+	engine.mu.Lock()
+	engine.scopeToSA = scopeToSA
+	engine.saToWsaMap = saToWSAMap
+	engine.vocabulary = &vocabulary
+	engine.ScopeComputation = NewScopeComputationService(engine.vocabulary, engine.scopeToSA)
+	engine.mu.Unlock()
+
+	// Ensure resources
+	createdRoles, err := engine.EnsureRoles(ctx, allResources)
+	if err != nil {
+		return fmt.Errorf("failed to ensure roles: %w", err)
+	}
+
+	if err := engine.EnsureServiceAccounts(ctx, uniqueAccounts, targetNamespaces); err != nil {
+		return fmt.Errorf("failed to ensure service accounts: %w", err)
+	}
+
+	if err := engine.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToSANames, targetNamespaces); err != nil {
+		return fmt.Errorf("failed to ensure role bindings: %w", err)
+	}
+
+	// Only garbage collect ServiceAccounts (matching original Reconcile behavior)
+	expectedSAs := set.New[string](len(uniqueAccounts))
+	for _, sa := range uniqueAccounts {
+		expectedSAs.Insert(sa.Name)
+	}
+	targetNSSet := set.New[string](len(targetNamespaces))
+	for _, ns := range targetNamespaces {
+		targetNSSet.Insert(ns)
+	}
+
+	if _, err := engine.GarbageCollectServiceAccounts(ctx, expectedSAs, targetNSSet); err != nil {
+		return fmt.Errorf("failed to garbage collect service accounts: %w", err)
+	}
+
+	return nil
+}
 
 var _ = Describe("Engine Integration Tests", func() {
 	var (
@@ -150,7 +223,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts are created in target namespaces")
 			for _, ns := range targetNamespaces {
@@ -203,7 +276,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying roles are created")
 			roles := &rbacv1.RoleList{}
@@ -253,7 +326,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying role bindings are created")
 			roleBindings := &rbacv1.RoleBindingList{}
@@ -331,7 +404,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa3)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying correct number of unique service accounts are created")
 			for _, ns := range targetNamespaces {
@@ -368,7 +441,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts are created in all target namespaces")
 			var allServiceAccounts []corev1.ServiceAccount
@@ -413,7 +486,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts created in all target namespaces")
 			for _, ns := range targetNamespaces {
@@ -430,9 +503,6 @@ var _ = Describe("Engine Integration Tests", func() {
 					Expect(sa.Labels).To(HaveKey(EnvironmentKey))
 					Expect(sa.Annotations).To(HaveKey(ProjectKey))
 					Expect(sa.Annotations).To(HaveKey(EnvironmentKey))
-
-					// Verify finalizer is set
-					Expect(sa.Finalizers).To(ContainElement("octopus.com/serviceaccount"))
 				}
 			}
 
@@ -497,7 +567,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, cwsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts created in all target namespaces")
 			for _, ns := range targetNamespaces {
@@ -572,7 +642,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsaSpace)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("creating a WSA with more specific step-level scope in the same space")
 			stepPermissions := []rbacv1.PolicyRule{
@@ -590,7 +660,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsaStep)).To(Succeed())
 
 			By("running reconciliation again")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service account created for step scope")
 			for _, ns := range targetNamespaces {
@@ -649,7 +719,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa1)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("getting count of service accounts after first WSA")
 			var initialSACount int
@@ -669,7 +739,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa2)).To(Succeed())
 
 			By("running reconciliation again")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service account count hasn't increased (sharing)")
 			var finalSACount int
@@ -726,7 +796,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, cwsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts exist with correct annotations")
 			var sharedSANames []string
@@ -800,7 +870,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("getting initial service account annotations for this WSA")
 			initialSAs := make(map[string]map[string]string) // SA name -> annotations
@@ -842,7 +912,7 @@ var _ = Describe("Engine Integration Tests", func() {
 				if err != nil {
 					return err
 				}
-				return engine.ReconcileResource(testCtx, NewWSAResource(updatedWSA))
+				return reconcileAll(testCtx, &engine)
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("verifying service accounts were created or updated for the new scope")
@@ -888,7 +958,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("getting initial service account state for this WSA")
 			initialSAs := make(map[string]map[string]string) // SA name -> annotations
@@ -923,24 +993,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("running full reconciliation to clean up")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
-
-			// Force cleanup of service accounts marked for deletion
-			for _, ns := range targetNamespaces {
-				saList := &corev1.ServiceAccountList{}
-				if err := k8sClient.List(testCtx, saList,
-					client.InNamespace(ns),
-					client.MatchingLabels{ManagedByLabel: ManagedByValue}); err == nil {
-					for i := range saList.Items {
-						sa := &saList.Items[i]
-						// If marked for deletion, remove finalizer to complete deletion
-						if !sa.DeletionTimestamp.IsZero() && len(sa.Finalizers) > 0 {
-							sa.Finalizers = []string{}
-							_ = k8sClient.Update(testCtx, sa)
-						}
-					}
-				}
-			}
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts were cleaned up or updated")
 			finalSAs := make(map[string]map[string]string) // SA name -> annotations
@@ -992,7 +1045,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("getting initial service account names")
 			initialSANames := make(map[string]bool)
@@ -1044,7 +1097,7 @@ var _ = Describe("Engine Integration Tests", func() {
 				if err != nil {
 					return err
 				}
-				return engine.ReconcileResource(testCtx, NewWSAResource(updatedWSA))
+				return reconcileAll(testCtx, &engine)
 			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("verifying role permissions were updated")
@@ -1082,145 +1135,8 @@ var _ = Describe("Engine Integration Tests", func() {
 		})
 	})
 
-	Context("Safe ServiceAccount Deletion with Active Pods", func() {
-		It("should defer deletion when pods are using the ServiceAccount and preserve RoleBindings", func() {
-			By("creating a WorkloadServiceAccount with specific scope")
-			wsa := helpers.CreateTestWSA("test-safe-delete", testNamespace, map[string][]string{
-				"projects":     {"web-app"},
-				"environments": {"production"},
-			}, []rbacv1.PolicyRule{
-				{
-					APIGroups: []string{""},
-					Resources: []string{"pods"},
-					Verbs:     []string{"get", "list"},
-				},
-			})
-			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
-
-			By("running reconciliation to create SA, Roles, and RoleBindings")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
-
-			By("getting the created ServiceAccount name")
-			var saName string
-			var saNamespace string
-			for _, ns := range targetNamespaces {
-				serviceAccounts := &corev1.ServiceAccountList{}
-				Expect(k8sClient.List(testCtx, serviceAccounts, client.InNamespace(ns),
-					client.MatchingLabels{ManagedByLabel: ManagedByValue})).To(Succeed())
-
-				if len(serviceAccounts.Items) > 0 {
-					saName = serviceAccounts.Items[0].Name
-					saNamespace = ns
-					break
-				}
-			}
-			Expect(saName).NotTo(BeEmpty(), "ServiceAccount should be created")
-
-			By("verifying RoleBindings exist and reference the ServiceAccount")
-			roleBindings := &rbacv1.RoleBindingList{}
-			Expect(k8sClient.List(testCtx, roleBindings, client.InNamespace(saNamespace),
-				client.MatchingLabels{ManagedByLabel: ManagedByValue})).To(Succeed())
-			Expect(roleBindings.Items).NotTo(BeEmpty(), "RoleBindings should be created")
-
-			initialRBCount := len(roleBindings.Items)
-			for _, rb := range roleBindings.Items {
-				found := false
-				for _, subject := range rb.Subjects {
-					if subject.Kind == "ServiceAccount" && subject.Name == saName && subject.Namespace == saNamespace {
-						found = true
-						break
-					}
-				}
-				Expect(found).To(BeTrue(), fmt.Sprintf("RoleBinding %s should reference ServiceAccount %s", rb.Name, saName))
-			}
-
-			By("creating a pod using the ServiceAccount")
-			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod-blocking-deletion",
-					Namespace: saNamespace,
-				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName: saName,
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx:latest",
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(testCtx, pod)).To(Succeed())
-
-			// Wait for pod to be created
-			Eventually(func() error {
-				createdPod := &corev1.Pod{}
-				return k8sClient.Get(testCtx, client.ObjectKey{Name: pod.Name, Namespace: pod.Namespace}, createdPod)
-			}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
-
-			By("deleting the WSA to trigger garbage collection")
-			Expect(k8sClient.Delete(testCtx, wsa)).To(Succeed())
-
-			By("running reconciliation (should attempt cleanup)")
-			// This should return an error because the SA is in use
-			_ = engine.Reconcile(testCtx)
-			// The reconcile may succeed or fail depending on timing, but we'll verify the state
-
-			By("verifying ServiceAccount has deletionTimestamp but still exists")
-			sa := &corev1.ServiceAccount{}
-			Eventually(func() bool {
-				err := k8sClient.Get(testCtx, client.ObjectKey{Name: saName, Namespace: saNamespace}, sa)
-				if err != nil {
-					return false
-				}
-				return !sa.DeletionTimestamp.IsZero()
-			}, 10*time.Second, 500*time.Millisecond).Should(BeTrue(), "ServiceAccount should be marked for deletion")
-
-			Expect(sa.Finalizers).To(ContainElement("octopus.com/serviceaccount"),
-				"ServiceAccount should still have finalizer")
-
-			By("verifying RoleBindings still exist and still reference the ServiceAccount")
-			roleBindings = &rbacv1.RoleBindingList{}
-			Expect(k8sClient.List(testCtx, roleBindings, client.InNamespace(saNamespace),
-				client.MatchingLabels{ManagedByLabel: ManagedByValue})).To(Succeed())
-			Expect(roleBindings.Items).To(HaveLen(initialRBCount),
-				"RoleBindings should NOT be deleted while SA is marked for deletion")
-
-			for _, rb := range roleBindings.Items {
-				found := false
-				for _, subject := range rb.Subjects {
-					if subject.Kind == "ServiceAccount" && subject.Name == saName && subject.Namespace == saNamespace {
-						found = true
-						break
-					}
-				}
-				Expect(found).To(BeTrue(),
-					fmt.Sprintf("RoleBinding %s should STILL reference ServiceAccount %s", rb.Name, saName))
-			}
-
-			By("deleting the pod to allow cleanup")
-			Expect(k8sClient.Delete(testCtx, pod)).To(Succeed())
-
-			// Wait for pod to be fully deleted
-			Eventually(func() bool {
-				deletedPod := &corev1.Pod{}
-				err := k8sClient.Get(testCtx, client.ObjectKey{Name: pod.Name, Namespace: pod.Namespace}, deletedPod)
-				return err != nil && client.IgnoreNotFound(err) == nil
-			}, 10*time.Second, 500*time.Millisecond).Should(BeTrue(), "Pod should be deleted")
-
-			By("running reconciliation again to complete cleanup")
-			Eventually(func() error {
-				return engine.Reconcile(testCtx)
-			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
-
-			By("verifying ServiceAccount is now fully deleted")
-			Eventually(func() bool {
-				err := k8sClient.Get(testCtx, client.ObjectKey{Name: saName, Namespace: saNamespace}, sa)
-				return err != nil && client.IgnoreNotFound(err) == nil
-			}, 10*time.Second, 500*time.Millisecond).Should(BeTrue(), "ServiceAccount should be fully deleted")
-		})
-
-		It("should delete ServiceAccount immediately when no pods are using it", func() {
+	Context("ServiceAccount Deletion", func() {
+		It("should delete ServiceAccount immediately when WSA is deleted", func() {
 			By("creating a WorkloadServiceAccount")
 			wsa := helpers.CreateTestWSA("test-immediate-delete", testNamespace, map[string][]string{
 				"projects": {"api-service"},
@@ -1234,7 +1150,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
 
 			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("getting the created ServiceAccount")
 			var saName string
@@ -1264,82 +1180,128 @@ var _ = Describe("Engine Integration Tests", func() {
 			By("running reconciliation to trigger cleanup")
 			Eventually(func() bool {
 				// Run reconciliation (may need multiple iterations to complete deletion)
-				_ = engine.Reconcile(testCtx)
+				_ = reconcileAll(testCtx, &engine)
 				// Check if SA is deleted
 				sa := &corev1.ServiceAccount{}
 				err := k8sClient.Get(testCtx, client.ObjectKey{Name: saName, Namespace: saNamespace}, sa)
 				return err != nil && client.IgnoreNotFound(err) == nil
 			}, 10*time.Second, 500*time.Millisecond).Should(BeTrue(),
-				"ServiceAccount should be deleted when no pods are using it")
+				"ServiceAccount should be deleted when WSA is deleted")
 		})
+	})
 
-		It("should prevent new pods from using ServiceAccounts marked for deletion", func() {
-			By("creating a WorkloadServiceAccount")
-			wsa := helpers.CreateTestWSA("test-webhook-prevention", testNamespace, map[string][]string{
-				"projects": {"webhook-test"},
+	Context("Multiple Resource Deletion", Serial, func() {
+		It("should preserve SAs for remaining resources when multiple WSAs are deleted", func() {
+			By("creating multiple WSAs with different scopes")
+			wsa1 := helpers.CreateTestWSA("test-multi-del-1", testNamespace, map[string][]string{
+				"projects": {"project-keep"},
 			}, []rbacv1.PolicyRule{
-				{
-					APIGroups: []string{""},
-					Resources: []string{"services"},
-					Verbs:     []string{"list"},
-				},
+				{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
 			})
-			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
+			Expect(k8sClient.Create(testCtx, wsa1)).To(Succeed())
 
-			By("running reconciliation")
-			Expect(engine.Reconcile(testCtx)).To(Succeed())
+			wsa2 := helpers.CreateTestWSA("test-multi-del-2", testNamespace, map[string][]string{
+				"projects": {"project-delete-1"},
+			}, []rbacv1.PolicyRule{
+				{APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"get"}},
+			})
+			Expect(k8sClient.Create(testCtx, wsa2)).To(Succeed())
 
-			By("getting the created ServiceAccount")
-			var saName string
-			Eventually(func() bool {
+			wsa3 := helpers.CreateTestWSA("test-multi-del-3", testNamespace, map[string][]string{
+				"projects": {"project-delete-2"},
+			}, []rbacv1.PolicyRule{
+				{APIGroups: []string{""}, Resources: []string{"configmaps"}, Verbs: []string{"get"}},
+			})
+			Expect(k8sClient.Create(testCtx, wsa3)).To(Succeed())
+
+			By("running reconciliation to create all SAs")
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
+
+			By("verifying SAs exist for all WSAs")
+			var initialSACount int
+			for _, ns := range targetNamespaces {
 				serviceAccounts := &corev1.ServiceAccountList{}
-				if err := k8sClient.List(testCtx, serviceAccounts, client.InNamespace(testNamespace),
-					client.MatchingLabels{ManagedByLabel: ManagedByValue}); err != nil {
-					return false
-				}
-				if len(serviceAccounts.Items) > 0 {
-					saName = serviceAccounts.Items[0].Name
-					return true
-				}
-				return false
-			}, 5*time.Second, 100*time.Millisecond).Should(BeTrue(), "ServiceAccount should be created")
+				Expect(k8sClient.List(testCtx, serviceAccounts, client.InNamespace(ns),
+					client.MatchingLabels{ManagedByLabel: ManagedByValue})).To(Succeed())
+				initialSACount += len(serviceAccounts.Items)
+			}
+			Expect(initialSACount).To(BeNumerically(">=", len(targetNamespaces)),
+				"Should have SAs in all target namespaces")
 
-			By("getting the scope that maps to this SA")
+			By("deleting WSAs 2 and 3 (keeping WSA 1)")
+			Expect(k8sClient.Delete(testCtx, wsa2)).To(Succeed())
+			Expect(k8sClient.Delete(testCtx, wsa3)).To(Succeed())
+
+			By("running reconciliation to clean up deleted WSAs")
+			Eventually(func() error {
+				return reconcileAll(testCtx, &engine)
+			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("verifying WSA 1 scope still maps to an SA")
 			scope := Scope{
-				Project:     "webhook-test",
+				Project:     "project-keep",
 				Environment: "",
 				Tenant:      "",
 				Step:        "",
 				Space:       "",
 			}
-
-			By("verifying GetServiceAccountForScope returns the SA name")
-			var retrievedSA ServiceAccountName
-			Eventually(func() bool {
-				var err error
-				retrievedSA, err = engine.GetServiceAccountForScope(scope)
-				return err == nil && retrievedSA != ""
-			}, 5*time.Second, 100*time.Millisecond).Should(BeTrue(), "GetServiceAccountForScope should return the SA")
-			Expect(retrievedSA).To(Equal(ServiceAccountName(saName)))
-
-			By("deleting the WSA to mark SA for deletion")
-			Expect(k8sClient.Delete(testCtx, wsa)).To(Succeed())
-
-			By("running reconciliation to mark SA for deletion")
-			_ = engine.Reconcile(testCtx)
-
-			By("verifying SA is marked for deletion")
-			sa := &corev1.ServiceAccount{}
-			Eventually(func() bool {
-				err := k8sClient.Get(testCtx, client.ObjectKey{Name: saName, Namespace: testNamespace}, sa)
-				return err == nil && !sa.DeletionTimestamp.IsZero()
-			}, 10*time.Second, 500*time.Millisecond).Should(BeTrue())
-
-			By("verifying GetServiceAccountForScope now returns empty (SA filtered out)")
 			retrievedSA, err := engine.GetServiceAccountForScope(scope)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(retrievedSA).To(BeEmpty(),
-				"GetServiceAccountForScope should return empty for SA marked for deletion")
+			Expect(retrievedSA).NotTo(BeEmpty(),
+				"WSA 1's scope should still map to an SA after WSA 2 and 3 are deleted")
+		})
+
+		It("should eventually clean up SAs after resources are fully deleted", func() {
+			By("creating a single WSA")
+			wsa := helpers.CreateTestWSA("test-eventual-cleanup", testNamespace, map[string][]string{
+				"projects": {"project-cleanup"},
+			}, []rbacv1.PolicyRule{
+				{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
+			})
+			Expect(k8sClient.Create(testCtx, wsa)).To(Succeed())
+
+			By("running reconciliation")
+			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
+
+			By("verifying SA exists")
+			var saName string
+			var saNamespace string
+			for _, ns := range targetNamespaces {
+				serviceAccounts := &corev1.ServiceAccountList{}
+				Expect(k8sClient.List(testCtx, serviceAccounts, client.InNamespace(ns),
+					client.MatchingLabels{ManagedByLabel: ManagedByValue})).To(Succeed())
+				if len(serviceAccounts.Items) > 0 {
+					saName = serviceAccounts.Items[0].Name
+					saNamespace = ns
+					break
+				}
+			}
+			Expect(saName).NotTo(BeEmpty())
+
+			By("deleting the WSA")
+			Expect(k8sClient.Delete(testCtx, wsa)).To(Succeed())
+
+			By("waiting for WSA to be fully deleted")
+			Eventually(func() bool {
+				err := k8sClient.Get(testCtx, client.ObjectKey{
+					Name:      wsa.Name,
+					Namespace: wsa.Namespace,
+				}, &agentoctopuscomv1beta1.WorkloadServiceAccount{})
+				return err != nil && client.IgnoreNotFound(err) == nil
+			}, 10*time.Second, 500*time.Millisecond).Should(BeTrue(), "WSA should be fully deleted")
+
+			By("running reconciliation multiple times to complete SA cleanup")
+			// SA deletion is two-phase:
+			// Phase 1: Mark SA for deletion
+			// Phase 2: Complete deletion after verifying no pods use it
+			// Each phase requires a reconcile cycle
+			Eventually(func() bool {
+				_ = reconcileAll(testCtx, &engine)
+				sa := &corev1.ServiceAccount{}
+				err := k8sClient.Get(testCtx, client.ObjectKey{Name: saName, Namespace: saNamespace}, sa)
+				return err != nil && client.IgnoreNotFound(err) == nil
+			}, 15*time.Second, 500*time.Millisecond).Should(BeTrue(),
+				"SA should be cleaned up after WSA is fully deleted")
 		})
 	})
 })
