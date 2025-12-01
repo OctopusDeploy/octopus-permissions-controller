@@ -47,10 +47,6 @@ func init() {
 	)
 }
 
-func IncFinalizerStuck(resourceType string) {
-	finalizerStuckTotal.WithLabelValues(resourceType).Inc()
-}
-
 func IncRequestsTotal(requestIdentifier string, scopeMatched bool) {
 	scopeMatchedStr := "false"
 	if scopeMatched {
