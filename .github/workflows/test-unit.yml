@@ -1,11 +1,11 @@
-name: Tests
+name: Unit Tests
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  test:
+  test-unit:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
     steps:
