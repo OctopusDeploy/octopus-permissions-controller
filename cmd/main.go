@@ -100,11 +100,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.DurationVar(&batchDebounceInterval, "batch-debounce-interval", 500*time.Millisecond,
+	flag.DurationVar(&batchDebounceInterval, "batch-debounce-interval", 2*time.Second,
 		"Event collection debounce interval for batch processing")
-	flag.IntVar(&batchMaxSize, "batch-max-size", 100,
+	flag.IntVar(&batchMaxSize, "batch-max-size", 500,
 		"Maximum batch size for reconciliation")
-	flag.DurationVar(&stageTimeout, "stage-timeout", 30*time.Second,
+	flag.DurationVar(&stageTimeout, "stage-timeout", 2*time.Minute,
 		"Maximum duration for stage execution")
 	flag.DurationVar(&cacheSyncPeriod, "cache-sync-period", 10*time.Hour,
 		"Minimum frequency at which watched resources are reconciled (default 10h). "+

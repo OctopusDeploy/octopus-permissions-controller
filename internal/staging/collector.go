@@ -77,7 +77,8 @@ type EventCollector struct {
 }
 
 func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventCollector {
-	batchTriggerCh := make(chan struct{}, 1)
+	// TODO: Update the logic to not require this trigger channel to be buffered
+	batchTriggerCh := make(chan struct{}, 1024)
 	return &EventCollector{
 		eventMap:         make(map[types.NamespacedName]*EventInfo),
 		debounceInterval: debounceInterval,
