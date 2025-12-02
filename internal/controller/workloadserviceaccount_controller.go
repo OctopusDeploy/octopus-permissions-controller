@@ -21,8 +21,8 @@ import (
 	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -39,7 +39,7 @@ type WorkloadServiceAccountReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
 	Engine         *rules.InMemoryEngine
-	EventCollector *staging.EventCollector
+	EventCollector *reconciliation.EventCollector
 	Recorder       record.EventRecorder
 }
 
@@ -76,13 +76,7 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 	wsaResource := rules.NewWSAResource(wsa)
 
 	if isBeingDeleted(wsa) {
-		deleteEvent := &staging.EventInfo{
-			Resource:        wsaResource,
-			EventType:       staging.EventTypeDelete,
-			Generation:      wsa.GetGeneration(),
-			ResourceVersion: wsa.GetResourceVersion(),
-			Timestamp:       time.Now(),
-		}
+		deleteEvent := reconciliation.NewEventInfo(wsaResource, reconciliation.EventTypeDelete)
 		r.EventCollector.AddEvent(deleteEvent)
 		log.Info("Delete event queued for batch processing", "name", wsa.Name, "namespace", wsa.Namespace)
 
@@ -100,18 +94,12 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 
-	eventType := staging.EventTypeUpdate
+	eventType := reconciliation.EventTypeUpdate
 	if wsa.GetGeneration() == 1 {
-		eventType = staging.EventTypeCreate
+		eventType = reconciliation.EventTypeCreate
 	}
 
-	event := &staging.EventInfo{
-		Resource:        wsaResource,
-		EventType:       eventType,
-		Generation:      wsa.GetGeneration(),
-		ResourceVersion: wsa.GetResourceVersion(),
-		Timestamp:       time.Now(),
-	}
+	event := reconciliation.NewEventInfo(wsaResource, eventType)
 
 	r.EventCollector.AddEvent(event)
 	log.V(1).Info("Event added to collector", "generation", wsa.GetGeneration())

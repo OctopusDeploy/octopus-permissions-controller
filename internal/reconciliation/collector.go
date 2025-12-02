@@ -1,15 +1,12 @@
-package staging
+package reconciliation
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -38,32 +35,6 @@ var (
 		Help: "Times batch channel was full (backpressure)",
 	})
 )
-
-type EventType string
-
-const (
-	EventTypeCreate EventType = "Create"
-	EventTypeUpdate EventType = "Update"
-	EventTypeDelete EventType = "Delete"
-)
-
-type BatchID uuid.UUID
-
-func NewBatchID() BatchID {
-	return BatchID(uuid.New())
-}
-
-func (id BatchID) String() string {
-	return uuid.UUID(id).String()
-}
-
-type EventInfo struct {
-	Resource        rules.WSAResource
-	EventType       EventType
-	Generation      int64
-	ResourceVersion string
-	Timestamp       time.Time
-}
 
 type EventCollector struct {
 	eventMap         map[types.NamespacedName]*EventInfo
@@ -129,6 +100,10 @@ func (ec *EventCollector) FlushEvents() {
 	}
 }
 
+func (ec *EventCollector) BatchChannel() <-chan []*EventInfo {
+	return ec.batchReadyCh
+}
+
 // collectEventsIntoBatch extracts events from eventMap and clears the map.
 func (ec *EventCollector) collectEventsIntoBatch() []*EventInfo {
 	ec.mu.Lock()
@@ -167,71 +142,4 @@ func (ec *EventCollector) sendBatch(batch []*EventInfo) {
 		}
 		ec.mu.Unlock()
 	}
-}
-
-func (ec *EventCollector) BatchChannel() <-chan []*EventInfo {
-	return ec.batchReadyCh
-}
-
-type Batch struct {
-	ID               BatchID
-	Resources        []rules.WSAResource
-	StartTime        time.Time
-	Plan             *ReconciliationPlan
-	ValidationResult *ValidationResult
-	LastError        error
-	RequeueAfter     time.Duration
-}
-
-func NewBatch(events []*EventInfo) *Batch {
-	resources := make([]rules.WSAResource, len(events))
-	for i, event := range events {
-		resources[i] = event.Resource
-	}
-
-	return &Batch{
-		ID:        NewBatchID(),
-		Resources: resources,
-		StartTime: time.Now(),
-	}
-}
-
-type ReconciliationPlan struct {
-	ScopeToSA        map[rules.Scope]rules.ServiceAccountName
-	SAToWSAMap       map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource
-	WSAToSANames     map[types.NamespacedName][]rules.ServiceAccountName
-	Vocabulary       *rules.GlobalVocabulary
-	UniqueAccounts   []*v1.ServiceAccount
-	AllResources     []rules.WSAResource
-	TargetNamespaces []string
-}
-
-func (rp *ReconciliationPlan) GetScopeToSA() map[rules.Scope]rules.ServiceAccountName {
-	return rp.ScopeToSA
-}
-
-func (rp *ReconciliationPlan) GetSAToWSAMap() map[rules.ServiceAccountName]map[types.NamespacedName]rules.WSAResource {
-	return rp.SAToWSAMap
-}
-
-func (rp *ReconciliationPlan) GetVocabulary() *rules.GlobalVocabulary {
-	return rp.Vocabulary
-}
-
-type ValidationResult struct {
-	Valid    bool
-	Errors   []ValidationError
-	Warnings []ValidationWarning
-}
-
-type ValidationError struct {
-	Type     string
-	Resource string
-	Message  string
-}
-
-type ValidationWarning struct {
-	Type     string
-	Resource string
-	Message  string
 }

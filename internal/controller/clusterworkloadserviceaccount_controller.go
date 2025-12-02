@@ -21,8 +21,8 @@ import (
 	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -39,7 +39,7 @@ type ClusterWorkloadServiceAccountReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
 	Engine         *rules.InMemoryEngine
-	EventCollector *staging.EventCollector
+	EventCollector *reconciliation.EventCollector
 	Recorder       record.EventRecorder
 }
 
@@ -75,13 +75,7 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 	cwsaResource := rules.NewClusterWSAResource(cwsa)
 
 	if isBeingDeleted(cwsa) {
-		deleteEvent := &staging.EventInfo{
-			Resource:        cwsaResource,
-			EventType:       staging.EventTypeDelete,
-			Generation:      cwsa.GetGeneration(),
-			ResourceVersion: cwsa.GetResourceVersion(),
-			Timestamp:       time.Now(),
-		}
+		deleteEvent := reconciliation.NewEventInfo(cwsaResource, reconciliation.EventTypeDelete)
 		r.EventCollector.AddEvent(deleteEvent)
 		log.Info("Delete event queued for batch processing", "name", cwsa.Name)
 
@@ -99,18 +93,12 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	eventType := staging.EventTypeUpdate
+	eventType := reconciliation.EventTypeUpdate
 	if cwsa.GetGeneration() == 1 {
-		eventType = staging.EventTypeCreate
+		eventType = reconciliation.EventTypeCreate
 	}
 
-	event := &staging.EventInfo{
-		Resource:        cwsaResource,
-		EventType:       eventType,
-		Generation:      cwsa.GetGeneration(),
-		ResourceVersion: cwsa.GetResourceVersion(),
-		Timestamp:       time.Now(),
-	}
+	event := reconciliation.NewEventInfo(cwsaResource, eventType)
 
 	r.EventCollector.AddEvent(event)
 	log.V(1).Info("Event added to collector", "generation", cwsa.GetGeneration())

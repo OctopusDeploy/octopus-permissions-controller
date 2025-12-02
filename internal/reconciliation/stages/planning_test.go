@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -166,8 +166,8 @@ var _ = Describe("PlanningStage", func() {
 				engine = &e
 				stage = NewPlanningStage(engine)
 
-				batch := &staging.Batch{
-					ID: staging.NewBatchID(),
+				batch := &reconciliation.Batch{
+					ID: reconciliation.NewBatchID(),
 				}
 
 				err := stage.Execute(ctx, batch)
