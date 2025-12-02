@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	"k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -26,7 +26,7 @@ func (ps *PlanningStage) Name() string {
 	return "planning"
 }
 
-func (ps *PlanningStage) Execute(ctx context.Context, batch *staging.Batch) error {
+func (ps *PlanningStage) Execute(ctx context.Context, batch *reconciliation.Batch) error {
 	log.Info("Computing reconciliation plan", "batchID", batch.ID, "batchResourceCount", len(batch.Resources))
 
 	allResources, err := ps.getAllResources(ctx)
@@ -51,7 +51,7 @@ func (ps *PlanningStage) Execute(ctx context.Context, batch *staging.Batch) erro
 		"saCount", len(saToWSAMap),
 		"uniqueAccounts", len(uniqueAccounts))
 
-	batch.Plan = &staging.ReconciliationPlan{
+	batch.Plan = &reconciliation.Plan{
 		ScopeToSA:        scopeToSA,
 		SAToWSAMap:       saToWSAMap,
 		WSAToSANames:     convertWSAToSANames(wsaToSANames),

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -42,8 +42,8 @@ var _ = Describe("ExecutionStage", func() {
 				engine = &e
 				stage = NewExecutionStage(engine)
 
-				batch := &staging.Batch{
-					ID:   staging.NewBatchID(),
+				batch := &reconciliation.Batch{
+					ID:   reconciliation.NewBatchID(),
 					Plan: nil,
 				}
 
@@ -60,9 +60,9 @@ var _ = Describe("ExecutionStage", func() {
 				engine = &e
 				stage = NewExecutionStage(engine)
 
-				batch := &staging.Batch{
-					ID: staging.NewBatchID(),
-					Plan: &staging.ReconciliationPlan{
+				batch := &reconciliation.Batch{
+					ID: reconciliation.NewBatchID(),
+					Plan: &reconciliation.Plan{
 						TargetNamespaces: []string{},
 						AllResources:     []rules.WSAResource{},
 					},
@@ -81,9 +81,9 @@ var _ = Describe("ExecutionStage", func() {
 				engine = &e
 				stage = NewExecutionStage(engine)
 
-				batch := &staging.Batch{
-					ID: staging.NewBatchID(),
-					Plan: &staging.ReconciliationPlan{
+				batch := &reconciliation.Batch{
+					ID: reconciliation.NewBatchID(),
+					Plan: &reconciliation.Plan{
 						TargetNamespaces: []string{"test-ns"},
 						AllResources:     []rules.WSAResource{},
 					},

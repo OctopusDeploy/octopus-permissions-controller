@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-set/v3"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -25,7 +25,7 @@ func (es *ExecutionStage) Name() string {
 	return "execution"
 }
 
-func (es *ExecutionStage) Execute(ctx context.Context, batch *staging.Batch) error {
+func (es *ExecutionStage) Execute(ctx context.Context, batch *reconciliation.Batch) error {
 	log.Info("Executing reconciliation plan", "batchID", batch.ID)
 
 	if batch.Plan == nil {
@@ -79,7 +79,7 @@ func (es *ExecutionStage) Execute(ctx context.Context, batch *staging.Batch) err
 	return nil
 }
 
-func (es *ExecutionStage) ensureRoleBindings(ctx context.Context, batch *staging.Batch, allResources []rules.WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role, targetNamespaces []string) error {
+func (es *ExecutionStage) ensureRoleBindings(ctx context.Context, batch *reconciliation.Batch, allResources []rules.WSAResource, createdRoles map[types.NamespacedName]rbacv1.Role, targetNamespaces []string) error {
 	wsaToServiceAccountNames := make(map[types.NamespacedName][]string, len(batch.Plan.WSAToSANames))
 	for wsa, saNames := range batch.Plan.WSAToSANames {
 		names := make([]string, len(saNames))
@@ -95,7 +95,7 @@ func (es *ExecutionStage) ensureRoleBindings(ctx context.Context, batch *staging
 	return es.engine.EnsureRoleBindings(ctx, allResources, createdRoles, wsaToServiceAccountNames, targetNamespaces)
 }
 
-func (es *ExecutionStage) garbageCollect(ctx context.Context, batch *staging.Batch, allResources []rules.WSAResource, targetNamespaces []string) error {
+func (es *ExecutionStage) garbageCollect(ctx context.Context, batch *reconciliation.Batch, allResources []rules.WSAResource, targetNamespaces []string) error {
 	log.V(1).Info("Running garbage collection",
 		"expectedSACount", len(batch.Plan.UniqueAccounts),
 		"resourceCount", len(allResources),

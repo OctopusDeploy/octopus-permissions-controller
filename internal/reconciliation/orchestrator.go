@@ -1,4 +1,4 @@
-package staging
+package reconciliation
 
 import (
 	"context"
@@ -219,28 +219,15 @@ func (so *StageOrchestrator) requeueFailedResources(ctx context.Context, batch *
 		}
 
 		var fresh rules.WSAResource
-		var generation int64
-		var resourceVersion string
 
 		switch o := obj.(type) {
 		case *agentoctopuscomv1beta1.ClusterWorkloadServiceAccount:
 			fresh = rules.NewClusterWSAResource(o)
-			generation = o.Generation
-			resourceVersion = o.ResourceVersion
 		case *agentoctopuscomv1beta1.WorkloadServiceAccount:
 			fresh = rules.NewWSAResource(o)
-			generation = o.Generation
-			resourceVersion = o.ResourceVersion
 		}
 
-		event := &EventInfo{
-			Resource:        fresh,
-			EventType:       EventTypeUpdate,
-			Generation:      generation,
-			ResourceVersion: resourceVersion,
-			Timestamp:       time.Now(),
-		}
-
+		event := NewEventInfo(fresh, EventTypeUpdate)
 		so.collector.AddEvent(event)
 		requeued++
 	}
