@@ -93,13 +93,7 @@ func (r *ClusterWorkloadServiceAccountReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	eventType := reconciliation.EventTypeUpdate
-	if cwsa.GetGeneration() == 1 {
-		eventType = reconciliation.EventTypeCreate
-	}
-
-	event := reconciliation.NewEventInfo(cwsaResource, eventType)
-
+	event := reconciliation.NewCreateOrUpdateEventInfo(cwsaResource)
 	r.EventCollector.AddEvent(event)
 	log.V(1).Info("Event added to collector", "generation", cwsa.GetGeneration())
 	if r.Recorder != nil {

@@ -94,13 +94,7 @@ func (r *WorkloadServiceAccountReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 
-	eventType := reconciliation.EventTypeUpdate
-	if wsa.GetGeneration() == 1 {
-		eventType = reconciliation.EventTypeCreate
-	}
-
-	event := reconciliation.NewEventInfo(wsaResource, eventType)
-
+	event := reconciliation.NewCreateOrUpdateEventInfo(wsaResource)
 	r.EventCollector.AddEvent(event)
 	log.V(1).Info("Event added to collector", "generation", wsa.GetGeneration())
 	if r.Recorder != nil {

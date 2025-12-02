@@ -45,6 +45,15 @@ func NewEventInfo(resource rules.WSAResource, eventType EventType) *EventInfo {
 	}
 }
 
+func NewCreateOrUpdateEventInfo(resource rules.WSAResource) *EventInfo {
+	eventType := EventTypeUpdate
+	if resource.GetGeneration() == 1 {
+		eventType = EventTypeCreate
+	}
+
+	return NewEventInfo(resource, eventType)
+}
+
 type Batch struct {
 	ID               BatchID
 	Resources        []rules.WSAResource
