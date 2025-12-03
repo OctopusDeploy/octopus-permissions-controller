@@ -1,0 +1,8 @@
+tenant-acme
+tenant-globex
+tenant-initech
+tenant-umbrella
+tenant-wayne
+tenant-stark
+tenant-oscorp
+tenant-lexcorp

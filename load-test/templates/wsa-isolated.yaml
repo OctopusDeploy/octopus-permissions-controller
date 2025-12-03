@@ -1,0 +1,23 @@
+{{- $seed := add (mul .Iteration 7919) (mul .Replica 104729) .runID -}}
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: wsa-isolated-{{ .Iteration }}-{{ .Replica }}
+  namespace: {{ .namespace }}
+spec:
+  scope:
+    projects:
+      - {{ template "selectFromFile" (dict "file" "projects" "seed" $seed) }}
+    environments:
+      - {{ template "selectFromFile" (dict "file" "environments" "seed" (add $seed 104729)) }}
+    tenants:
+      - {{ template "selectFromFile" (dict "file" "tenants" "seed" (add $seed 1299709)) }}
+    steps:
+      - {{ template "selectFromFile" (dict "file" "steps" "seed" (add $seed 15485863)) }}
+    spaces:
+      - {{ template "selectFromFile" (dict "file" "spaces" "seed" (add $seed 32452843)) }}
+  permissions:
+    clusterRoles:
+      - apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: {{ template "selectFromFile" (dict "file" "cluster-roles" "seed" .Iteration) }}
