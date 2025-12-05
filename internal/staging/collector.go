@@ -73,7 +73,7 @@ type EventCollector struct {
 	mu             sync.RWMutex
 	batchReadyCh   chan []*EventInfo
 	batchTriggerCh chan struct{}
-	eventDebouncer *Debouncer
+	eventDebouncer Debouncer
 }
 
 func NewEventCollector(debounceInterval time.Duration, maxBatchSize int) *EventCollector {
