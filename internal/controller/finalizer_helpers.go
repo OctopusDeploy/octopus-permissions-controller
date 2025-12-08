@@ -15,8 +15,8 @@ func containsCleanupFinalizer(obj client.Object) bool {
 	return controllerutil.ContainsFinalizer(obj, ServiceAccountCleanupFinalizer)
 }
 
-func addCleanupFinalizer(obj client.Object) bool {
-	return controllerutil.AddFinalizer(obj, ServiceAccountCleanupFinalizer)
+func addCleanupFinalizer(obj client.Object) {
+	controllerutil.AddFinalizer(obj, ServiceAccountCleanupFinalizer)
 }
 
 func removeCleanupFinalizer(obj client.Object) bool {

@@ -561,7 +561,7 @@ var _ = Describe("WorkloadServiceAccount Controller", func() {
 
 			defer func() {
 				By("Cleanup the recorder test resource")
-				k8sClient.Delete(ctx, resource)
+				_ = k8sClient.Delete(ctx, resource)
 			}()
 
 			By("Reconciling with EventRecorder")
@@ -679,7 +679,6 @@ var _ = Describe("WorkloadServiceAccount Controller", func() {
 	})
 
 	Context("When testing error handling", func() {
-		const resourceName = "test-wsa-errors"
 		const namespace = "default"
 		ctx := context.Background()
 

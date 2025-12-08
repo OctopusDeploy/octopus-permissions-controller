@@ -527,7 +527,7 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 
 			defer func() {
 				By("Cleanup the recorder test resource")
-				k8sClient.Delete(ctx, resource)
+				_ = k8sClient.Delete(ctx, resource)
 			}()
 
 			By("Reconciling with EventRecorder")
@@ -640,7 +640,6 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 	})
 
 	Context("When testing error handling", func() {
-		const resourceName = "test-cwsa-errors"
 		ctx := context.Background()
 
 		It("should handle missing resources correctly", func() {
