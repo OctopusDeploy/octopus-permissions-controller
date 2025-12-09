@@ -303,6 +303,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsReporter := metrics.NewMetricsReporter(mgr.GetClient())
+
+	if err := mgr.Add(metricsReporter); err != nil {
+		setupLog.Error(err, "unable to add metrics reporter")
+		os.Exit(1)
+	}
+
 	// Create new prometheus metrics collector instance
 	octopusMetricsCollector := metrics.NewOctopusMetricsCollector(mgr.GetClient(), &engine)
 
