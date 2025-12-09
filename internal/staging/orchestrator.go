@@ -3,12 +3,10 @@ package staging
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -108,13 +106,6 @@ func (so *StageOrchestrator) Start(ctx context.Context) error {
 
 	collectorCtx, collectorCancel := context.WithCancel(ctx)
 	defer collectorCancel()
-
-	opcNamespace, err := getInstallationNamespace(so.client)
-	if err != nil {
-		log.V(0).Info("unable to get installation namespace", "error", err)
-	} else {
-		metrics.SetOpcNamespaceUid(string(opcNamespace.UID))
-	}
 
 	go func() {
 		if err := so.collector.Start(collectorCtx); err != nil {
@@ -426,16 +417,4 @@ func newWSAClientObject(res rules.WSAResource) client.Object {
 		return &agentoctopuscomv1beta1.ClusterWorkloadServiceAccount{}
 	}
 	return &agentoctopuscomv1beta1.WorkloadServiceAccount{}
-}
-
-func getInstallationNamespace(k8sClient client.Client) (*corev1.Namespace, error) {
-	// Grab the name of the namespace that the controller is installed in
-	installationNamespace, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
-	if err != nil {
-		return nil, err
-	}
-
-	opcNamespace := &corev1.Namespace{}
-	err = k8sClient.Get(context.TODO(), client.ObjectKey{Name: string(installationNamespace)}, opcNamespace)
-	return opcNamespace, err
 }
