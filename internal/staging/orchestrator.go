@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -429,14 +428,14 @@ func newWSAClientObject(res rules.WSAResource) client.Object {
 	return &agentoctopuscomv1beta1.WorkloadServiceAccount{}
 }
 
-func getInstallationNamespace(k8sClient client.Client) (*v1.Namespace, error) {
+func getInstallationNamespace(k8sClient client.Client) (*corev1.Namespace, error) {
 	// Grab the name of the namespace that the controller is installed in
 	installationNamespace, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 	if err != nil {
 		return nil, err
 	}
 
-	opcNamespace := &v1.Namespace{}
+	opcNamespace := &corev1.Namespace{}
 	err = k8sClient.Get(context.TODO(), client.ObjectKey{Name: string(installationNamespace)}, opcNamespace)
 	return opcNamespace, err
 }
