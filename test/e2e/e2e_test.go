@@ -366,6 +366,315 @@ var _ = Describe("Manager", Ordered, func() {
 			_, _ = utils.Run(cmd)
 		})
 
+		Context("Permission Types Testing", func() {
+			It("should create resources with ClusterRole permissions", func() {
+				wsaName := "test-wsa-clusterrole"
+
+				wsaYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-clusterrole
+  namespace: default
+spec:
+  scope:
+    projects:
+      - cluster-project
+  permissions:
+    clusterRoles:
+      - apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: view
+      - apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: edit
+`
+
+				By("creating a WorkloadServiceAccount with ClusterRole permissions")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsaYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
+
+				By("waiting for ServiceAccount to be created")
+				var saName string
+				verifySACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+					saName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifySACreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for ClusterRoleBindings to be created")
+				verifyClusterRoleBindingsCreated := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get clusterrolebindings -o json | "+
+						"jq -r '.items[] | select(.subjects[]?.name == \"%s\") | .metadata.name' | "+
+						"grep '^octopus-crb-'", saName)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-crb-"))
+				}
+				Eventually(verifyClusterRoleBindingsCreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying ClusterRoleBindings reference correct ClusterRoles and ServiceAccount")
+				verifyClusterRoleReferences := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get clusterrolebindings -o json | "+
+						"jq -r '.items[] | select(.subjects[]?.name == \"%s\") | .roleRef.name' | "+
+						"sort", saName)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("view"))
+					g.Expect(output).To(ContainSubstring("edit"))
+				}
+				Eventually(verifyClusterRoleReferences).Should(Succeed())
+
+				By("cleaning up test resources")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
+				_, _ = utils.Run(cmd)
+			})
+
+			It("should create resources with mixed permission types", func() {
+				wsaName := "test-wsa-mixed-permissions"
+
+				wsaYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-mixed-permissions
+  namespace: default
+spec:
+  scope:
+    projects:
+      - mixed-project
+    environments:
+      - production
+  permissions:
+    clusterRoles:
+      - apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: view
+    roles:
+      - apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: system:basic-user
+    permissions:
+      - apiGroups: [""]
+        resources: ["pods", "services"]
+        verbs: ["get", "list"]
+      - apiGroups: ["apps"]
+        resources: ["deployments"]
+        verbs: ["get", "list", "watch"]
+      - apiGroups: ["networking.k8s.io"]
+        resources: ["networkpolicies"]
+        verbs: ["get"]
+`
+
+				By("creating a WorkloadServiceAccount with mixed permission types")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsaYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
+
+				By("waiting for ServiceAccount to be created")
+				var saName string
+				verifySACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+					saName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifySACreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for ClusterRoleBinding to be created")
+				verifyClusterRoleBindingCreated := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get clusterrolebindings -o json | "+
+						"jq -r '.items[] | select(.subjects[]?.name == \"%s\") | .metadata.name' | "+
+						"grep '^octopus-crb-'", saName)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-crb-"))
+				}
+				Eventually(verifyClusterRoleBindingCreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for custom Role to be created")
+				verifyRoleCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "roles", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-role-"))
+				}
+				Eventually(verifyRoleCreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying custom Role has complex API groups and resources")
+				verifyRolePermissions := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get roles -n %s "+
+						"-l app.kubernetes.io/managed-by=octopus-permissions-controller "+
+						"-o json | jq -r '.items[0].rules[].apiGroups[]?' | sort | uniq", testNamespace)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("")) // core API group
+					g.Expect(output).To(ContainSubstring("apps"))
+					g.Expect(output).To(ContainSubstring("networking.k8s.io"))
+				}
+				Eventually(verifyRolePermissions).Should(Succeed())
+
+				By("verifying RoleBinding references the custom Role and ServiceAccount")
+				verifyRoleBindingCreated := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get rolebindings -n %s -o json | "+
+						"jq -r '.items[] | select(.subjects[]?.name == \"%s\") | .metadata.name' | "+
+						"grep '^octopus-rb-'", testNamespace, saName)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-rb-"))
+				}
+				Eventually(verifyRoleBindingCreated, 2*time.Minute).Should(Succeed())
+
+				By("cleaning up test resources")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
+				_, _ = utils.Run(cmd)
+			})
+
+			It("should create resources with complex custom PolicyRules", func() {
+				wsaName := "test-wsa-complex-policy"
+
+				wsaYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-wsa-complex-policy
+  namespace: default
+spec:
+  scope:
+    projects:
+      - policy-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["pods", "pods/log", "pods/status"]
+        verbs: ["get", "list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["deployments", "replicasets"]
+        verbs: ["get", "list", "watch", "create", "update"]
+        resourceNames: ["specific-deployment"]
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        resources: ["roles", "rolebindings"]
+        verbs: ["get", "list"]
+      - apiGroups: ["metrics.k8s.io"]
+        resources: ["pods", "nodes"]
+        verbs: ["get", "list"]
+      - apiGroups: ["custom.io"]
+        resources: ["customresources"]
+        verbs: ["*"]
+`
+
+				By("creating a WorkloadServiceAccount with complex custom PolicyRules")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(wsaYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
+
+				By("waiting for ServiceAccount to be created")
+				var saName string
+				verifySACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+					saName = strings.TrimSpace(strings.Split(output, " ")[0])
+				}
+				Eventually(verifySACreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying ServiceAccount has correct project annotation")
+				verifySAAnnotation := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/project}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("policy-project"))
+				}
+				Eventually(verifySAAnnotation).Should(Succeed())
+
+				By("waiting for Role with complex permissions to be created")
+				verifyRoleCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "roles", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-role-"))
+				}
+				Eventually(verifyRoleCreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying Role contains all complex API groups")
+				verifyComplexAPIGroups := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get roles -n %s "+
+						"-l app.kubernetes.io/managed-by=octopus-permissions-controller "+
+						"-o json | jq -r '.items[0].rules[].apiGroups[]?' | sort | uniq", testNamespace)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("apps"))
+					g.Expect(output).To(ContainSubstring("rbac.authorization.k8s.io"))
+					g.Expect(output).To(ContainSubstring("metrics.k8s.io"))
+					g.Expect(output).To(ContainSubstring("custom.io"))
+				}
+				Eventually(verifyComplexAPIGroups).Should(Succeed())
+
+				By("verifying Role contains resource names restrictions")
+				verifyResourceNames := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get roles -n %s "+
+						"-l app.kubernetes.io/managed-by=octopus-permissions-controller -o json | "+
+						"jq -r '.items[0].rules[] | select(.resourceNames != null) | .resourceNames[]?'",
+						testNamespace)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("specific-deployment"))
+				}
+				Eventually(verifyResourceNames).Should(Succeed())
+
+				By("verifying Role contains subresources")
+				verifySubresources := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get roles -n %s "+
+						"-l app.kubernetes.io/managed-by=octopus-permissions-controller "+
+						"-o json | jq -r '.items[0].rules[].resources[]?' | grep '/'", testNamespace)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("pods/log"))
+					g.Expect(output).To(ContainSubstring("pods/status"))
+				}
+				Eventually(verifySubresources).Should(Succeed())
+
+				By("verifying RoleBinding links Role and ServiceAccount")
+				verifyRoleBinding := func(g Gomega) {
+					kubectlCmd := fmt.Sprintf("kubectl get rolebindings -n %s -o json | "+
+						"jq -r '.items[] | select(.subjects[]?.name == \"%s\") | .metadata.name' | "+
+						"grep '^octopus-rb-'", testNamespace, saName)
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-rb-"))
+				}
+				Eventually(verifyRoleBinding, 2*time.Minute).Should(Succeed())
+
+				By("cleaning up test resources")
+				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
+				_, _ = utils.Run(cmd)
+			})
+		})
+
 		Context("Deletion Tests", func() {
 			It("should delete all resources when WSA with unique scope is deleted", func() {
 				wsaName := "test-wsa-delete-unique"
