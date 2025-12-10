@@ -1,0 +1,4 @@
+step-deploy
+step-validate
+step-test
+step-rollback

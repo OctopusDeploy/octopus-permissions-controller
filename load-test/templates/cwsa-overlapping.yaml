@@ -1,0 +1,21 @@
+{{- $seed := mul .Iteration 7919 -}}
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: cwsa-overlap-{{ .Iteration }}
+spec:
+  scope:
+    projects:
+      - {{ template "selectFromFile" (dict "file" "shared-projects" "seed" .Iteration) }}
+      - {{ template "selectFromFile" (dict "file" "projects" "seed" $seed) }}
+    environments:
+      - {{ template "selectFromFile" (dict "file" "environments" "seed" .Iteration) }}
+    tenants: []
+    steps: []
+    spaces:
+      - {{ template "selectFromFile" (dict "file" "spaces" "seed" (add $seed 32452843)) }}
+  permissions:
+    clusterRoles:
+      - apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: {{ template "firstFromFile" (dict "file" "cluster-roles") }}

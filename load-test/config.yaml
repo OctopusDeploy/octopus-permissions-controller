@@ -1,0 +1,70 @@
+global:
+  gc: false
+  measurements: []
+  functionTemplates:
+    - templates/scope-helpers.tpl
+
+jobs:
+  - name: create-isolated-wsas
+    jobType: create
+    jobIterations: 100
+    namespace: loadtest-ns
+    namespacedIterations: false
+    qps: 20
+    burst: 40
+    objects:
+      - objectTemplate: templates/wsa-isolated.yaml
+        replicas: 2
+        inputVars:
+          namespace: loadtest-ns
+          runID: 1
+
+  - name: create-overlapping-wsas
+    jobType: create
+    jobIterations: 100
+    namespace: loadtest-ns
+    namespacedIterations: false
+    qps: 20
+    burst: 40
+    objects:
+      - objectTemplate: templates/wsa-overlapping.yaml
+        replicas: 2
+        inputVars:
+          namespace: loadtest-ns
+          runID: 1
+
+  - name: create-wildcard-wsas
+    jobType: create
+    jobIterations: 50
+    namespace: loadtest-ns
+    namespacedIterations: false
+    qps: 20
+    burst: 40
+    objects:
+      - objectTemplate: templates/wsa-wildcard.yaml
+        replicas: 1
+        inputVars:
+          namespace: loadtest-ns
+          runID: 1
+
+  - name: create-isolated-cwsas
+    jobType: create
+    jobIterations: 25
+    qps: 20
+    burst: 40
+    objects:
+      - objectTemplate: templates/cwsa-isolated.yaml
+        replicas: 1
+        inputVars:
+          runID: 1
+
+  - name: create-overlapping-cwsas
+    jobType: create
+    jobIterations: 25
+    qps: 20
+    burst: 40
+    objects:
+      - objectTemplate: templates/cwsa-overlapping.yaml
+        replicas: 1
+        inputVars:
+          runID: 1

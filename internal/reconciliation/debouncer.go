@@ -5,21 +5,26 @@ import (
 	"time"
 )
 
-type Debouncer struct {
+type Debouncer interface {
+	Start(ctx context.Context)
+	Debounce()
+}
+
+type BasicDebouncer struct {
 	timeout  time.Duration
 	callback func()
 	timeChan chan time.Time
 }
 
-func NewDebouncer(timeout time.Duration, callback func()) *Debouncer {
-	return &Debouncer{
+func NewDebouncer(timeout time.Duration, callback func()) *BasicDebouncer {
+	return &BasicDebouncer{
 		timeout:  timeout,
 		callback: callback,
 		timeChan: make(chan time.Time, 100),
 	}
 }
 
-func (m *Debouncer) Start(ctx context.Context) {
+func (m *BasicDebouncer) Start(ctx context.Context) {
 	go func() {
 		var startedTime *time.Time
 
@@ -44,6 +49,6 @@ func (m *Debouncer) Start(ctx context.Context) {
 	}()
 }
 
-func (m *Debouncer) Debounce() {
+func (m *BasicDebouncer) Debounce() {
 	m.timeChan <- time.Now()
 }
