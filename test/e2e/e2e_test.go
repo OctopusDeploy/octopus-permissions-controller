@@ -404,24 +404,22 @@ spec:
 				_, err := utils.Run(cmd)
 				Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
 
-				By("waiting for ServiceAccount to be created")
+				By("waiting for ServiceAccount with correct annotations to be created")
 				var saName string
-				verifySACreated := func(g Gomega) {
+				verifySACreatedWithAnnotations := func(g Gomega) {
+					// First, get the ServiceAccount name
 					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
 						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
 					output, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(output).To(ContainSubstring("octopus-sa-"))
 					saName = strings.TrimSpace(strings.Split(output, " ")[0])
-				}
-				Eventually(verifySACreated, 2*time.Minute).Should(Succeed())
 
-				By("verifying ServiceAccount has all scope dimension annotations")
-				verifySAAnnotations := func(g Gomega) {
+					// Then verify all annotations are present and correct
 					// Check space annotation
-					cmd := exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
 						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/space}")
-					output, err := utils.Run(cmd)
+					output, err = utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(output).To(Equal("enterprise-space"))
 
@@ -453,7 +451,7 @@ spec:
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(output).To(Equal("deploy-application"))
 				}
-				Eventually(verifySAAnnotations).Should(Succeed())
+				Eventually(verifySACreatedWithAnnotations, 2*time.Minute).Should(Succeed())
 
 				By("waiting for Role to be created")
 				verifyRoleCreated := func(g Gomega) {
@@ -491,6 +489,63 @@ spec:
 					g.Expect(output).To(ContainSubstring("octopus-rb-"))
 				}
 				Eventually(verifyRBCreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying RoleBinding references correct Role and ServiceAccount")
+				verifyRBReferences := func(g Gomega) {
+					// Re-fetch current resource names to avoid race conditions
+					// Get current ServiceAccount name
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					currentSAName := strings.TrimSpace(strings.Split(output, " ")[0])
+
+					// Get current Role name
+					cmd = exec.Command("kubectl", "get", "roles", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					currentRoleName := strings.TrimSpace(strings.Split(output, " ")[0])
+
+					// Get current RoleBinding name
+					kubectlCmd := fmt.Sprintf(
+						"kubectl get rolebindings -n %s -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-rb-'",
+						testNamespace)
+					cmd = exec.Command("bash", "-c", kubectlCmd)
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					currentRBName := strings.TrimSpace(strings.Split(output, "\n")[0])
+
+					// Check that RoleBinding references the correct Role
+					cmd = exec.Command("kubectl", "get", "rolebinding", currentRBName, "-n", testNamespace,
+						"-o", "jsonpath={.roleRef.name}")
+					roleRefOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(roleRefOutput).To(Equal(currentRoleName), "RoleBinding should reference the correct Role")
+
+					// Check that RoleBinding references the correct ServiceAccount
+					cmd = exec.Command("kubectl", "get", "rolebinding", currentRBName, "-n", testNamespace,
+						"-o", "jsonpath={.subjects[0].name}")
+					subjectOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(subjectOutput).To(Equal(currentSAName), "RoleBinding should reference the correct ServiceAccount")
+
+					// Verify subject namespace is correct
+					cmd = exec.Command("kubectl", "get", "rolebinding", currentRBName, "-n", testNamespace,
+						"-o", "jsonpath={.subjects[0].namespace}")
+					subjectNsOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(subjectNsOutput).To(Equal(testNamespace), "RoleBinding subject should be in correct namespace")
+
+					// Verify subject kind is ServiceAccount
+					cmd = exec.Command("kubectl", "get", "rolebinding", currentRBName, "-n", testNamespace,
+						"-o", "jsonpath={.subjects[0].kind}")
+					subjectKindOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(subjectKindOutput).To(Equal("ServiceAccount"), "RoleBinding subject should be a ServiceAccount")
+
+				}
+				Eventually(verifyRBReferences).Should(Succeed())
 
 				By("cleaning up test resources")
 				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
