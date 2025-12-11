@@ -25,7 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/octopusdeploy/octopus-permissions-controller/testdata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -334,37 +333,6 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
-
-		It("should create ServiceAccount and roles when WorkloadServiceAccount is created", func() {
-			wsaName := "test-wsa"
-
-			By("creating a WorkloadServiceAccount using kubectl apply")
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			data := testdata.E2E
-			yaml, err := data.ReadFile("e2e/simple.yaml")
-			if err != nil {
-				Fail("Failed to read testdata/simple.yaml")
-			}
-			cmd.Stdin = strings.NewReader(string(yaml))
-
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
-
-			By("waiting for the controller to reconcile and create ServiceAccount")
-			verifyServiceAccountCreated := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
-					"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred(), "Failed to list ServiceAccounts")
-				g.Expect(output).NotTo(BeEmpty(), "Expected at least one ServiceAccount")
-				g.Expect(output).To(ContainSubstring("octopus-sa-"), "ServiceAccount should have octopus-sa- prefix")
-			}
-			Eventually(verifyServiceAccountCreated, 2*time.Minute).Should(Succeed())
-
-			By("cleaning up test resources")
-			cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
-			_, _ = utils.Run(cmd)
-		})
 
 		Context("Scope Testing", func() {
 			It("should create resources with all scope dimensions", func() {
