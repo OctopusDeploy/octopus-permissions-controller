@@ -373,53 +373,16 @@ spec:
 				Expect(err).NotTo(HaveOccurred(), "Failed to create WorkloadServiceAccount")
 
 				By("waiting for ServiceAccount with correct annotations to be created")
-				var saName string
-				verifySACreatedWithAnnotations := func(g Gomega) {
-					// First, get the ServiceAccount name
-					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
-						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
-					output, err := utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(ContainSubstring("octopus-sa-"))
-					saName = strings.TrimSpace(strings.Split(output, " ")[0])
-
-					// Then verify all annotations are present and correct
-					// Check space annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/space}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("enterprise-space"))
-
-					// Check project annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/project}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("web-app-project"))
-
-					// Check environment annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/environment}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("staging"))
-
-					// Check tenant annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/tenant}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("customer-north"))
-
-					// Check step annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/step}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("deploy-application"))
+				wsaAnnotations := map[string]string{
+					"agent.octopus.com/space":       "enterprise-space",
+					"agent.octopus.com/project":     "web-app-project",
+					"agent.octopus.com/environment": "staging",
+					"agent.octopus.com/tenant":      "customer-north",
+					"agent.octopus.com/step":        "deploy-application",
 				}
-				Eventually(verifySACreatedWithAnnotations, 2*time.Minute).Should(Succeed())
+				Eventually(func(g Gomega) {
+					serviceAccountAnnotationVerifier(g, testNamespace, wsaAnnotations)()
+				}, 2*time.Minute).Should(Succeed())
 
 				By("waiting for Role to be created")
 				verifyRoleCreated := func(g Gomega) {
@@ -557,53 +520,16 @@ spec:
 				Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterWorkloadServiceAccount")
 
 				By("waiting for ServiceAccount with correct annotations to be created")
-				var saName string
-				verifySACreatedWithAnnotations := func(g Gomega) {
-					// First, get the ServiceAccount name
-					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
-						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
-					output, err := utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(ContainSubstring("octopus-sa-"))
-					saName = strings.TrimSpace(strings.Split(output, " ")[0])
-
-					// Then verify all annotations are present and correct
-					// Check space annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/space}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("enterprise-space"))
-
-					// Check project annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/project}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("cluster-web-project"))
-
-					// Check environment annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/environment}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("production"))
-
-					// Check tenant annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/tenant}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("customer-global"))
-
-					// Check step annotation
-					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
-						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/step}")
-					output, err = utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(output).To(Equal("deploy-cluster-app"))
+				cwsaAnnotations := map[string]string{
+					"agent.octopus.com/space":       "enterprise-space",
+					"agent.octopus.com/project":     "cluster-web-project",
+					"agent.octopus.com/environment": "production",
+					"agent.octopus.com/tenant":      "customer-global",
+					"agent.octopus.com/step":        "deploy-cluster-app",
 				}
-				Eventually(verifySACreatedWithAnnotations, 2*time.Minute).Should(Succeed())
+				Eventually(func(g Gomega) {
+					serviceAccountAnnotationVerifier(g, testNamespace, cwsaAnnotations)()
+				}, 2*time.Minute).Should(Succeed())
 
 				By("waiting for ClusterRole to be created")
 				verifyClusterRoleCreated := func(g Gomega) {
@@ -631,7 +557,8 @@ spec:
 
 				By("waiting for ClusterRoleBinding to be created")
 				verifyCRBCreated := func(g Gomega) {
-					kubectlCmd := "kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-crb-'"
+					kubectlCmd := "kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | " +
+						"tr ' ' '\\n' | grep '^octopus-crb-'"
 					cmd := exec.Command("bash", "-c", kubectlCmd)
 					output, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred())
@@ -657,7 +584,8 @@ spec:
 					currentClusterRoleName := strings.TrimSpace(strings.Split(output, " ")[0])
 
 					// Get current ClusterRoleBinding name
-					kubectlCmd := "kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-crb-'"
+					kubectlCmd := "kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | " +
+						"tr ' ' '\\n' | grep '^octopus-crb-'"
 					cmd = exec.Command("bash", "-c", kubectlCmd)
 					output, err = utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred())
@@ -668,7 +596,8 @@ spec:
 						"-o", "jsonpath={.roleRef.name}")
 					roleRefOutput, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(roleRefOutput).To(Equal(currentClusterRoleName), "ClusterRoleBinding should reference the correct ClusterRole")
+					g.Expect(roleRefOutput).To(Equal(currentClusterRoleName),
+						"ClusterRoleBinding should reference the correct ClusterRole")
 
 					// Check that ClusterRoleBinding references the correct ServiceAccount
 					cmd = exec.Command("kubectl", "get", "clusterrolebinding", currentCRBName,
@@ -1304,6 +1233,24 @@ spec:
 		})
 	})
 })
+
+// serviceAccountAnnotationVerifier creates a verification function that checks ServiceAccount annotations
+// against the provided expected values. Returns a function compatible with Eventually().
+func serviceAccountAnnotationVerifier(g Gomega, testNamespace string,
+	expectedAnnotations map[string]string) func() string {
+	return func() string {
+		kc := NewKubectlHelper(g, testNamespace)
+		saName := kc.ServiceAccount().GetFirstByLabel("app.kubernetes.io/managed-by=octopus-permissions-controller")
+
+		for key, expectedValue := range expectedAnnotations {
+			actualValue := kc.ServiceAccount().GetAnnotation(saName, key)
+			g.Expect(actualValue).To(Equal(expectedValue),
+				fmt.Sprintf("Annotation %s should be %s", key, expectedValue))
+		}
+
+		return saName
+	}
+}
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.
 // It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
