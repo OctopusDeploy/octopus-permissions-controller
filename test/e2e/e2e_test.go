@@ -335,7 +335,7 @@ var _ = Describe("Manager", Ordered, func() {
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
 		Context("Scope Testing", func() {
-			It("should create resources with all scope dimensions", func() {
+			It("should create wsa resources with all scope dimensions", func() {
 				wsaName := "test-wsa-all-dimensions"
 
 				wsaYAML := `
@@ -517,6 +517,185 @@ spec:
 
 				By("cleaning up test resources")
 				cmd = exec.Command("kubectl", "delete", "workloadserviceaccount", wsaName, "-n", testNamespace)
+				_, _ = utils.Run(cmd)
+			})
+
+			It("should create cwsa resources with all scope dimensions", func() {
+				cwsaName := "test-cwsa-all-dimensions"
+
+				cwsaYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: test-cwsa-all-dimensions
+spec:
+  scope:
+    spaces:
+      - enterprise-space
+    projects:
+      - cluster-web-project
+    environments:
+      - production
+    tenants:
+      - customer-global
+    steps:
+      - deploy-cluster-app
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["nodes", "persistentvolumes"]
+        verbs: ["get", "list"]
+      - apiGroups: ["apps"]
+        resources: ["deployments"]
+        verbs: ["get", "list", "watch"]
+`
+
+				By("creating a ClusterWorkloadServiceAccount with all five scope dimensions")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(cwsaYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterWorkloadServiceAccount")
+
+				By("waiting for ServiceAccount with correct annotations to be created")
+				var saName string
+				verifySACreatedWithAnnotations := func(g Gomega) {
+					// First, get the ServiceAccount name
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+					saName = strings.TrimSpace(strings.Split(output, " ")[0])
+
+					// Then verify all annotations are present and correct
+					// Check space annotation
+					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/space}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("enterprise-space"))
+
+					// Check project annotation
+					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/project}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("cluster-web-project"))
+
+					// Check environment annotation
+					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/environment}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("production"))
+
+					// Check tenant annotation
+					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/tenant}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("customer-global"))
+
+					// Check step annotation
+					cmd = exec.Command("kubectl", "get", "serviceaccount", saName, "-n", testNamespace,
+						"-o", "jsonpath={.metadata.annotations.agent\\.octopus\\.com/step}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("deploy-cluster-app"))
+				}
+				Eventually(verifySACreatedWithAnnotations, 2*time.Minute).Should(Succeed())
+
+				By("waiting for ClusterRole to be created")
+				verifyClusterRoleCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "clusterroles",
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-clusterrole-"))
+				}
+				Eventually(verifyClusterRoleCreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying ClusterRole has correct permissions")
+				verifyClusterRolePermissions := func(g Gomega) {
+					cmd := exec.Command("bash", "-c",
+						"kubectl get clusterroles "+
+							"-l app.kubernetes.io/managed-by=octopus-permissions-controller "+
+							"-o jsonpath='{.items[0].rules[*].resources}' | tr ' ' '\\n'")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("nodes"))
+					g.Expect(output).To(ContainSubstring("persistentvolumes"))
+					g.Expect(output).To(ContainSubstring("deployments"))
+				}
+				Eventually(verifyClusterRolePermissions).Should(Succeed())
+
+				By("waiting for ClusterRoleBinding to be created")
+				verifyCRBCreated := func(g Gomega) {
+					kubectlCmd := "kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-crb-'"
+					cmd := exec.Command("bash", "-c", kubectlCmd)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-crb-"))
+				}
+				Eventually(verifyCRBCreated, 2*time.Minute).Should(Succeed())
+
+				By("verifying ClusterRoleBinding references correct ClusterRole and ServiceAccount")
+				verifyCRBReferences := func(g Gomega) {
+					// Re-fetch current resource names to avoid race conditions
+					// Get current ServiceAccount name
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					currentSAName := strings.TrimSpace(strings.Split(output, " ")[0])
+
+					// Get current ClusterRole name
+					cmd = exec.Command("kubectl", "get", "clusterroles",
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					currentClusterRoleName := strings.TrimSpace(strings.Split(output, " ")[0])
+
+					// Get current ClusterRoleBinding name
+					kubectlCmd := "kubectl get clusterrolebindings -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\\n' | grep '^octopus-crb-'"
+					cmd = exec.Command("bash", "-c", kubectlCmd)
+					output, err = utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					currentCRBName := strings.TrimSpace(strings.Split(output, "\n")[0])
+
+					// Check that ClusterRoleBinding references the correct ClusterRole
+					cmd = exec.Command("kubectl", "get", "clusterrolebinding", currentCRBName,
+						"-o", "jsonpath={.roleRef.name}")
+					roleRefOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(roleRefOutput).To(Equal(currentClusterRoleName), "ClusterRoleBinding should reference the correct ClusterRole")
+
+					// Check that ClusterRoleBinding references the correct ServiceAccount
+					cmd = exec.Command("kubectl", "get", "clusterrolebinding", currentCRBName,
+						"-o", "jsonpath={.subjects[0].name}")
+					subjectOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(subjectOutput).To(Equal(currentSAName), "ClusterRoleBinding should reference the correct ServiceAccount")
+
+					// Verify subject namespace is correct
+					cmd = exec.Command("kubectl", "get", "clusterrolebinding", currentCRBName,
+						"-o", "jsonpath={.subjects[0].namespace}")
+					subjectNsOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(subjectNsOutput).To(Equal(testNamespace), "ClusterRoleBinding subject should be in correct namespace")
+
+					// Verify subject kind is ServiceAccount
+					cmd = exec.Command("kubectl", "get", "clusterrolebinding", currentCRBName,
+						"-o", "jsonpath={.subjects[0].kind}")
+					subjectKindOutput, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(subjectKindOutput).To(Equal("ServiceAccount"), "ClusterRoleBinding subject should be a ServiceAccount")
+
+				}
+				Eventually(verifyCRBReferences).Should(Succeed())
+
+				By("cleaning up test resources")
+				cmd = exec.Command("kubectl", "delete", "clusterworkloadserviceaccount", cwsaName)
 				_, _ = utils.Run(cmd)
 			})
 		})
@@ -915,6 +1094,212 @@ spec:
 					g.Expect(err).To(HaveOccurred(), "ClusterRoleBinding should be deleted")
 				}
 				Eventually(verifyCRBDeleted, 2*time.Minute).Should(Succeed())
+			})
+
+			It("should preserve cluster resources when CWSA with shared scope is deleted", func() {
+				cwsa1YAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: test-cwsa-shared-1
+spec:
+  scope:
+    projects:
+      - shared-cluster-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["nodes"]
+        verbs: ["get"]
+`
+
+				cwsa2YAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: test-cwsa-shared-2
+spec:
+  scope:
+    projects:
+      - shared-cluster-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["persistentvolumes"]
+        verbs: ["list"]
+`
+
+				By("creating first ClusterWorkloadServiceAccount with shared scope")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(cwsa1YAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("creating second ClusterWorkloadServiceAccount with same shared scope")
+				cmd = exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(cwsa2YAML)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for ServiceAccounts to be created")
+				verifySAsCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"))
+				}
+				Eventually(verifySAsCreated, 2*time.Minute).Should(Succeed())
+
+				By("waiting for multiple ClusterRoles to be created")
+				verifyClusterRolesCreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "clusterroles",
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					clusterRoles := strings.Fields(output)
+					g.Expect(len(clusterRoles)).To(BeNumerically(">=", 2), "Should have at least 2 ClusterRoles")
+				}
+				Eventually(verifyClusterRolesCreated, 2*time.Minute).Should(Succeed())
+
+				By("deleting first ClusterWorkloadServiceAccount")
+				cmd = exec.Command("kubectl", "delete", "clusterworkloadserviceaccount", "test-cwsa-shared-1")
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying ServiceAccounts are still present")
+				time.Sleep(10 * time.Second) // Give time for potential cleanup
+				verifySAsPreserved := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"), "ServiceAccounts should still exist")
+				}
+				Eventually(verifySAsPreserved).Should(Succeed())
+
+				By("verifying at least one ClusterRole still exists (from cwsa-shared-2)")
+				verifyClusterRolePreserved := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "clusterroles",
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-clusterrole-"), "At least one ClusterRole should still exist")
+				}
+				Eventually(verifyClusterRolePreserved).Should(Succeed())
+
+				By("cleaning up second ClusterWorkloadServiceAccount")
+				cmd = exec.Command("kubectl", "delete", "clusterworkloadserviceaccount", "test-cwsa-shared-2")
+				_, _ = utils.Run(cmd)
+			})
+
+			It("should clean up orphaned cluster resources when CWSA is deleted", func() {
+				cwsaBroadYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: test-cwsa-broad
+spec:
+  scope:
+    spaces:
+      - cluster-test-space
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["nodes"]
+        verbs: ["get"]
+`
+
+				cwsaSpecificYAML := `
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: test-cwsa-specific
+spec:
+  scope:
+    spaces:
+      - cluster-test-space
+    projects:
+      - cluster-specific-project
+  permissions:
+    permissions:
+      - apiGroups: [""]
+        resources: ["persistentvolumes"]
+        verbs: ["get"]
+`
+
+				By("creating CWSA with broad scope")
+				cmd := exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(cwsaBroadYAML)
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for initial ServiceAccounts")
+				time.Sleep(5 * time.Second)
+
+				By("creating CWSA with more specific scope")
+				cmd = exec.Command("kubectl", "apply", "-f", "-")
+				cmd.Stdin = strings.NewReader(cwsaSpecificYAML)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for specific ServiceAccount to be created")
+				var specificSAName string
+				verifySpecificSACreated := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller",
+						"-o", "json")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					// Parse JSON to find SA with project annotation
+					var saList struct {
+						Items []struct {
+							Metadata struct {
+								Name        string            `json:"name"`
+								Annotations map[string]string `json:"annotations"`
+							} `json:"metadata"`
+						} `json:"items"`
+					}
+					err = json.Unmarshal([]byte(output), &saList)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					for _, sa := range saList.Items {
+						if sa.Metadata.Annotations["agent.octopus.com/project"] == "cluster-specific-project" {
+							specificSAName = sa.Metadata.Name
+							break
+						}
+					}
+					g.Expect(specificSAName).NotTo(BeEmpty(), "Should find specific SA with project annotation")
+				}
+				Eventually(verifySpecificSACreated, 2*time.Minute).Should(Succeed())
+
+				By("deleting the specific CWSA")
+				cmd = exec.Command("kubectl", "delete", "clusterworkloadserviceaccount", "test-cwsa-specific")
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying the specific ServiceAccount is deleted (orphaned)")
+				verifySADeleted := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccount", specificSAName, "-n", testNamespace)
+					_, err := utils.Run(cmd)
+					g.Expect(err).To(HaveOccurred(), "Specific ServiceAccount should be deleted as it's orphaned")
+				}
+				Eventually(verifySADeleted, 2*time.Minute).Should(Succeed())
+
+				By("verifying broad-scoped ServiceAccounts still exist")
+				verifyBroadSAsExist := func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "serviceaccounts", "-n", testNamespace,
+						"-l", "app.kubernetes.io/managed-by=octopus-permissions-controller", "-o", "jsonpath={.items[*].metadata.name}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("octopus-sa-"), "Broad-scoped ServiceAccounts should remain")
+				}
+				Eventually(verifyBroadSAsExist).Should(Succeed())
+
+				By("cleaning up broad CWSA")
+				cmd = exec.Command("kubectl", "delete", "clusterworkloadserviceaccount", "test-cwsa-broad")
+				_, _ = utils.Run(cmd)
 			})
 		})
 	})
