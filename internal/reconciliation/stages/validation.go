@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -27,14 +27,10 @@ func (vs *ValidationStage) Name() string {
 	return "validation"
 }
 
-func (vs *ValidationStage) Execute(ctx context.Context, batch *staging.Batch) error {
+func (vs *ValidationStage) Execute(ctx context.Context, batch *reconciliation.Batch) error {
 	log.Info("Validating batch", "batchID", batch.ID)
 
-	result := &staging.ValidationResult{
-		Valid:    true,
-		Errors:   []staging.ValidationError{},
-		Warnings: []staging.ValidationWarning{},
-	}
+	result := reconciliation.NewValidationResult()
 
 	if err := vs.checkOwnerReferences(ctx, batch, result); err != nil {
 		return fmt.Errorf("failed to check owner references: %w", err)
@@ -59,7 +55,7 @@ func (vs *ValidationStage) Execute(ctx context.Context, batch *staging.Batch) er
 	return nil
 }
 
-func (vs *ValidationStage) checkOwnerReferences(ctx context.Context, batch *staging.Batch, result *staging.ValidationResult) error {
+func (vs *ValidationStage) checkOwnerReferences(ctx context.Context, batch *reconciliation.Batch, result *reconciliation.ValidationResult) error {
 	if batch.Plan == nil {
 		return fmt.Errorf("batch plan is nil")
 	}
@@ -80,12 +76,11 @@ func (vs *ValidationStage) checkOwnerReferences(ctx context.Context, batch *stag
 			}
 
 			if !vs.isOctopusManaged(existing.Labels) {
-				result.Errors = append(result.Errors, staging.ValidationError{
-					Type:     "OwnerConflict",
-					Resource: fmt.Sprintf("ServiceAccount/%s/%s", namespace, sa.Name),
-					Message:  "Service account exists but is not managed by octopus-permissions-controller",
-				})
-				result.Valid = false
+				result.AddError(
+					"OwnerConflict",
+					fmt.Sprintf("ServiceAccount/%s/%s", namespace, sa.Name),
+					"Service account exists but is not managed by octopus-permissions-controller",
+				)
 			}
 		}
 	}
@@ -112,18 +107,18 @@ func (vs *ValidationStage) checkOwnerReferences(ctx context.Context, batch *stag
 		}
 
 		if !vs.isOctopusManaged(existing.Labels) {
-			result.Warnings = append(result.Warnings, staging.ValidationWarning{
-				Type:     "OwnerConflict",
-				Resource: fmt.Sprintf("Role/%s/%s", namespace, roleName),
-				Message:  "Role exists but is not managed by octopus-permissions-controller",
-			})
+			result.AddWarning(
+				"OwnerConflict",
+				fmt.Sprintf("Role/%s/%s", namespace, roleName),
+				"Role exists but is not managed by octopus-permissions-controller",
+			)
 		}
 	}
 
 	return nil
 }
 
-func (vs *ValidationStage) checkNamespaceExistence(ctx context.Context, batch *staging.Batch, result *staging.ValidationResult) error {
+func (vs *ValidationStage) checkNamespaceExistence(ctx context.Context, batch *reconciliation.Batch, result *reconciliation.ValidationResult) error {
 	if batch.Plan == nil {
 		return fmt.Errorf("batch plan is nil")
 	}
@@ -134,12 +129,11 @@ func (vs *ValidationStage) checkNamespaceExistence(ctx context.Context, batch *s
 
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				result.Errors = append(result.Errors, staging.ValidationError{
-					Type:     "NamespaceNotFound",
-					Resource: fmt.Sprintf("Namespace/%s", namespace),
-					Message:  fmt.Sprintf("Target namespace '%s' does not exist", namespace),
-				})
-				result.Valid = false
+				result.AddError(
+					"NamespaceNotFound",
+					fmt.Sprintf("Namespace/%s", namespace),
+					fmt.Sprintf("Target namespace '%s' does not exist", namespace),
+				)
 				continue
 			}
 			return fmt.Errorf("failed to get namespace %s: %w", namespace, err)
