@@ -26,9 +26,9 @@ import (
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation/stages"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging/stages"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -281,15 +281,15 @@ func main() {
 
 	eventRecorder := mgr.GetEventRecorderFor("octopus-permissions-controller")
 
-	eventCollector := staging.NewEventCollector(batchDebounceInterval, batchMaxSize)
+	eventCollector := reconciliation.NewEventCollector(batchDebounceInterval, batchMaxSize)
 
-	stagingStages := []staging.Stage{
+	stagingStages := []reconciliation.Stage{
 		stages.NewPlanningStage(&engine),
 		stages.NewValidationStage(mgr.GetClient()),
 		stages.NewExecutionStage(&engine),
 	}
 
-	orchestrator := staging.NewStageOrchestrator(
+	orchestrator := reconciliation.NewStageOrchestrator(
 		stagingStages,
 		eventCollector,
 		&engine,
@@ -300,6 +300,13 @@ func main() {
 
 	if err := mgr.Add(orchestrator); err != nil {
 		setupLog.Error(err, "unable to add stage orchestrator")
+		os.Exit(1)
+	}
+
+	metricsReporter := metrics.NewMetricsReporter(mgr.GetClient())
+
+	if err := mgr.Add(metricsReporter); err != nil {
+		setupLog.Error(err, "unable to add metrics reporter")
 		os.Exit(1)
 	}
 

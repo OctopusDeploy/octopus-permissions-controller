@@ -41,6 +41,12 @@ type WSAResource interface {
 	// GetOwnerObject returns the underlying WSA or CWSA object for owner references
 	GetOwnerObject() interface{}
 
+	// GetGeneration returns the generation of the underlying WSA or CWSA object
+	GetGeneration() int64
+
+	// GetResourceVersion returns the resource version of the underlying WSA or CWSA object
+	GetResourceVersion() string
+
 	// UpdateCondition applies a status condition using SSA and updates the in-memory resource
 	UpdateCondition(
 		ctx context.Context, c client.Client, conditionType string, status metav1.ConditionStatus,
@@ -95,6 +101,14 @@ func (w *wsaAdapter) IsClusterScoped() bool {
 
 func (w *wsaAdapter) GetOwnerObject() interface{} {
 	return w.wsa
+}
+
+func (w *wsaAdapter) GetGeneration() int64 {
+	return w.wsa.GetGeneration()
+}
+
+func (w *wsaAdapter) GetResourceVersion() string {
+	return w.wsa.GetResourceVersion()
 }
 
 func (w *wsaAdapter) UpdateCondition(
@@ -152,6 +166,14 @@ func (c *clusterWSAAdapter) IsClusterScoped() bool {
 
 func (c *clusterWSAAdapter) GetOwnerObject() interface{} {
 	return c.cwsa
+}
+
+func (w *clusterWSAAdapter) GetGeneration() int64 {
+	return w.cwsa.GetGeneration()
+}
+
+func (w *clusterWSAAdapter) GetResourceVersion() string {
+	return w.cwsa.GetResourceVersion()
 }
 
 func (c *clusterWSAAdapter) UpdateCondition(
