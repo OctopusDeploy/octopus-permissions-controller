@@ -26,9 +26,9 @@ import (
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation/stages"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging"
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/staging/stages"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -100,11 +100,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.DurationVar(&batchDebounceInterval, "batch-debounce-interval", 500*time.Millisecond,
+	flag.DurationVar(&batchDebounceInterval, "batch-debounce-interval", 2*time.Second,
 		"Event collection debounce interval for batch processing")
-	flag.IntVar(&batchMaxSize, "batch-max-size", 100,
+	flag.IntVar(&batchMaxSize, "batch-max-size", 500,
 		"Maximum batch size for reconciliation")
-	flag.DurationVar(&stageTimeout, "stage-timeout", 30*time.Second,
+	flag.DurationVar(&stageTimeout, "stage-timeout", 2*time.Minute,
 		"Maximum duration for stage execution")
 	flag.DurationVar(&cacheSyncPeriod, "cache-sync-period", 10*time.Hour,
 		"Minimum frequency at which watched resources are reconciled (default 10h). "+
@@ -281,15 +281,15 @@ func main() {
 
 	eventRecorder := mgr.GetEventRecorderFor("octopus-permissions-controller")
 
-	eventCollector := staging.NewEventCollector(batchDebounceInterval, batchMaxSize)
+	eventCollector := reconciliation.NewEventCollector(batchDebounceInterval, batchMaxSize)
 
-	stagingStages := []staging.Stage{
+	stagingStages := []reconciliation.Stage{
 		stages.NewPlanningStage(&engine),
 		stages.NewValidationStage(mgr.GetClient()),
 		stages.NewExecutionStage(&engine),
 	}
 
-	orchestrator := staging.NewStageOrchestrator(
+	orchestrator := reconciliation.NewStageOrchestrator(
 		stagingStages,
 		eventCollector,
 		&engine,
@@ -300,6 +300,13 @@ func main() {
 
 	if err := mgr.Add(orchestrator); err != nil {
 		setupLog.Error(err, "unable to add stage orchestrator")
+		os.Exit(1)
+	}
+
+	metricsReporter := metrics.NewMetricsReporter(mgr.GetClient())
+
+	if err := mgr.Add(metricsReporter); err != nil {
+		setupLog.Error(err, "unable to add metrics reporter")
 		os.Exit(1)
 	}
 

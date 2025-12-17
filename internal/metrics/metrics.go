@@ -34,6 +34,14 @@ var (
 		[]string{"resource_type"},
 	)
 
+	opc = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "octopus_permissions_controller",
+			Help: "Context about the controller is running",
+		},
+		[]string{"namespace_uid"},
+	)
+
 	// Build information collector (provides go_build_info metric with path, version, checksum labels)
 	buildInfoCollector = collectors.NewBuildInfoCollector()
 )
@@ -44,11 +52,8 @@ func init() {
 		reconciliationDurationSeconds,
 		finalizerStuckTotal,
 		buildInfoCollector,
+		opc,
 	)
-}
-
-func IncFinalizerStuck(resourceType string) {
-	finalizerStuckTotal.WithLabelValues(resourceType).Inc()
 }
 
 func IncRequestsTotal(requestIdentifier string, scopeMatched bool) {
@@ -70,4 +75,8 @@ func RecordReconciliationDurationFunc(controllerType string, startTime time.Time
 		panic(err) // Re-panic to maintain original behavior
 	}
 	ObserveReconciliationDuration(controllerType, "success", duration)
+}
+
+func SetOpcNamespaceUid(namespaceUID string) {
+	opc.WithLabelValues(namespaceUID).Set(1)
 }

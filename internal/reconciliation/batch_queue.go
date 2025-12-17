@@ -1,4 +1,4 @@
-package staging
+package reconciliation
 
 import (
 	"sync"
@@ -35,6 +35,9 @@ func NewBatchQueue() BatchQueue {
 }
 
 func (q *batchQueue) Add(batch *Batch) {
+	if batch == nil {
+		return
+	}
 	q.mu.Lock()
 	q.batches[batch.ID] = batch
 	q.mu.Unlock()
@@ -42,6 +45,9 @@ func (q *batchQueue) Add(batch *Batch) {
 }
 
 func (q *batchQueue) AddRateLimited(batch *Batch) {
+	if batch == nil {
+		return
+	}
 	q.mu.Lock()
 	q.batches[batch.ID] = batch
 	q.mu.Unlock()
@@ -68,10 +74,16 @@ func (q *batchQueue) Get() (*Batch, bool) {
 }
 
 func (q *batchQueue) Done(batch *Batch) {
+	if batch == nil {
+		return
+	}
 	q.queue.Done(batch.ID)
 }
 
 func (q *batchQueue) Forget(batch *Batch) {
+	if batch == nil {
+		return
+	}
 	q.mu.Lock()
 	delete(q.batches, batch.ID)
 	q.mu.Unlock()
@@ -79,6 +91,9 @@ func (q *batchQueue) Forget(batch *Batch) {
 }
 
 func (q *batchQueue) NumRequeues(batch *Batch) int {
+	if batch == nil {
+		return 0
+	}
 	return q.queue.NumRequeues(batch.ID)
 }
 

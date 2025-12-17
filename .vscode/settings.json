@@ -1,3 +1,35 @@
 {
-  "cSpell.words": ["Debouncer", "metav", "rbacv", "synctest"]
+  "cSpell.words": [
+    "agentoctopuscomv",
+    "apimachinery",
+    "Backpressure",
+    "cainjector",
+    "clusterrole",
+    "clusterrolebindings",
+    "clusterworkloadserviceaccount",
+    "clusterworkloadserviceaccounts",
+    "controllerutil",
+    "corev",
+    "cwsa",
+    "Debouncer",
+    "expirable",
+    "Finalizer",
+    "finalizers",
+    "golangci",
+    "gomega",
+    "internaltypes",
+    "jetstack",
+    "kubebuilder",
+    "metav",
+    "octopusdeploy",
+    "onsi",
+    "promauto",
+    "rbacv",
+    "rolebindings",
+    "serviceaccount",
+    "serviceaccounts",
+    "stretchr",
+    "synctest",
+    "workloadserviceaccount"
+  ]
 }
