@@ -72,6 +72,9 @@ jobs:
 
       - name: Build and push to artifactory
         if: github.event_name == 'release' || steps.changed-files-specific.outputs.any_changed == 'true'
+        # Uses depot for faster builds using caching
+        # If you've been invited and have an account, use that
+        # Otherwise, check the Modern Deployments 1Password entry for Depot for more information (https://start.1password.com/open/i?a=EMK7BYQXKRH6ZF3YMIMOAEXXCU&v=j6nlwthuylaazs5sum3s2c4bgm&i=amjpl7zpeoux2emj3arak562wy&h=octopusdeploy.1password.com)
         uses: depot/build-push-action@v1
         with:
           project: 12cbt4ckb3
