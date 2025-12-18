@@ -18,20 +18,21 @@ type OctopusMetricsCollector struct {
 	engine rules.Engine
 
 	// Metric descriptors
-	wsaTotalDesc                    *prometheus.Desc
-	cwsaTotalDesc                   *prometheus.Desc
-	serviceAccountsTotalDesc        *prometheus.Desc
-	rolesTotalDesc                  *prometheus.Desc
-	clusterRolesTotalDesc           *prometheus.Desc
-	roleBindingsTotalDesc           *prometheus.Desc
-	clusterRoleBindingsTotalDesc    *prometheus.Desc
-	distinctScopesTotalDesc         *prometheus.Desc
-	scopesWithProjectsTotalDesc     *prometheus.Desc
-	scopesWithEnvironmentsTotalDesc *prometheus.Desc
-	scopesWithTenantsTotalDesc      *prometheus.Desc
-	scopesWithStepsTotalDesc        *prometheus.Desc
-	scopesWithSpacesTotalDesc       *prometheus.Desc
-	targetNamespacesTotalDesc       *prometheus.Desc
+	wsaTotalDesc                     *prometheus.Desc
+	cwsaTotalDesc                    *prometheus.Desc
+	serviceAccountsTotalDesc         *prometheus.Desc
+	rolesTotalDesc                   *prometheus.Desc
+	clusterRolesTotalDesc            *prometheus.Desc
+	roleBindingsTotalDesc            *prometheus.Desc
+	clusterRoleBindingsTotalDesc     *prometheus.Desc
+	distinctScopesTotalDesc          *prometheus.Desc
+	scopesWithProjectsTotalDesc      *prometheus.Desc
+	scopesWithProjectGroupsTotalDesc *prometheus.Desc
+	scopesWithEnvironmentsTotalDesc  *prometheus.Desc
+	scopesWithTenantsTotalDesc       *prometheus.Desc
+	scopesWithStepsTotalDesc         *prometheus.Desc
+	scopesWithSpacesTotalDesc        *prometheus.Desc
+	targetNamespacesTotalDesc        *prometheus.Desc
 }
 
 // NewOctopusMetricsCollector creates a new instance of OctopusMetricsCollector
@@ -94,6 +95,12 @@ func NewOctopusMetricsCollector(cli client.Client, eng rules.Engine) *OctopusMet
 			nil,
 			nil,
 		),
+		scopesWithProjectGroupsTotalDesc: prometheus.NewDesc(
+			"octopus_scopes_with_project_groups_total",
+			"Number of scopes with Project Group defined",
+			nil,
+			nil,
+		),
 		scopesWithEnvironmentsTotalDesc: prometheus.NewDesc(
 			"octopus_scopes_with_environments_total",
 			"Number of scopes with Environment defined",
@@ -139,6 +146,7 @@ func (c *OctopusMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.clusterRoleBindingsTotalDesc
 	ch <- c.distinctScopesTotalDesc
 	ch <- c.scopesWithProjectsTotalDesc
+	ch <- c.scopesWithProjectGroupsTotalDesc
 	ch <- c.scopesWithEnvironmentsTotalDesc
 	ch <- c.scopesWithTenantsTotalDesc
 	ch <- c.scopesWithStepsTotalDesc
@@ -356,12 +364,15 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 	)
 	ch <- distinctScopesMetric
 
-	var withProjects, withEnvironments, withTenants, withSteps, withSpaces int
+	var withProjects, withProjectGroups, withEnvironments, withTenants, withSteps, withSpaces int
 
 	// Process WSA resources
 	for _, wsa := range wsaList.Items {
 		if len(wsa.Spec.Scope.Projects) > 0 {
 			withProjects++
+		}
+		if len(wsa.Spec.Scope.ProjectGroups) > 0 {
+			withProjectGroups++
 		}
 		if len(wsa.Spec.Scope.Environments) > 0 {
 			withEnvironments++
@@ -382,6 +393,9 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 		if len(cwsa.Spec.Scope.Projects) > 0 {
 			withProjects++
 		}
+		if len(cwsa.Spec.Scope.ProjectGroups) > 0 {
+			withProjectGroups++
+		}
 		if len(cwsa.Spec.Scope.Environments) > 0 {
 			withEnvironments++
 		}
@@ -399,20 +413,21 @@ func (c *OctopusMetricsCollector) collectScopeMetricsFromResources(ctx context.C
 	// Create and send scope metrics
 	scopeMetrics := []struct {
 		desc  *prometheus.Desc
-		value float64
+		value int
 	}{
-		{c.scopesWithProjectsTotalDesc, float64(withProjects)},
-		{c.scopesWithEnvironmentsTotalDesc, float64(withEnvironments)},
-		{c.scopesWithTenantsTotalDesc, float64(withTenants)},
-		{c.scopesWithStepsTotalDesc, float64(withSteps)},
-		{c.scopesWithSpacesTotalDesc, float64(withSpaces)},
+		{c.scopesWithProjectsTotalDesc, withProjects},
+		{c.scopesWithProjectGroupsTotalDesc, withProjectGroups},
+		{c.scopesWithEnvironmentsTotalDesc, withEnvironments},
+		{c.scopesWithTenantsTotalDesc, withTenants},
+		{c.scopesWithStepsTotalDesc, withSteps},
+		{c.scopesWithSpacesTotalDesc, withSpaces},
 	}
 
 	for _, scopeMetric := range scopeMetrics {
 		metric := prometheus.MustNewConstMetric(
 			scopeMetric.desc,
 			prometheus.GaugeValue,
-			scopeMetric.value,
+			float64(scopeMetric.value),
 		)
 		ch <- metric
 	}

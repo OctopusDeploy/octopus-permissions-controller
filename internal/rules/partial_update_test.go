@@ -27,6 +27,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
@@ -60,9 +61,9 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 		cleanResources = []client.Object{}
 
 		// Create unique test namespaces for each test
-		timestamp := time.Now().UnixNano()
-		ns1Name := fmt.Sprintf("test-partial-%d", timestamp)
-		ns2Name := fmt.Sprintf("test-partial2-%d", timestamp)
+		uid := uuid.NewUUID()
+		ns1Name := fmt.Sprintf("test-partial-%s", uid)
+		ns2Name := fmt.Sprintf("test-partial2-%s", uid)
 		testNamespace = ns1Name
 		targetNamespaces = []string{ns1Name, ns2Name}
 
@@ -150,9 +151,11 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 				},
 			}
 
-			wsaSpace := helpers.CreateTestWSA("wsa-space-cascade", testNamespace, map[string][]string{
-				"spaces": {"cascade-space"},
-			}, spacePermissions)
+			wsaSpace := helpers.CreateTestWSA(
+				"wsa-space-cascade",
+				testNamespace,
+				map[string][]string{"spaces": {"cascade-space"}},
+				spacePermissions)
 			Expect(k8sClient.Create(testCtx, wsaSpace)).To(Succeed())
 
 			By("running reconciliation")
@@ -167,10 +170,14 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 				},
 			}
 
-			wsaProject := helpers.CreateTestWSA("wsa-project-cascade", testNamespace, map[string][]string{
-				"spaces":   {"cascade-space"},
-				"projects": {"cascade-project"},
-			}, projectPermissions)
+			wsaProject := helpers.CreateTestWSA(
+				"wsa-project-cascade",
+				testNamespace,
+				map[string][]string{
+					"spaces":   {"cascade-space"},
+					"projects": {"cascade-project"},
+				},
+				projectPermissions)
 			Expect(k8sClient.Create(testCtx, wsaProject)).To(Succeed())
 
 			By("running reconciliation")
@@ -185,11 +192,15 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 				},
 			}
 
-			wsaStep := helpers.CreateTestWSA("wsa-step-cascade", testNamespace, map[string][]string{
-				"spaces":   {"cascade-space"},
-				"projects": {"cascade-project"},
-				"steps":    {"deploy"},
-			}, stepPermissions)
+			wsaStep := helpers.CreateTestWSA(
+				"wsa-step-cascade",
+				testNamespace,
+				map[string][]string{
+					"spaces":   {"cascade-space"},
+					"projects": {"cascade-project"},
+					"steps":    {"deploy"},
+				},
+				stepPermissions)
 			Expect(k8sClient.Create(testCtx, wsaStep)).To(Succeed())
 
 			By("running reconciliation")

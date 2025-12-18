@@ -378,6 +378,10 @@ var _ = Describe("Metrics Test", func() {
 				projectsCount := getMetricValue(metrics, "octopus_scopes_with_projects_total")
 				Expect(projectsCount).To(Equal(float64(4)), "Should have 4 resources with projects scope")
 
+				By("Validating project groups scope count (WSA1 + CWSA1 = 2)")
+				projectGroupsCount := getMetricValue(metrics, "octopus_scopes_with_project_groups_total")
+				Expect(projectGroupsCount).To(Equal(float64(2)), "Should have 2 resources with project groups scope")
+
 				By("Validating environments scope count (WSA1 + WSA2 + CWSA1 = 3)")
 				environmentsCount := getMetricValue(metrics, "octopus_scopes_with_environments_total")
 				Expect(environmentsCount).To(Equal(float64(3)), "Should have 3 resources with environments scope")

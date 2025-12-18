@@ -27,6 +27,9 @@ func CreateTestWSA(
 	if projects, ok := scopes["projects"]; ok {
 		wsa.Spec.Scope.Projects = projects
 	}
+	if projectGroups, ok := scopes["projectGroups"]; ok {
+		wsa.Spec.Scope.ProjectGroups = projectGroups
+	}
 	if environments, ok := scopes["environments"]; ok {
 		wsa.Spec.Scope.Environments = environments
 	}
@@ -73,6 +76,9 @@ func CreateTestCWSA(
 	// Set scopes
 	if projects, ok := scopes["projects"]; ok {
 		cwsa.Spec.Scope.Projects = projects
+	}
+	if projectGroups, ok := scopes["projectGroups"]; ok {
+		cwsa.Spec.Scope.ProjectGroups = projectGroups
 	}
 	if environments, ok := scopes["environments"]; ok {
 		cwsa.Spec.Scope.Environments = environments

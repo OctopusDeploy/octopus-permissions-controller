@@ -1239,11 +1239,12 @@ var _ = Describe("Engine Integration Tests", func() {
 
 			By("verifying WSA 1 scope still maps to an SA")
 			scope := Scope{
-				Project:     "project-keep",
-				Environment: "",
-				Tenant:      "",
-				Step:        "",
-				Space:       "",
+				Project:      "project-keep",
+				ProjectGroup: "",
+				Environment:  "",
+				Tenant:       "",
+				Step:         "",
+				Space:        "",
 			}
 			retrievedSA, err := engine.GetServiceAccountForScope(scope)
 			Expect(err).NotTo(HaveOccurred())

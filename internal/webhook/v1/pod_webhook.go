@@ -44,13 +44,14 @@ var podWebhookDuration = promauto.NewHistogramVec(
 )
 
 const (
-	EnabledLabelKey          = "agent.octopus.com/permissions"
-	ProjectAnnotationKey     = "agent.octopus.com/project"
-	EnvironmentAnnotationKey = "agent.octopus.com/environment"
-	TenantAnnotationKey      = "agent.octopus.com/tenant"
-	StepAnnotationKey        = "agent.octopus.com/step"
-	SpaceAnnotationKey       = "agent.octopus.com/space"
-	OPCVersionEnvVarKey      = "OCTOPUS__K8STENTACLE__OPCVERSION"
+	EnabledLabelKey           = "agent.octopus.com/permissions"
+	ProjectAnnotationKey      = "agent.octopus.com/project"
+	ProjectGroupAnnotationKey = "agent.octopus.com/project-group"
+	EnvironmentAnnotationKey  = "agent.octopus.com/environment"
+	TenantAnnotationKey       = "agent.octopus.com/tenant"
+	StepAnnotationKey         = "agent.octopus.com/step"
+	SpaceAnnotationKey        = "agent.octopus.com/space"
+	OPCVersionEnvVarKey       = "OCTOPUS__K8STENTACLE__OPCVERSION"
 )
 
 // nolint:unused
@@ -143,6 +144,9 @@ func getPodScope(p *corev1.Pod) rules.Scope {
 
 	if project, ok := p.Annotations[ProjectAnnotationKey]; ok {
 		scope.Project = project
+	}
+	if projectGroup, ok := p.Annotations[ProjectGroupAnnotationKey]; ok {
+		scope.ProjectGroup = projectGroup
 	}
 	if environment, ok := p.Annotations[EnvironmentAnnotationKey]; ok {
 		scope.Environment = environment

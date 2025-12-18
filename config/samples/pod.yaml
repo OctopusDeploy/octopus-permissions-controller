@@ -6,6 +6,7 @@ metadata:
     agent.octopus.com/permissions: enabled
     agent.octopus.com/space: default
     agent.octopus.com/project: project-a
+    agent.octopus.com/project-group: project-group-a
     agent.octopus.com/environment: development
     agent.octopus.com/step: step-1
   annotations:

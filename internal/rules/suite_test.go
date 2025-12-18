@@ -47,10 +47,10 @@ var (
 	k8sClient client.Client
 )
 
-func TestControllers(t *testing.T) {
+func TestRules(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Controller Suite")
+	RunSpecs(t, "Rules Suite")
 }
 
 var _ = BeforeSuite(func() {
