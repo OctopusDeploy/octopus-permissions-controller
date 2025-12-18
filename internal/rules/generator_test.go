@@ -1,9 +1,12 @@
 package rules
 
 import (
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -65,37 +68,37 @@ func NewFindAllPossibleResourceScopesTest(name string) FindAllPossibleResourceSc
 	return test
 }
 
-var _ = Describe("Scope Generation", func() {
-	Describe("getScopesForWSAs", func() {
-		Context("When generating scopes for WorkloadServiceAccounts", func() {
-			It("Should return non-empty results with scopes mapped to WSAs", func() {
-				By("Creating test vocabulary and WSA list")
-				testData := NewFindAllPossibleResourceScopesTest("Simple Scopes and WSAs")
+func TestGenerator(t *testing.T) {
+	t.Run("getScopesForWSAs", func(t *testing.T) {
+		t.Run("returns scopes mapped to WSAs", func(t *testing.T) {
+			// Creating test vocabulary and WSA list
+			testData := NewFindAllPossibleResourceScopesTest("Simple Scopes and WSAs")
 
-				By("Converting WSA pointers to WSAResource interface")
-				resources := make([]WSAResource, len(testData.WsaList))
-				for i, wsa := range testData.WsaList {
-					resources[i] = NewWSAResource(wsa)
+			// Converting WSA pointers to WSAResource interface
+			resources := make([]WSAResource, len(testData.WsaList))
+			for i, wsa := range testData.WsaList {
+				resources[i] = NewWSAResource(wsa)
+			}
+
+			// Generating scopes for WSAs
+			result, _ := getScopesForWSAs(resources)
+
+			// Verifying results
+			if len(result) == 0 {
+				t.Fatal("getScopesForWSAs should return non-empty result")
+			}
+
+			for scope, wsaMap := range result {
+				if len(wsaMap) == 0 {
+					t.Fatalf("Each scope should have at least one WSA: %v", scope)
 				}
-
-				By("Generating scopes for WSAs")
-				result, _ := getScopesForWSAs(resources)
-
-				By("Verifying results")
-				Expect(result).NotTo(BeEmpty(), "getScopesForWSAs should return non-empty result")
-
-				for scope, wsaMap := range result {
-					Expect(wsaMap).NotTo(BeEmpty(), "Each scope should have at least one WSA: %v", scope)
-				}
-			})
+			}
 		})
 	})
-})
 
-var _ = Describe("Service Account Deduplication", func() {
-	Context("When multiple scopes map to the same set of WSAs", func() {
-		It("Should create only one service account for that set of WSAs", func() {
-			By("Creating a WSA that appears in multiple scopes")
+	t.Run("GenerateServiceAccountMappings", func(t *testing.T) {
+		t.Run("creates one service account for that set of WSAs", func(t *testing.T) {
+			// Creating a WSA that appears in multiple scopes
 			wsa1 := &v1beta1.WorkloadServiceAccount{
 				ObjectMeta: metav1.ObjectMeta{Name: "wsa1", Namespace: "default"},
 			}
@@ -109,29 +112,20 @@ var _ = Describe("Service Account Deduplication", func() {
 				},
 			}
 
-			By("Generating service account mappings")
+			// Generating service account mappings
 			_, _, wsaToSANames, _ := GenerateServiceAccountMappings(scopeMap)
 
-			By("Verifying only one service account is created")
-			Expect(wsaToSANames).To(HaveKey(wsa1Key))
-			Expect(wsaToSANames[wsa1Key]).To(HaveLen(1))
+			// Verifying only one service account is created
+			if _, exists := wsaToSANames[wsa1Key]; !exists {
+				t.Fatalf("Expected wsaToSANames to contain key %v", wsa1Key)
+			}
+			if len(wsaToSANames[wsa1Key]) != 1 {
+				t.Fatalf("Expected wsaToSANames[%v] to have length 1, got %d", wsa1Key, len(wsaToSANames[wsa1Key]))
+			}
 		})
-	})
-})
 
-var _ = Describe("GenerateServiceAccountMappings", func() {
-	var wsa1, wsa2 *v1beta1.WorkloadServiceAccount
-	var wsa1Key, wsa2Key types.NamespacedName
-
-	BeforeEach(func() {
-		wsa1 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1", Namespace: "default"}}
-		wsa2 = &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2", Namespace: "default"}}
-		wsa1Key = types.NamespacedName{Namespace: "default", Name: "wsa1"}
-		wsa2Key = types.NamespacedName{Namespace: "default", Name: "wsa2"}
-	})
-
-	Context("When generating service account mappings", func() {
-		It("Should handle single scope with one WSA", func() {
+		t.Run("creates a single service account for a WSA with a single scope", func(t *testing.T) {
+			wsa1, _, wsa1Key, _ := setupTestData()
 			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					wsa1Key: NewWSAResource(wsa1),
@@ -140,12 +134,17 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 
 			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
 
-			Expect(scopeToSA).To(HaveLen(1), "Number of scopes should match")
-			Expect(serviceAccounts).To(HaveLen(1), "Number of service accounts should match")
-			verifyServiceAccountMappings(scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+			if len(scopeToSA) != 1 {
+				t.Fatalf("Number of scopes should be 1, got %d", len(scopeToSA))
+			}
+			if len(serviceAccounts) != 1 {
+				t.Fatalf("Number of service accounts should be 1, got %d", len(serviceAccounts))
+			}
+			verifyServiceAccountMappings(t, scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
 		})
 
-		It("Should handle multiple scopes with overlapping WSAs", func() {
+		t.Run("creates two service accounts with overlapping WSAs", func(t *testing.T) {
+			wsa1, wsa2, wsa1Key, wsa2Key := setupTestData()
 			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					wsa1Key: NewWSAResource(wsa1),
@@ -158,12 +157,17 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 
 			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
 
-			Expect(scopeToSA).To(HaveLen(2), "Number of scopes should match")
-			Expect(serviceAccounts).To(HaveLen(2), "Number of service accounts should match")
-			verifyServiceAccountMappings(scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+			if len(scopeToSA) != 2 {
+				t.Fatalf("Number of scopes should be 2, got %d", len(scopeToSA))
+			}
+			if len(serviceAccounts) != 2 {
+				t.Fatalf("Number of service accounts should be 2, got %d", len(serviceAccounts))
+			}
+			verifyServiceAccountMappings(t, scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
 		})
 
-		It("Should create one service account for identical scopes", func() {
+		t.Run("creates one service account for multiple WSAs with identical scopes", func(t *testing.T) {
+			_, _, wsa1Key, _ := setupTestData()
 			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
 				{Project: "proj1", Environment: "env1", Tenant: "*", Step: "*", Space: "*"}: {
 					wsa1Key: NewWSAResource(&v1beta1.WorkloadServiceAccount{
@@ -174,24 +178,41 @@ var _ = Describe("GenerateServiceAccountMappings", func() {
 
 			scopeToSA, saToWSAs, wsaToSANames, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
 
-			Expect(scopeToSA).To(HaveLen(1), "Number of scopes should match")
-			Expect(serviceAccounts).To(HaveLen(1), "Number of service accounts should match")
-			verifyServiceAccountMappings(scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+			if len(scopeToSA) != 1 {
+				t.Fatalf("Number of scopes should be 1, got %d", len(scopeToSA))
+			}
+			if len(serviceAccounts) != 1 {
+				t.Fatalf("Number of service accounts should be 1, got %d", len(serviceAccounts))
+			}
+			verifyServiceAccountMappings(t, scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
 		})
 
-		It("Should handle empty scope map", func() {
+		t.Run("creates no service accounts for an empty scope map", func(t *testing.T) {
 			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{}
 
 			scopeToSA, _, _, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
 
-			Expect(scopeToSA).To(BeEmpty(), "Number of scopes should be zero")
-			Expect(serviceAccounts).To(BeEmpty(), "Number of service accounts should be zero")
+			if len(scopeToSA) != 0 {
+				t.Fatalf("Number of scopes should be zero, got %d", len(scopeToSA))
+			}
+			if len(serviceAccounts) != 0 {
+				t.Fatalf("Number of service accounts should be zero, got %d", len(serviceAccounts))
+			}
 		})
 	})
-})
+}
+
+func setupTestData() (*v1beta1.WorkloadServiceAccount, *v1beta1.WorkloadServiceAccount, types.NamespacedName, types.NamespacedName) {
+	wsa1 := &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa1", Namespace: "default"}}
+	wsa2 := &v1beta1.WorkloadServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "wsa2", Namespace: "default"}}
+	wsa1Key := types.NamespacedName{Namespace: "default", Name: "wsa1"}
+	wsa2Key := types.NamespacedName{Namespace: "default", Name: "wsa2"}
+	return wsa1, wsa2, wsa1Key, wsa2Key
+}
 
 // verifyServiceAccountMappings is a helper to verify the consistency of service account mappings
 func verifyServiceAccountMappings(
+	t *testing.T,
 	scopeToSA map[Scope]ServiceAccountName,
 	saToWSAs map[ServiceAccountName]map[types.NamespacedName]WSAResource,
 	wsaToSANames map[types.NamespacedName][]string,
@@ -208,37 +229,58 @@ func verifyServiceAccountMappings(
 				break
 			}
 		}
-		Expect(found).To(BeTrue(), "Service account from scope map should exist in service accounts slice")
+		if !found {
+			t.Fatalf("Service account from scope map should exist in service accounts slice")
+		}
 
 		wsaMap, exists := saToWSAs[sa]
-		Expect(exists).To(BeTrue(), "Service account should have WSA mapping")
-		Expect(wsaMap).NotTo(BeEmpty(), "Service account should have at least one WSA")
+		if !exists {
+			t.Fatalf("Service account should have WSA mapping")
+		}
+		if len(wsaMap) == 0 {
+			t.Fatalf("Service account should have at least one WSA")
+		}
 
 		// Verify WSAs in the mapping exist in the original scope
 		originalWSAs := originalScopeMap[scope]
 		for wsaKey, wsa := range wsaMap {
 			originalWSA, wsaExists := originalWSAs[wsaKey]
-			Expect(wsaExists).To(BeTrue(), "WSA %s should exist in original scope %v", wsaKey, scope)
-			Expect(wsa).To(Equal(originalWSA), "WSA pointer should match original")
+			if !wsaExists {
+				t.Fatalf("WSA %s should exist in original scope %v", wsaKey, scope)
+			}
+			if !reflect.DeepEqual(wsa, originalWSA) {
+				t.Fatalf("WSA pointer should match original")
+			}
 		}
 
 		// Verify reverse mapping (WSA to service account names)
 		for wsaKey := range wsaMap {
 			saNames, exists := wsaToSANames[wsaKey]
-			Expect(exists).To(BeTrue(), "WSA %s should have service account mapping", wsaKey)
-			Expect(saNames).To(ContainElement(string(sa)), "WSA should map back to service account")
+			if !exists {
+				t.Fatalf("WSA %s should have service account mapping", wsaKey)
+			}
+			found := slices.Contains(saNames, string(sa))
+			if !found {
+				t.Fatalf("WSA should map back to service account")
+			}
 		}
 	}
 
 	// Verify service account names follow the expected pattern (either human-readable or hash-based)
 	for _, sa := range serviceAccounts {
-		Expect(sa.Name).To(HavePrefix("octopus-sa-"), "Service account name should follow the expected pattern")
-		Expect(len(sa.Name)).To(BeNumerically(">", 5), "Service account name should have content after prefix")
+		if !strings.HasPrefix(sa.Name, "octopus-sa-") {
+			t.Fatalf("Service account name should follow the expected pattern")
+		}
+		if len(sa.Name) <= 5 {
+			t.Fatalf("Service account name should have content after prefix")
+		}
 
 		// Verify service account has proper metadata
-		Expect(sa.Labels).NotTo(BeNil(), "Service account should have labels")
-		Expect(sa.Annotations).NotTo(BeNil(), "Service account should have annotations")
+		if sa.Labels == nil {
+			t.Fatalf("Service account should have labels")
+		}
+		if sa.Annotations == nil {
+			t.Fatalf("Service account should have annotations")
+		}
 	}
 }
-
-// generateServiceAccountName tests removed - function is deprecated in favor of generateGroupedServiceAccountName
