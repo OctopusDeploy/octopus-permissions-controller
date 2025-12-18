@@ -25,6 +25,7 @@ type DimensionIndex int
 
 const (
 	ProjectIndex DimensionIndex = iota
+	ProjectGroupIndex
 	EnvironmentIndex
 	TenantIndex
 	StepIndex
@@ -40,6 +41,7 @@ type GlobalVocabulary [MaxDimensionIndex]*set.Set[string]
 func NewGlobalVocabulary() GlobalVocabulary {
 	return GlobalVocabulary{
 		set.New[string](0), // Projects
+		set.New[string](0), // ProjectGroups
 		set.New[string](0), // Environments
 		set.New[string](0), // Tenants
 		set.New[string](0), // Steps
@@ -54,6 +56,12 @@ func (v *GlobalVocabulary) GetKnownScopeCombination(scope Scope) Scope {
 		knownScope.Project = scope.Project
 	} else {
 		knownScope.Project = WildcardValue
+	}
+
+	if v[ProjectGroupIndex].Contains(scope.ProjectGroup) {
+		knownScope.ProjectGroup = scope.ProjectGroup
+	} else {
+		knownScope.ProjectGroup = WildcardValue
 	}
 
 	if v[EnvironmentIndex].Contains(scope.Environment) {
@@ -97,6 +105,7 @@ func buildGlobalVocabulary(resources []WSAResource) GlobalVocabulary {
 		}
 
 		addAllValuesToVocabulary(ProjectIndex, scope.Projects)
+		addAllValuesToVocabulary(ProjectGroupIndex, scope.ProjectGroups)
 		addAllValuesToVocabulary(EnvironmentIndex, scope.Environments)
 		addAllValuesToVocabulary(TenantIndex, scope.Tenants)
 		addAllValuesToVocabulary(StepIndex, scope.Steps)
@@ -136,6 +145,7 @@ func computeWSACoverage(resource WSAResource, vocabulary GlobalVocabulary) *set.
 	scope := resource.GetScope()
 	scopeSlices := [MaxDimensionIndex][]string{
 		scope.Projects,
+		scope.ProjectGroups,
 		scope.Environments,
 		scope.Tenants,
 		scope.Steps,
@@ -175,6 +185,8 @@ func generateScopeCombinations(
 		switch currentDim {
 		case ProjectIndex:
 			newScope.Project = value
+		case ProjectGroupIndex:
+			newScope.ProjectGroup = value
 		case EnvironmentIndex:
 			newScope.Environment = value
 		case TenantIndex:
@@ -386,6 +398,7 @@ const (
 	MetadataNamespace = "agent.octopus.com"
 	PermissionsKey    = MetadataNamespace + "/permissions"
 	ProjectKey        = MetadataNamespace + "/project"
+	ProjectGroupKey   = MetadataNamespace + "/project-group"
 	EnvironmentKey    = MetadataNamespace + "/environment"
 	TenantKey         = MetadataNamespace + "/tenant"
 	StepKey           = MetadataNamespace + "/step"

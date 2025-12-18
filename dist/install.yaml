@@ -139,6 +139,11 @@ spec:
                       pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
                       type: string
                     type: array
+                  projectGroups:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
                   projects:
                     items:
                       pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
@@ -393,6 +398,11 @@ spec:
                 description: Scope defines the scope of the WorkloadServiceAccount.
                 properties:
                   environments:
+                    items:
+                      pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
+                      type: string
+                    type: array
+                  projectGroups:
                     items:
                       pattern: ^[\p{Ll}\p{N}]+(?:-[\p{L}\p{N}]+)*$
                       type: string

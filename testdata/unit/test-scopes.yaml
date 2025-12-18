@@ -12,6 +12,7 @@ spec:
   scope:
     spaces: [space-1, space-2]
     projects: [project-1, project-2]
+    projectGroups: [project-group-1]
     environments: [env-1, env-2]
     tenants: [tenant-1]
     steps: [deploy, test]
@@ -64,6 +65,7 @@ spec:
   scope:
     spaces: [global-space]
     projects: [global-project-1]
+    projectGroups: [project-group-1]
     environments: [production, staging]
     tenants: [global-tenant]
     steps: [deploy]
