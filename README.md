@@ -91,6 +91,30 @@ make uninstall
 make undeploy
 ```
 
+### Debugging directly with Octopus
+
+**Spin up a test kind cluster**
+
+This will create a kind cluster and install all the required CRDs, except for the Octopus Permissions Controller deployment
+
+```sh
+make setup-debug-env
+```
+
+**Run this project**
+
+Via `Build and Run octopus-permissions-controller` launch config in VSCode or `go build github.com_octopusdeploy_octopus-permissions-controller_cmd.run.xml` run config for Goland.
+
+**Create a Kubernetes agent in the kind cluster**
+
+Using Octopus, create a new Kubernetes agent in the kind cluster. You can use the advanced options to configure the agent with the permissions controller enabled, but do not install the permissions controller helm chart when prompted to.
+
+You will be able to confirm that the permissions controller is active on the agent's connectivity page, the Permissions Controller version should be `v0.0.0`
+
+**Testing**
+
+A good place to start is to apply `config/samples/v1beta1_workloadserviceaccount.yaml` to your cluster. This will need to be created in the namespace(s) you are making your deployments to.
+
 ## Project Distribution
 
 When changes are made to the kubebuilder configuration, installation files must be regenerated.
