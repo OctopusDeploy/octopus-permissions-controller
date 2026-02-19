@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.1.1...v1.1.2) (2026-02-19)
+
+
+### Bug Fixes
+
+* add project group to service account annotations ([#68](https://github.com/OctopusDeploy/octopus-permissions-controller/issues/68)) ([3b034b3](https://github.com/OctopusDeploy/octopus-permissions-controller/commit/3b034b3879bfcf68bf4d4c74ed2b3c5a216527ae))
+
 ## [1.1.1](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.1.0...v1.1.1) (2026-02-19)
 
 
