@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.1.0...v1.1.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* regenerate helm templates ([#66](https://github.com/OctopusDeploy/octopus-permissions-controller/issues/66)) ([864e3d0](https://github.com/OctopusDeploy/octopus-permissions-controller/commit/864e3d079b692a0bbfac2b30d793131f615145ed))
+
 ## [1.1.0](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.0.0...v1.1.0) (2026-02-18)
 
 
