@@ -30,6 +30,7 @@ func NewFindAllPossibleResourceScopesTest(name string) FindAllPossibleResourceSc
 	// Create a vocabulary
 	vocab := NewGlobalVocabulary()
 	vocab[ProjectIndex].InsertSlice([]string{"project1", "project2"})
+	vocab[ProjectGroupIndex].InsertSlice([]string{"project-group1", "project-group2"})
 	vocab[EnvironmentIndex].InsertSlice([]string{"env1", "env2"})
 	vocab[TenantIndex].InsertSlice([]string{"tenant1", "tenant2"})
 	vocab[StepIndex].InsertSlice([]string{"step1", "step2"})
@@ -185,6 +186,44 @@ func TestGenerator(t *testing.T) {
 				t.Fatalf("Number of service accounts should be 1, got %d", len(serviceAccounts))
 			}
 			verifyServiceAccountMappings(t, scopeToSA, saToWSAs, wsaToSANames, serviceAccounts, scopeMap)
+		})
+
+		t.Run("includes all scope dimensions in service account labels and annotations", func(t *testing.T) {
+			wsa1, _, wsa1Key, _ := setupTestData()
+			scopeMap := map[Scope]map[types.NamespacedName]WSAResource{
+				{Project: "proj1", ProjectGroup: "group1", Environment: "env1", Tenant: "tenant1", Step: "step1", Space: "space1"}: {
+					wsa1Key: NewWSAResource(wsa1),
+				},
+			}
+
+			_, _, _, serviceAccounts := GenerateServiceAccountMappings(scopeMap)
+
+			if len(serviceAccounts) != 1 {
+				t.Fatalf("Number of service accounts should be 1, got %d", len(serviceAccounts))
+			}
+
+			sa := serviceAccounts[0]
+
+			expectedLabels := []string{ProjectKey, ProjectGroupKey, EnvironmentKey, TenantKey, StepKey, SpaceKey}
+			for _, key := range expectedLabels {
+				if _, ok := sa.Labels[key]; !ok {
+					t.Fatalf("Service account should have label %s", key)
+				}
+			}
+
+			expectedAnnotations := map[string]string{
+				ProjectKey:      "proj1",
+				ProjectGroupKey: "group1",
+				EnvironmentKey:  "env1",
+				TenantKey:       "tenant1",
+				StepKey:         "step1",
+				SpaceKey:        "space1",
+			}
+			for key, expectedValue := range expectedAnnotations {
+				if sa.Annotations[key] != expectedValue {
+					t.Fatalf("Service account annotation %s should be '%s', got '%s'", key, expectedValue, sa.Annotations[key])
+				}
+			}
 		})
 
 		t.Run("creates no service accounts for an empty scope map", func(t *testing.T) {
