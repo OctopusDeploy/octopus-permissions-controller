@@ -240,11 +240,12 @@ func buildScopeToWSAMapping(
 
 // GroupedDimensions holds collected dimension values for a group of scopes
 type GroupedDimensions struct {
-	Projects     []string
-	Environments []string
-	Tenants      []string
-	Steps        []string
-	Spaces       []string
+	Projects      []string
+	ProjectGroups []string
+	Environments  []string
+	Tenants       []string
+	Steps         []string
+	Spaces        []string
 }
 
 // groupScopesByWSASet reverses the scope map to group by WSA sets
@@ -272,6 +273,7 @@ func groupScopesByWSASet(scopeMap map[Scope]map[types.NamespacedName]WSAResource
 // collectDimensionValues gathers all unique values per dimension
 func collectDimensionValues(scopes []Scope) GroupedDimensions {
 	projects := set.New[string](0)
+	projectGroups := set.New[string](0)
 	environments := set.New[string](0)
 	tenants := set.New[string](0)
 	steps := set.New[string](0)
@@ -280,6 +282,9 @@ func collectDimensionValues(scopes []Scope) GroupedDimensions {
 	for _, scope := range scopes {
 		if scope.Project != "" && scope.Project != WildcardValue {
 			projects.Insert(scope.Project)
+		}
+		if scope.ProjectGroup != "" && scope.ProjectGroup != WildcardValue {
+			projectGroups.Insert(scope.ProjectGroup)
 		}
 		if scope.Environment != "" && scope.Environment != WildcardValue {
 			environments.Insert(scope.Environment)
@@ -298,6 +303,8 @@ func collectDimensionValues(scopes []Scope) GroupedDimensions {
 	// Convert sets to sorted slices
 	projectSlice := projects.Slice()
 	slices.Sort(projectSlice)
+	projectGroupSlice := projectGroups.Slice()
+	slices.Sort(projectGroupSlice)
 	environmentSlice := environments.Slice()
 	slices.Sort(environmentSlice)
 	tenantSlice := tenants.Slice()
@@ -308,11 +315,12 @@ func collectDimensionValues(scopes []Scope) GroupedDimensions {
 	slices.Sort(spaceSlice)
 
 	return GroupedDimensions{
-		Projects:     projectSlice,
-		Environments: environmentSlice,
-		Tenants:      tenantSlice,
-		Steps:        stepSlice,
-		Spaces:       spaceSlice,
+		Projects:      projectSlice,
+		ProjectGroups: projectGroupSlice,
+		Environments:  environmentSlice,
+		Tenants:       tenantSlice,
+		Steps:         stepSlice,
+		Spaces:        spaceSlice,
 	}
 }
 
@@ -435,6 +443,9 @@ func generateGroupedServiceAccountName(grouped GroupedDimensions) ServiceAccount
 	if len(grouped.Projects) > 0 {
 		parts = append(parts, "projects:"+strings.Join(grouped.Projects, "+"))
 	}
+	if len(grouped.ProjectGroups) > 0 {
+		parts = append(parts, "projectgroups:"+strings.Join(grouped.ProjectGroups, "+"))
+	}
 	if len(grouped.Environments) > 0 {
 		parts = append(parts, "environments:"+strings.Join(grouped.Environments, "+"))
 	}
@@ -466,6 +477,9 @@ func generateServiceAccountLabelsFromGrouped(grouped GroupedDimensions) map[stri
 	if len(grouped.Projects) > 0 {
 		labels[ProjectKey] = shortHash(strings.Join(grouped.Projects, "+"))
 	}
+	if len(grouped.ProjectGroups) > 0 {
+		labels[ProjectGroupKey] = shortHash(strings.Join(grouped.ProjectGroups, "+"))
+	}
 	if len(grouped.Environments) > 0 {
 		labels[EnvironmentKey] = shortHash(strings.Join(grouped.Environments, "+"))
 	}
@@ -489,6 +503,9 @@ func generateAnnotationsFromGrouped(grouped GroupedDimensions) map[string]string
 
 	if len(grouped.Projects) > 0 {
 		annotations[ProjectKey] = strings.Join(grouped.Projects, "+")
+	}
+	if len(grouped.ProjectGroups) > 0 {
+		annotations[ProjectGroupKey] = strings.Join(grouped.ProjectGroups, "+")
 	}
 	if len(grouped.Environments) > 0 {
 		annotations[EnvironmentKey] = strings.Join(grouped.Environments, "+")
