@@ -2,7 +2,7 @@ manager:
   replicas: 1
   image:
     repository: octopusdeploy/octopus-permissions-controller
-    tag: 1.1.0
+    tag: 1.1.1
     pullPolicy: IfNotPresent
   args:
     - '--leader-elect'
