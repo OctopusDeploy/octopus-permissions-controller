@@ -1,0 +1,46 @@
+name: Verify Helm Chart
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  verify-helm-chart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install kubebuilder
+        run: |
+          curl -L -o kubebuilder "https://go.kubebuilder.io/dl/v4.9.0/$(go env GOOS)/$(go env GOARCH)"
+          chmod +x kubebuilder
+          sudo mv kubebuilder /usr/local/bin/
+
+      - name: Regenerate manifests and Helm chart
+        run: |
+          IMG_TAG=$(grep 'newTag:' config/manager/kustomization.yaml | awk '{print $2}')
+          go mod tidy
+          make build-installer IMG="octopusdeploy/octopus-permissions-controller:${IMG_TAG}"
+          kubebuilder edit --plugins=helm/v2-alpha
+
+      - name: Check for uncommitted changes
+        run: |
+          if git diff --exit-code; then
+            echo "All generated files are up to date."
+          else
+            cat <<'EOF'
+          Generated files are out of date.
+
+          Please run the following commands locally and commit the changes:
+
+            make build-installer
+            kubebuilder edit --plugins=helm/v2-alpha
+          EOF
+            exit 1
+          fi
