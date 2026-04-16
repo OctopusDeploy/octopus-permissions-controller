@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"maps"
 	"time"
 
 	"github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
@@ -14,9 +15,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	corev1ac "k8s.io/client-go/applyconfigurations/core/v1"
+	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
+	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/hashicorp/go-set/v3"
@@ -109,24 +112,64 @@ func (r ResourceManagementService) markForDeletion(obj client.Object) {
 	}
 }
 
-func (r ResourceManagementService) setOwnerReference(ctx context.Context, resource WSAResource, obj client.Object) {
+func (r ResourceManagementService) ownerReferenceAC(resource WSAResource) *metav1ac.OwnerReferenceApplyConfiguration {
 	if r.scheme == nil {
-		return
+		return nil
 	}
 
-	logger := log.FromContext(ctx).WithName("setOwnerReference")
 	owner := resource.GetOwnerObject()
 
 	switch o := owner.(type) {
 	case *v1beta1.WorkloadServiceAccount:
-		if err := controllerutil.SetControllerReference(o, obj, r.scheme); err != nil {
-			logger.Error(err, "failed to set controller reference", "objectType", fmt.Sprintf("%T", obj))
-		}
+		return metav1ac.OwnerReference().
+			WithAPIVersion(v1beta1.GroupVersion.String()).
+			WithKind("WorkloadServiceAccount").
+			WithName(o.Name).
+			WithUID(o.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)
 	case *v1beta1.ClusterWorkloadServiceAccount:
-		if err := controllerutil.SetControllerReference(o, obj, r.scheme); err != nil {
-			logger.Error(err, "failed to set controller reference", "objectType", fmt.Sprintf("%T", obj))
-		}
+		return metav1ac.OwnerReference().
+			WithAPIVersion(v1beta1.GroupVersion.String()).
+			WithKind("ClusterWorkloadServiceAccount").
+			WithName(o.Name).
+			WithUID(o.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)
 	}
+
+	return nil
+}
+
+func roleRefAC(ref rbacv1.RoleRef) *rbacv1ac.RoleRefApplyConfiguration {
+	return rbacv1ac.RoleRef().
+		WithAPIGroup(ref.APIGroup).
+		WithKind(ref.Kind).
+		WithName(ref.Name)
+}
+
+func subjectsAC(subjects []rbacv1.Subject) []*rbacv1ac.SubjectApplyConfiguration {
+	result := make([]*rbacv1ac.SubjectApplyConfiguration, 0, len(subjects))
+	for _, s := range subjects {
+		result = append(result, rbacv1ac.Subject().
+			WithKind(s.Kind).
+			WithName(s.Name).
+			WithNamespace(s.Namespace))
+	}
+	return result
+}
+
+func policyRulesAC(rules []rbacv1.PolicyRule) []*rbacv1ac.PolicyRuleApplyConfiguration {
+	result := make([]*rbacv1ac.PolicyRuleApplyConfiguration, 0, len(rules))
+	for _, rule := range rules {
+		result = append(result, rbacv1ac.PolicyRule().
+			WithAPIGroups(rule.APIGroups...).
+			WithResources(rule.Resources...).
+			WithResourceNames(rule.ResourceNames...).
+			WithVerbs(rule.Verbs...).
+			WithNonResourceURLs(rule.NonResourceURLs...))
+	}
+	return result
 }
 
 func (r ResourceManagementService) GetWorkloadServiceAccounts(ctx context.Context) (iter.Seq[*v1beta1.WorkloadServiceAccount], error) {
@@ -359,24 +402,17 @@ func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, resou
 	namespace := resource.GetNamespace()
 	name := roleName(permissions)
 
-	role := rbacv1.Role{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "Role",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				ManagedByLabel: ManagedByValue,
-			},
-		},
-		Rules: permissions,
+	roleAC := rbacv1ac.Role(name, namespace).
+		WithLabels(map[string]string{
+			ManagedByLabel: ManagedByValue,
+		}).
+		WithRules(policyRulesAC(permissions)...)
+
+	if ownerRef := r.ownerReferenceAC(resource); ownerRef != nil {
+		roleAC.WithOwnerReferences(ownerRef)
 	}
 
-	r.setOwnerReference(ctx, resource, &role)
-
-	err := r.client.Patch(ctx, &role, client.Apply,
+	err := r.client.Apply(ctx, roleAC,
 		client.ForceOwnership,
 		client.FieldOwner("octopus-permissions-controller"))
 	if err != nil {
@@ -384,7 +420,12 @@ func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, resou
 	}
 
 	logger.Info("Applied Role", "name", name, "permissions", len(permissions))
-	return role, nil
+	return rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}, nil
 }
 
 func (r ResourceManagementService) createClusterRoleIfNeeded(
@@ -399,23 +440,17 @@ func (r ResourceManagementService) createClusterRoleIfNeeded(
 
 	name := clusterRoleName(permissions)
 
-	clusterRole := rbacv1.ClusterRole{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRole",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				ManagedByLabel: ManagedByValue,
-			},
-		},
-		Rules: permissions,
+	clusterRoleAC := rbacv1ac.ClusterRole(name).
+		WithLabels(map[string]string{
+			ManagedByLabel: ManagedByValue,
+		}).
+		WithRules(policyRulesAC(permissions)...)
+
+	if ownerRef := r.ownerReferenceAC(resource); ownerRef != nil {
+		clusterRoleAC.WithOwnerReferences(ownerRef)
 	}
 
-	r.setOwnerReference(ctx, resource, &clusterRole)
-
-	err := r.client.Patch(ctx, &clusterRole, client.Apply,
+	err := r.client.Apply(ctx, clusterRoleAC,
 		client.ForceOwnership,
 		client.FieldOwner("octopus-permissions-controller"))
 	if err != nil {
@@ -423,51 +458,50 @@ func (r ResourceManagementService) createClusterRoleIfNeeded(
 	}
 
 	logger.Info("Applied ClusterRole", "name", name, "permissions", len(permissions))
-	return clusterRole, nil
+	return rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}, nil
 }
 
-// createServiceAccount deep copies a template service account, sets the namespace, and applies it using server-side apply
+// createServiceAccount builds an apply configuration from a template service account, sets the namespace, and applies it using server-side apply
 func (r ResourceManagementService) createServiceAccount(
 	ctx context.Context, namespace string, templateServiceAccount *corev1.ServiceAccount,
 ) error {
 	logger := log.FromContext(ctx).WithName("createServiceAccount")
 
-	serviceAccount := templateServiceAccount.DeepCopy()
-	serviceAccount.TypeMeta = metav1.TypeMeta{
-		APIVersion: "v1",
-		Kind:       "ServiceAccount",
-	}
-	serviceAccount.ObjectMeta.Namespace = namespace //nolint:staticcheck // The namespace must be set in the ObjectMeta
+	// Build labels from template, adding managed-by label
+	labels := make(map[string]string)
+	maps.Copy(labels, templateServiceAccount.Labels)
+	labels[ManagedByLabel] = ManagedByValue
 
-	// Clear ResourceVersion to ensure SSA treats this as a create-or-update
-	// This is critical for Server-Side Apply to work correctly
-	serviceAccount.ResourceVersion = ""
+	saAC := corev1ac.ServiceAccount(templateServiceAccount.Name, namespace).
+		WithLabels(labels)
 
-	// Add managed-by label for garbage collection tracking
-	if serviceAccount.Labels == nil {
-		serviceAccount.Labels = make(map[string]string)
+	if len(templateServiceAccount.Annotations) > 0 {
+		saAC.WithAnnotations(templateServiceAccount.Annotations)
 	}
-	serviceAccount.Labels[ManagedByLabel] = ManagedByValue
 
 	// Log what we're about to apply for debugging
 	logger.V(1).Info("Applying ServiceAccount",
-		"name", serviceAccount.Name,
+		"name", templateServiceAccount.Name,
 		"namespace", namespace,
-		"annotations", serviceAccount.Annotations)
+		"annotations", templateServiceAccount.Annotations)
 
 	// Use server-side apply for idempotent resource management
-	err := r.client.Patch(ctx, serviceAccount, client.Apply,
+	err := r.client.Apply(ctx, saAC,
 		client.ForceOwnership,
 		client.FieldOwner("octopus-permissions-controller"))
 	if err != nil {
 		logger.Error(err, "Failed to apply ServiceAccount",
-			"name", serviceAccount.Name,
+			"name", templateServiceAccount.Name,
 			"namespace", namespace,
-			"annotations", serviceAccount.Annotations)
-		return fmt.Errorf("failed to apply ServiceAccount %s in namespace %s: %w", serviceAccount.Name, namespace, err)
+			"annotations", templateServiceAccount.Annotations)
+		return fmt.Errorf("failed to apply ServiceAccount %s in namespace %s: %w", templateServiceAccount.Name, namespace, err)
 	}
 
-	logger.Info("Applied ServiceAccount", "name", serviceAccount.Name, "namespace", namespace)
+	logger.Info("Applied ServiceAccount", "name", templateServiceAccount.Name, "namespace", namespace)
 	return nil
 }
 
@@ -548,28 +582,20 @@ func (r ResourceManagementService) createRoleBinding(
 	name := roleBindingName(resource.GetName(), roleRef.Name)
 	namespace := resource.GetNamespace()
 
-	roleBinding := &rbacv1.RoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "RoleBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				ManagedByLabel: ManagedByValue,
-			},
-		},
-		RoleRef:  roleRef,
-		Subjects: subjects,
-	}
+	rbAC := rbacv1ac.RoleBinding(name, namespace).
+		WithLabels(map[string]string{
+			ManagedByLabel: ManagedByValue,
+		}).
+		WithRoleRef(roleRefAC(roleRef)).
+		WithSubjects(subjectsAC(subjects)...)
 
 	if !resource.IsClusterScoped() {
-		r.setOwnerReference(ctx, resource, roleBinding)
+		if ownerRef := r.ownerReferenceAC(resource); ownerRef != nil {
+			rbAC.WithOwnerReferences(ownerRef)
+		}
 	}
 
-	// Use server-side apply for idempotent resource management
-	err := r.client.Patch(ctx, roleBinding, client.Apply,
+	err := r.client.Apply(ctx, rbAC,
 		client.ForceOwnership,
 		client.FieldOwner("octopus-permissions-controller"))
 	if err != nil {
@@ -587,27 +613,20 @@ func (r ResourceManagementService) createClusterRoleBinding(
 
 	name := clusterRoleBindingName(resource.GetName(), roleRef.Name)
 
-	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRoleBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				ManagedByLabel: ManagedByValue,
-			},
-		},
-		RoleRef:  roleRef,
-		Subjects: subjects,
-	}
+	crbAC := rbacv1ac.ClusterRoleBinding(name).
+		WithLabels(map[string]string{
+			ManagedByLabel: ManagedByValue,
+		}).
+		WithRoleRef(roleRefAC(roleRef)).
+		WithSubjects(subjectsAC(subjects)...)
 
 	if resource.IsClusterScoped() {
-		r.setOwnerReference(ctx, resource, clusterRoleBinding)
+		if ownerRef := r.ownerReferenceAC(resource); ownerRef != nil {
+			crbAC.WithOwnerReferences(ownerRef)
+		}
 	}
 
-	// Use server-side apply for idempotent resource management
-	err := r.client.Patch(ctx, clusterRoleBinding, client.Apply,
+	err := r.client.Apply(ctx, crbAC,
 		client.ForceOwnership,
 		client.FieldOwner("octopus-permissions-controller"))
 	if err != nil {
