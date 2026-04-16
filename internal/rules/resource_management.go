@@ -424,7 +424,11 @@ func (r ResourceManagementService) createRoleIfNeeded(ctx context.Context, resou
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			Labels: map[string]string{
+				ManagedByLabel: ManagedByValue,
+			},
 		},
+		Rules: permissions,
 	}, nil
 }
 
