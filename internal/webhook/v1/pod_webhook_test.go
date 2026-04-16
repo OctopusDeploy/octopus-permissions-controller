@@ -33,6 +33,14 @@ var _ = Describe("Pod Webhook", func() {
 	)
 
 	BeforeEach(func() {
+<<<<<<< HEAD
+		obj = &corev1.Pod{}
+		oldObj = &corev1.Pod{}
+		defaulter = PodCustomDefaulter{}
+		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
+		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
+		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
+=======
 		pod = &corev1.Pod{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Pod",
@@ -72,6 +80,7 @@ var _ = Describe("Pod Webhook", func() {
 			Step:         "my-step",
 			Space:        "my-space",
 		}
+>>>>>>> tmp-original-16-04-26-05-09
 	})
 
 	AfterEach(func() {

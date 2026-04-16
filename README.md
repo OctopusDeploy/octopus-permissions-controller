@@ -32,7 +32,11 @@ This project is scaffolded using [Kubebuilder](https://github.com/kubernetes-sig
 to [Kubebuilder documentation](https://book.kubebuilder.io/introduction.html) for details.
 
 ### Prerequisites
+<<<<<<< HEAD
+- go version v1.24.6+
+=======
 - go version v1.25.0+
+>>>>>>> tmp-original-16-04-26-05-09
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
@@ -128,6 +132,17 @@ make build-installer
 2. Build the chart using the optional helm plugin
 
 ```sh
+<<<<<<< HEAD
+kubectl apply -f https://raw.githubusercontent.com/<org>/octopus-permissions-controller/<tag or branch>/dist/install.yaml
+```
+
+### By providing a Helm Chart
+
+1. Build the chart using the optional helm plugin
+
+```sh
+=======
+>>>>>>> tmp-original-16-04-26-05-09
 kubebuilder edit --plugins=helm/v2-alpha
 ```
 

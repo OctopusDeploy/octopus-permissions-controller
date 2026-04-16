@@ -25,9 +25,14 @@ go.work
 *.swo
 *~
 
+<<<<<<< HEAD
+# Kubeconfig might contain secrets
+*.kubeconfig
+=======
 # certs
 certificates
 
 # Load test logs
 load-test/logs/
 load-test/*.log
+>>>>>>> tmp-original-16-04-26-05-09

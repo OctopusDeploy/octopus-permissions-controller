@@ -66,6 +66,19 @@ var _ = Describe("Manager", Ordered, func() {
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+<<<<<<< HEAD
+
+		By("installing CRDs")
+		cmd = exec.Command("make", "install")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+
+		By("deploying the controller-manager")
+		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+=======
+>>>>>>> tmp-original-16-04-26-05-09
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -220,6 +233,54 @@ var _ = Describe("Manager", Ordered, func() {
 				_, err = utils.Run(cmd)
 				Expect(err).NotTo(HaveOccurred(), "Metrics service should exist")
 
+<<<<<<< HEAD
+			By("ensuring the controller pod is ready")
+			verifyControllerPodReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", controllerPodName, "-n", namespace,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "Controller pod not ready")
+			}
+			Eventually(verifyControllerPodReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying that the controller manager is serving the metrics server")
+			verifyMetricsServerStarted := func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Serving metrics server"),
+					"Metrics server not yet started")
+			}
+			Eventually(verifyMetricsServerStarted, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for the webhook service endpoints to be ready")
+			verifyWebhookEndpointsReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
+					"-l", "kubernetes.io/service-name=octopus-permissions-controller-webhook-service",
+					"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
+				g.Expect(output).ShouldNot(BeEmpty(), "Webhook endpoints not yet ready")
+			}
+			Eventually(verifyWebhookEndpointsReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the validating webhook server is ready")
+			verifyValidatingWebhookReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "validatingwebhookconfigurations.admissionregistration.k8s.io",
+					"octopus-permissions-controller-validating-webhook-configuration",
+					"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "ValidatingWebhookConfiguration should exist")
+				g.Expect(output).ShouldNot(BeEmpty(), "Validating webhook CA bundle not yet injected")
+			}
+			Eventually(verifyValidatingWebhookReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting additional time for webhook server to stabilize")
+			time.Sleep(5 * time.Second)
+
+			// +kubebuilder:scaffold:e2e-metrics-webhooks-readiness
+=======
 				By("getting the service account token")
 				token, err := serviceAccountToken()
 				Expect(err).NotTo(HaveOccurred())
@@ -233,6 +294,7 @@ var _ = Describe("Manager", Ordered, func() {
 					g.Expect(output).To(ContainSubstring("8443"), "Metrics endpoint is not ready")
 				}
 				Eventually(verifyMetricsEndpointReady).Should(Succeed())
+>>>>>>> tmp-original-16-04-26-05-09
 
 				By("verifying that the controller manager is serving the metrics server")
 				verifyMetricsServerStarted := func(g Gomega) {
@@ -255,7 +317,9 @@ var _ = Describe("Manager", Ordered, func() {
 							"name": "curl",
 							"image": "curlimages/curl:latest",
 							"command": ["/bin/sh", "-c"],
-							"args": ["curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
+							"args": [
+								"for i in $(seq 1 30); do curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics && exit 0 || sleep 2; done; exit 1"
+							],
 							"securityContext": {
 								"readOnlyRootFilesystem": true,
 								"allowPrivilegeEscalation": false,

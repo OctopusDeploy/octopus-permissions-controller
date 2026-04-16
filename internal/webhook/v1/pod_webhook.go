@@ -18,18 +18,19 @@ package v1
 
 import (
 	"context"
+<<<<<<< HEAD
+=======
 	"fmt"
 	"time"
+>>>>>>> tmp-original-16-04-26-05-09
 
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 var podWebhookDuration = promauto.NewHistogramVec(
@@ -59,12 +60,18 @@ const (
 var podlog = logf.Log.WithName("pod-resource")
 
 // SetupPodWebhookWithManager registers the webhook for Pod in the manager.
+<<<<<<< HEAD
+func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewWebhookManagedBy(mgr, &corev1.Pod{}).
+		WithDefaulter(&PodCustomDefaulter{}).
+=======
 func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine, version string) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&corev1.Pod{}).
 		WithDefaulter(&PodCustomDefaulter{
 			engine:  engine,
 			version: version,
 		}).
+>>>>>>> tmp-original-16-04-26-05-09
 		Complete()
 }
 
@@ -80,9 +87,11 @@ type PodCustomDefaulter struct {
 	version string
 }
 
-var _ webhook.CustomDefaulter = &PodCustomDefaulter{}
-
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pod.
+<<<<<<< HEAD
+func (d *PodCustomDefaulter) Default(_ context.Context, obj *corev1.Pod) error {
+	podlog.Info("Defaulting for Pod", "name", obj.GetName())
+=======
 func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	start := time.Now()
 	result := "success"
@@ -96,6 +105,7 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		result = "error"
 		return fmt.Errorf("expected an Pod object but got %T", obj)
 	}
+>>>>>>> tmp-original-16-04-26-05-09
 
 	if !d.shouldRunOnPod(ctx, pod) {
 		result = "skipped"
