@@ -38,6 +38,8 @@ func SetupWorkloadServiceAccountWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
+// +kubebuilder:webhook:path=/validate-agent-octopus-com-v1beta1-workloadserviceaccount,mutating=false,failurePolicy=fail,sideEffects=None,groups=agent.octopus.com,resources=workloadserviceaccounts,verbs=create,versions=v1beta1,name=vworkloadserviceaccount-v1beta1.kb.io,admissionReviewVersions=v1
+
 type WorkloadServiceAccountCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
