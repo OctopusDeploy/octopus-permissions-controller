@@ -165,7 +165,7 @@ func SetupEnvTestWithWebhook(config WebhookTestConfig) *EnvTestResult {
 // DefaultCRDPaths returns the standard CRD paths for different test locations
 func DefaultCRDPaths(levelsUp int) []string {
 	pathPrefix := ""
-	for i := 0; i < levelsUp; i++ {
+	for range levelsUp {
 		pathPrefix = filepath.Join(pathPrefix, "..")
 	}
 	return []string{filepath.Join(pathPrefix, "config", "crd", "bases")}
@@ -174,7 +174,7 @@ func DefaultCRDPaths(levelsUp int) []string {
 // DefaultWebhookPaths returns the standard webhook paths for different test locations
 func DefaultWebhookPaths(levelsUp int) []string {
 	pathPrefix := ""
-	for i := 0; i < levelsUp; i++ {
+	for range levelsUp {
 		pathPrefix = filepath.Join(pathPrefix, "..")
 	}
 	return []string{filepath.Join(pathPrefix, "config", "webhook")}

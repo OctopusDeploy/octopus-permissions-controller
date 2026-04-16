@@ -87,7 +87,7 @@ func TestEventCollector(t *testing.T) {
 		collector := NewEventCollectorWithDebouncer(time.Second, 10, manualDebouncer)
 
 		// Create back pressure by filling the batch channel
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			batch := []*EventInfo{
 				createEventInfo("filler"),
 			}
@@ -100,7 +100,7 @@ func TestEventCollector(t *testing.T) {
 		collector.FlushEvents()
 
 		// Remove back pressure by draining the batch channel
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			select {
 			case <-collector.BatchChannel():
 				// We don't care about the filler batches
@@ -167,7 +167,7 @@ func createEventInfo(name string) *EventInfo {
 }
 
 func collectResourceNames(batch []*EventInfo) []string {
-	actualResources := []string{}
+	actualResources := make([]string, 0, len(batch))
 	for _, event := range batch {
 		actualResources = append(actualResources, event.Resource.GetNamespacedName().String())
 	}

@@ -39,7 +39,7 @@ type WSAResource interface {
 	IsClusterScoped() bool
 
 	// GetOwnerObject returns the underlying WSA or CWSA object for owner references
-	GetOwnerObject() interface{}
+	GetOwnerObject() any
 
 	// GetGeneration returns the generation of the underlying WSA or CWSA object
 	GetGeneration() int64
@@ -99,7 +99,7 @@ func (w *wsaAdapter) IsClusterScoped() bool {
 	return false
 }
 
-func (w *wsaAdapter) GetOwnerObject() interface{} {
+func (w *wsaAdapter) GetOwnerObject() any {
 	return w.wsa
 }
 
@@ -164,7 +164,7 @@ func (c *clusterWSAAdapter) IsClusterScoped() bool {
 	return true
 }
 
-func (c *clusterWSAAdapter) GetOwnerObject() interface{} {
+func (c *clusterWSAAdapter) GetOwnerObject() any {
 	return c.cwsa
 }
 

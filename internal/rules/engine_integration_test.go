@@ -19,6 +19,7 @@ package rules
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -337,7 +338,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(wsaRoleBindings).NotTo(BeEmpty(), "Expected role bindings to be created")
 
 			// Track the role references we find to ensure cluster roles are bound as role bindings
-			var foundRoleRefs []rbacv1.RoleRef
+			foundRoleRefs := make([]rbacv1.RoleRef, 0, len(wsaRoleBindings))
 
 			for _, rb := range wsaRoleBindings {
 				By(fmt.Sprintf("verifying role binding %s", rb.Name))
@@ -444,7 +445,7 @@ var _ = Describe("Engine Integration Tests", func() {
 			Expect(reconcileAll(testCtx, &engine)).To(Succeed())
 
 			By("verifying service accounts are created in all target namespaces")
-			var allServiceAccounts []corev1.ServiceAccount
+			allServiceAccounts := make([]corev1.ServiceAccount, 0, len(targetNamespaces))
 
 			for _, ns := range targetNamespaces {
 				serviceAccounts := &corev1.ServiceAccountList{}
@@ -827,11 +828,8 @@ var _ = Describe("Engine Integration Tests", func() {
 			foundSA := false
 			for _, rb := range wsaRoleBindings {
 				for _, subject := range rb.Subjects {
-					for _, saName := range sharedSANames {
-						if subject.Name == saName {
-							foundSA = true
-							break
-						}
+					if slices.Contains(sharedSANames, subject.Name) {
+						foundSA = true
 					}
 				}
 			}
@@ -847,11 +845,8 @@ var _ = Describe("Engine Integration Tests", func() {
 			foundSAInCRB := false
 			for _, crb := range cwsaCRBs {
 				for _, subject := range crb.Subjects {
-					for _, saName := range sharedSANames {
-						if subject.Name == saName {
-							foundSAInCRB = true
-							break
-						}
+					if slices.Contains(sharedSANames, subject.Name) {
+						foundSAInCRB = true
 					}
 				}
 			}

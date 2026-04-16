@@ -67,7 +67,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(workloadServiceAccounts))
 				for i := range workloadServiceAccounts {
 					objects = append(objects, &workloadServiceAccounts[i])
 				}
@@ -83,7 +83,7 @@ var _ = Describe("ResourceManagementService", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(iterator).NotTo(BeNil())
 
-				var wsaNames []string
+				var wsaNames []string //nolint:prealloc // iterator length unknown
 				for wsa := range iterator {
 					wsaNames = append(wsaNames, wsa.Name)
 				}
@@ -135,7 +135,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(workloadServiceAccounts))
 				for i := range workloadServiceAccounts {
 					objects = append(objects, &workloadServiceAccounts[i])
 				}
@@ -151,7 +151,7 @@ var _ = Describe("ResourceManagementService", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(iterator).NotTo(BeNil())
 
-				var wsaNames []string
+				var wsaNames []string //nolint:prealloc // iterator length unknown
 				for wsa := range iterator {
 					wsaNames = append(wsaNames, wsa.Name)
 				}
@@ -302,7 +302,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(existingRoles))
 				for i := range existingRoles {
 					objects = append(objects, &existingRoles[i])
 				}
@@ -454,7 +454,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(existingServiceAccounts))
 				for i := range existingServiceAccounts {
 					objects = append(objects, &existingServiceAccounts[i])
 				}
@@ -853,7 +853,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(existingRoles))
 				for i := range existingRoles {
 					objects = append(objects, &existingRoles[i])
 				}
@@ -932,7 +932,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(existingServiceAccounts))
 				for i := range existingServiceAccounts {
 					objects = append(objects, &existingServiceAccounts[i])
 				}
@@ -1059,7 +1059,7 @@ var _ = Describe("ResourceManagementService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(existingRoleBindings))
 				for i := range existingRoleBindings {
 					objects = append(objects, &existingRoleBindings[i])
 				}

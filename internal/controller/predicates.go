@@ -48,7 +48,7 @@ func ManagedServiceAccountPredicate() predicate.Predicate {
 	}
 }
 
-func IsManagedServiceAccount(obj interface{}) bool {
+func IsManagedServiceAccount(obj any) bool {
 	sa, ok := obj.(*corev1.ServiceAccount)
 	if !ok {
 		return false

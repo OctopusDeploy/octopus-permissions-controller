@@ -304,7 +304,7 @@ func (r ResourceManagementService) EnsureRoleBindings(
 			continue
 		}
 
-		var allNamespacedServiceAccounts []serviceAccountInfo
+		allNamespacedServiceAccounts := make([]serviceAccountInfo, 0, len(targetNamespaces)*len(serviceAccounts))
 		for _, account := range serviceAccounts {
 			for _, namespace := range targetNamespaces {
 				allNamespacedServiceAccounts = append(allNamespacedServiceAccounts, serviceAccountInfo{

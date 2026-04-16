@@ -28,11 +28,11 @@ func Apply(
 	})
 
 	gvk := obj.GetObjectKind().GroupVersionKind()
-	patch := map[string]interface{}{
+	patch := map[string]any{
 		"apiVersion": gvk.GroupVersion().String(),
 		"kind":       gvk.Kind,
-		"metadata":   map[string]interface{}{"name": obj.GetName(), "namespace": obj.GetNamespace()},
-		"status":     map[string]interface{}{"conditions": *conditions},
+		"metadata":   map[string]any{"name": obj.GetName(), "namespace": obj.GetNamespace()},
+		"status":     map[string]any{"conditions": *conditions},
 	}
 
 	data, err := json.Marshal(patch)

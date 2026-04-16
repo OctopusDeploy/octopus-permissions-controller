@@ -152,7 +152,7 @@ func computeWSACoverage(resource WSAResource, vocabulary GlobalVocabulary) *set.
 		scope.Spaces,
 	}
 
-	for dim := ProjectIndex; dim < MaxDimensionIndex; dim++ {
+	for dim := range MaxDimensionIndex {
 		if len(scopeSlices[dim]) == 0 {
 			// Empty scope means wildcard - covers all possible values in this dimension
 			dimensionCoverage[dim] = vocabulary[dim].Copy()
