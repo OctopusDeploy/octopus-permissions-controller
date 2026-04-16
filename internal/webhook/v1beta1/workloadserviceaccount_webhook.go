@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -59,14 +58,14 @@ func (v *WorkloadServiceAccountCustomValidator) ValidateCreate(
 
 // ValidateUpdate implements webhook.CustomValidator but is not used since webhook only handles create operations.
 func (v *WorkloadServiceAccountCustomValidator) ValidateUpdate(
-	_ context.Context, _, _ runtime.Object,
+	_ context.Context, _, _ *agentoctopuscomv1beta1.WorkloadServiceAccount,
 ) (admission.Warnings, error) {
 	return nil, nil
 }
 
 // ValidateDelete implements webhook.CustomValidator but is not used since webhook only handles create operations.
 func (v *WorkloadServiceAccountCustomValidator) ValidateDelete(
-	_ context.Context, _ runtime.Object,
+	_ context.Context, _ *agentoctopuscomv1beta1.WorkloadServiceAccount,
 ) (admission.Warnings, error) {
 	return nil, nil
 }
