@@ -7,6 +7,8 @@ domain: agent.octopus.com
 layout:
 - go.kubebuilder.io/v4
 plugins:
+  autoupdate.kubebuilder.io/v1-alpha:
+    useGHModels: true
   helm.kubebuilder.io/v2-alpha:
     manifests: dist/install.yaml
     output: dist
