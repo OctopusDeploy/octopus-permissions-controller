@@ -17,6 +17,8 @@ limitations under the License.
 package utils
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -170,7 +172,6 @@ func GetProjectDir() (string, error) {
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	return wd, nil
 }
-<<<<<<< HEAD
 
 // UncommentCode searches for target in the file and remove the comment prefix
 // of the target content. The target content may span multiple lines.
@@ -223,5 +224,3 @@ func UncommentCode(filename, target, prefix string) error {
 
 	return nil
 }
-=======
->>>>>>> tmp-original-16-04-26-05-09

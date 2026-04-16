@@ -18,19 +18,17 @@ package v1
 
 import (
 	"context"
-<<<<<<< HEAD
-=======
-	"fmt"
-	"time"
->>>>>>> tmp-original-16-04-26-05-09
 
-	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	"time"
+
+	"github.com/octopusdeploy/octopus-permissions-controller/internal/metrics"
 )
 
 var podWebhookDuration = promauto.NewHistogramVec(
@@ -60,18 +58,12 @@ const (
 var podlog = logf.Log.WithName("pod-resource")
 
 // SetupPodWebhookWithManager registers the webhook for Pod in the manager.
-<<<<<<< HEAD
-func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &corev1.Pod{}).
-		WithDefaulter(&PodCustomDefaulter{}).
-=======
 func SetupPodWebhookWithManager(mgr ctrl.Manager, engine rules.Engine, version string) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&corev1.Pod{}).
+	return ctrl.NewWebhookManagedBy(mgr, &corev1.Pod{}).
 		WithDefaulter(&PodCustomDefaulter{
 			engine:  engine,
 			version: version,
 		}).
->>>>>>> tmp-original-16-04-26-05-09
 		Complete()
 }
 
@@ -88,11 +80,8 @@ type PodCustomDefaulter struct {
 }
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pod.
-<<<<<<< HEAD
-func (d *PodCustomDefaulter) Default(_ context.Context, obj *corev1.Pod) error {
+func (d *PodCustomDefaulter) Default(ctx context.Context, obj *corev1.Pod) error {
 	podlog.Info("Defaulting for Pod", "name", obj.GetName())
-=======
-func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	start := time.Now()
 	result := "success"
 
@@ -100,23 +89,16 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 		podWebhookDuration.WithLabelValues(result).Observe(time.Since(start).Seconds())
 	}()
 
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		result = "error"
-		return fmt.Errorf("expected an Pod object but got %T", obj)
-	}
->>>>>>> tmp-original-16-04-26-05-09
-
-	if !d.shouldRunOnPod(ctx, pod) {
+	if !d.shouldRunOnPod(ctx, obj) {
 		result = "skipped"
 		return nil
 	}
 
-	d.injectVersionEnvironmentVariable(pod)
+	d.injectVersionEnvironmentVariable(obj)
 
-	podlog.Info("Getting scope for pod", "name", pod.GetName())
+	podlog.Info("Getting scope for pod", "name", obj.GetName())
 
-	scope := getPodScope(pod)
+	scope := getPodScope(obj)
 
 	if scope.IsEmpty() {
 		result = "skipped"
@@ -125,8 +107,8 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 
 	serviceAccountName, err := d.engine.GetServiceAccountForScope(scope)
 	if err == nil && serviceAccountName != "" {
-		podlog.Info("Setting service account for pod", "name", pod.GetName(), "originalServiceAccount", pod.Spec.ServiceAccountName, "newServiceAccount", serviceAccountName)
-		pod.Spec.ServiceAccountName = string(serviceAccountName)
+		podlog.Info("Setting service account for pod", "name", obj.GetName(), "originalServiceAccount", obj.Spec.ServiceAccountName, "newServiceAccount", serviceAccountName)
+		obj.Spec.ServiceAccountName = string(serviceAccountName)
 		metrics.IncRequestsTotal("podWebhook", true)
 	} else {
 		if err != nil {

@@ -29,12 +29,10 @@ import (
 )
 
 var (
-<<<<<<< HEAD
 	// managerImage is the manager image to be built and loaded for testing.
-	managerImage = "example.com/octopus-permissions-controller:v0.0.1"
+	managerImage = "octopusdeploy/octopus-permissions-controller:v0.0.1"
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
-=======
 	// Optional Environment Variables:
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
 	// These variables are useful if CertManager is already installed, avoiding
@@ -46,7 +44,6 @@ var (
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
 	projectImage = "octopusdeploy/octopus-permissions-controller:v0.0.1"
->>>>>>> tmp-original-16-04-26-05-09
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.

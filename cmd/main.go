@@ -233,20 +233,6 @@ func main() {
 		os.Exit(1)
 	}
 
-<<<<<<< HEAD
-	if err := (&controller.WorkloadServiceAccountReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "WorkloadServiceAccount")
-		os.Exit(1)
-	}
-	if err := (&controller.ClusterWorkloadServiceAccountReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "ClusterWorkloadServiceAccount")
-=======
 	// Check configuration for namespace filtering
 	var targetNamespaces []string
 	var targetNamespaceRegex *regexp.Regexp
@@ -338,8 +324,7 @@ func main() {
 		EventCollector: eventCollector,
 		Recorder:       eventRecorder,
 	}).SetupWithManager(mgr, gcTracker); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkloadServiceAccount")
->>>>>>> tmp-original-16-04-26-05-09
+		setupLog.Error(err, "Failed to create controller", "controller", "WorkloadServiceAccount")
 		os.Exit(1)
 	}
 	// nolint:goconst
@@ -351,13 +336,8 @@ func main() {
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-<<<<<<< HEAD
-		if err := webhookv1.SetupPodWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "Failed to create webhook", "webhook", "Pod")
-=======
 		if err := webhookv1.SetupPodWebhookWithManager(mgr, &engine, version); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "Pod")
->>>>>>> tmp-original-16-04-26-05-09
+			setupLog.Error(err, "Failed to create webhook", "webhook", "Pod")
 			os.Exit(1)
 		}
 	}
@@ -368,7 +348,7 @@ func main() {
 		EventCollector: eventCollector,
 		Recorder:       eventRecorder,
 	}).SetupWithManager(mgr, gcTracker); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterWorkloadServiceAccount")
+		setupLog.Error(err, "Failed to create controller", "controller", "ClusterWorkloadServiceAccount")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
@@ -376,7 +356,7 @@ func main() {
 	if metricsCertWatcher != nil {
 		setupLog.Info("Adding metrics certificate watcher to manager")
 		if err := mgr.Add(metricsCertWatcher); err != nil {
-			setupLog.Error(err, "unable to add metrics certificate watcher to manager")
+			setupLog.Error(err, "Failed to add metrics certificate watcher to manager")
 			os.Exit(1)
 		}
 	}
@@ -384,7 +364,7 @@ func main() {
 	if webhookCertWatcher != nil {
 		setupLog.Info("Adding webhook certificate watcher to manager")
 		if err := mgr.Add(webhookCertWatcher); err != nil {
-			setupLog.Error(err, "unable to add webhook certificate watcher to manager")
+			setupLog.Error(err, "Failed to add webhook certificate watcher to manager")
 			os.Exit(1)
 		}
 	}
