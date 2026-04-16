@@ -20,6 +20,7 @@ import (
 	rbacv1ac "k8s.io/client-go/applyconfigurations/rbac/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/hashicorp/go-set/v3"
@@ -119,26 +120,29 @@ func (r ResourceManagementService) ownerReferenceAC(resource WSAResource) *metav
 
 	owner := resource.GetOwnerObject()
 
+	var ownerObj client.Object
 	switch o := owner.(type) {
 	case *v1beta1.WorkloadServiceAccount:
-		return metav1ac.OwnerReference().
-			WithAPIVersion(v1beta1.GroupVersion.String()).
-			WithKind("WorkloadServiceAccount").
-			WithName(o.Name).
-			WithUID(o.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)
+		ownerObj = o
 	case *v1beta1.ClusterWorkloadServiceAccount:
-		return metav1ac.OwnerReference().
-			WithAPIVersion(v1beta1.GroupVersion.String()).
-			WithKind("ClusterWorkloadServiceAccount").
-			WithName(o.Name).
-			WithUID(o.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)
+		ownerObj = o
+	default:
+		return nil
 	}
 
-	return nil
+	// Use the scheme to look up the GVK, matching the old controllerutil.SetControllerReference behaviour
+	gvk, err := apiutil.GVKForObject(ownerObj, r.scheme)
+	if err != nil {
+		return nil
+	}
+
+	return metav1ac.OwnerReference().
+		WithAPIVersion(gvk.GroupVersion().String()).
+		WithKind(gvk.Kind).
+		WithName(ownerObj.GetName()).
+		WithUID(ownerObj.GetUID()).
+		WithController(true).
+		WithBlockOwnerDeletion(true)
 }
 
 func roleRefAC(ref rbacv1.RoleRef) *rbacv1ac.RoleRefApplyConfiguration {

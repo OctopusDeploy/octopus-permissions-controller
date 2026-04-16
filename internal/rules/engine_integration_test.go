@@ -298,6 +298,15 @@ var _ = Describe("Engine Integration Tests", func() {
 				// Verify labels
 				Expect(role.Labels).To(HaveKey(ManagedByLabel))
 				Expect(role.Labels[ManagedByLabel]).To(Equal(ManagedByValue))
+
+				// Verify owner reference points back to the WSA
+				Expect(role.OwnerReferences).To(HaveLen(1), "Role should have an owner reference")
+				ownerRef := role.OwnerReferences[0]
+				Expect(ownerRef.Kind).To(Equal("WorkloadServiceAccount"))
+				Expect(ownerRef.Name).To(Equal(wsa.Name))
+				Expect(ownerRef.APIVersion).To(Equal(agentoctopuscomv1beta1.GroupVersion.String()))
+				Expect(*ownerRef.Controller).To(BeTrue())
+				Expect(*ownerRef.BlockOwnerDeletion).To(BeTrue())
 			}
 		})
 
@@ -356,6 +365,13 @@ var _ = Describe("Engine Integration Tests", func() {
 					Expect(subject.Name).To(HavePrefix("octopus-sa-"), "Subject name should match service account pattern")
 					Expect(targetNamespaces).To(ContainElement(subject.Namespace), "Subject namespace should be in target namespaces")
 				}
+
+				// Verify owner reference points back to the WSA
+				Expect(rb.OwnerReferences).To(HaveLen(1), "RoleBinding should have an owner reference")
+				ownerRef := rb.OwnerReferences[0]
+				Expect(ownerRef.Kind).To(Equal("WorkloadServiceAccount"))
+				Expect(ownerRef.Name).To(Equal(wsa.Name))
+				Expect(*ownerRef.Controller).To(BeTrue())
 			}
 
 			By("verifying cluster roles are bound as role bindings")

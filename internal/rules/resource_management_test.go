@@ -1086,6 +1086,339 @@ var _ = Describe("ResourceManagementService", func() {
 			})
 		})
 	})
+
+	Describe("EnsureRoles with ClusterWorkloadServiceAccounts", func() {
+		var clusterRoleScheme *runtime.Scheme
+
+		BeforeEach(func() {
+			clusterRoleScheme = runtime.NewScheme()
+			Expect(rbacv1.AddToScheme(clusterRoleScheme)).To(Succeed())
+		})
+
+		Context("When ensuring roles for ClusterWorkloadServiceAccounts", func() {
+			It("Should not create cluster role for CWSA with no permissions", func() {
+				cwsa := &v1beta1.ClusterWorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cwsa",
+					},
+					Spec: v1beta1.ClusterWorkloadServiceAccountSpec{
+						Permissions: v1beta1.ClusterWorkloadServiceAccountPermissions{},
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(clusterRoleScheme).
+					Build()
+
+				service := NewResourceManagementService(fakeClient)
+				createdRoles, err := service.EnsureRoles(context.Background(), []WSAResource{NewClusterWSAResource(cwsa)})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(createdRoles).To(BeEmpty())
+			})
+
+			It("Should create cluster role for CWSA with permissions", func() {
+				cwsa := &v1beta1.ClusterWorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cwsa",
+					},
+					Spec: v1beta1.ClusterWorkloadServiceAccountSpec{
+						Permissions: v1beta1.ClusterWorkloadServiceAccountPermissions{
+							Permissions: []rbacv1.PolicyRule{
+								{
+									APIGroups: []string{""},
+									Resources: []string{"nodes"},
+									Verbs:     []string{"get", "list"},
+								},
+							},
+						},
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(clusterRoleScheme).
+					Build()
+
+				service := NewResourceManagementService(fakeClient)
+				createdRoles, err := service.EnsureRoles(context.Background(), []WSAResource{NewClusterWSAResource(cwsa)})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(createdRoles).To(HaveLen(1))
+
+				for _, role := range createdRoles {
+					Expect(role.Name).NotTo(BeEmpty())
+					Expect(role.Name).To(ContainSubstring("octopus-clusterrole-"))
+				}
+			})
+
+			It("Should handle existing cluster role without error", func() {
+				cwsa := &v1beta1.ClusterWorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cwsa",
+					},
+					Spec: v1beta1.ClusterWorkloadServiceAccountSpec{
+						Permissions: v1beta1.ClusterWorkloadServiceAccountPermissions{
+							Permissions: []rbacv1.PolicyRule{
+								{
+									APIGroups: []string{""},
+									Resources: []string{"nodes"},
+									Verbs:     []string{"get", "list"},
+								},
+							},
+						},
+					},
+				}
+
+				existingClusterRoles := []rbacv1.ClusterRole{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "octopus-clusterrole-" + shortHash(`[{"apiGroups":[""],"resources":["nodes"],"verbs":["get","list"]}]`),
+							Labels: map[string]string{
+								ManagedByLabel: ManagedByValue,
+							},
+						},
+						Rules: []rbacv1.PolicyRule{
+							{
+								APIGroups: []string{""},
+								Resources: []string{"nodes"},
+								Verbs:     []string{"get", "list"},
+							},
+						},
+					},
+				}
+
+				objects := make([]client.Object, 0, len(existingClusterRoles))
+				for i := range existingClusterRoles {
+					objects = append(objects, &existingClusterRoles[i])
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(clusterRoleScheme).
+					WithObjects(objects...).
+					Build()
+
+				service := NewResourceManagementService(fakeClient)
+				createdRoles, err := service.EnsureRoles(context.Background(), []WSAResource{NewClusterWSAResource(cwsa)})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(createdRoles).To(HaveLen(1))
+			})
+		})
+	})
+
+	Describe("EnsureRoleBindings with ClusterWorkloadServiceAccounts", func() {
+		var crbScheme *runtime.Scheme
+
+		BeforeEach(func() {
+			crbScheme = runtime.NewScheme()
+			Expect(rbacv1.AddToScheme(crbScheme)).To(Succeed())
+		})
+
+		Context("When ensuring role bindings for ClusterWorkloadServiceAccounts", func() {
+			It("Should create cluster role binding for CWSA with cluster role ref", func() {
+				cwsa := &v1beta1.ClusterWorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cwsa",
+					},
+					Spec: v1beta1.ClusterWorkloadServiceAccountSpec{
+						Permissions: v1beta1.ClusterWorkloadServiceAccountPermissions{
+							ClusterRoles: []rbacv1.RoleRef{
+								{
+									Kind:     "ClusterRole",
+									Name:     "test-cluster-role",
+									APIGroup: "rbac.authorization.k8s.io",
+								},
+							},
+						},
+					},
+				}
+
+				resource := NewClusterWSAResource(cwsa)
+				wsaToSAs := map[types.NamespacedName][]string{
+					resource.GetNamespacedName(): {"test-sa"},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(crbScheme).
+					Build()
+
+				service := NewResourceManagementService(fakeClient)
+				err := service.EnsureRoleBindings(
+					context.Background(),
+					[]WSAResource{resource},
+					map[types.NamespacedName]rbacv1.Role{},
+					wsaToSAs,
+					[]string{"default"},
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+
+				finalList := &rbacv1.ClusterRoleBindingList{}
+				err = fakeClient.List(context.Background(), finalList)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finalList.Items).To(HaveLen(1))
+
+				createdCRB := &finalList.Items[0]
+				Expect(createdCRB.Name).To(ContainSubstring("octopus-crb-"))
+				Expect(createdCRB.RoleRef.Name).To(Equal("test-cluster-role"))
+				Expect(createdCRB.RoleRef.Kind).To(Equal("ClusterRole"))
+				Expect(createdCRB.Subjects).To(HaveLen(1))
+				Expect(createdCRB.Subjects[0].Name).To(Equal("test-sa"))
+				Expect(createdCRB.Labels[ManagedByLabel]).To(Equal(ManagedByValue))
+			})
+
+			It("Should create cluster role binding for CWSA with inline permissions", func() {
+				cwsa := &v1beta1.ClusterWorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cwsa",
+					},
+					Spec: v1beta1.ClusterWorkloadServiceAccountSpec{
+						Permissions: v1beta1.ClusterWorkloadServiceAccountPermissions{
+							Permissions: []rbacv1.PolicyRule{
+								{
+									APIGroups: []string{""},
+									Resources: []string{"nodes"},
+									Verbs:     []string{"get", "list"},
+								},
+							},
+						},
+					},
+				}
+
+				resource := NewClusterWSAResource(cwsa)
+				createdRoleName := "octopus-clusterrole-" + shortHash(`[{"apiGroups":[""],"resources":["nodes"],"verbs":["get","list"]}]`)
+				createdRoles := map[types.NamespacedName]rbacv1.Role{
+					resource.GetNamespacedName(): {
+						ObjectMeta: metav1.ObjectMeta{Name: createdRoleName},
+					},
+				}
+				wsaToSAs := map[types.NamespacedName][]string{
+					resource.GetNamespacedName(): {"test-sa"},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(crbScheme).
+					Build()
+
+				service := NewResourceManagementService(fakeClient)
+				err := service.EnsureRoleBindings(
+					context.Background(),
+					[]WSAResource{resource},
+					createdRoles,
+					wsaToSAs,
+					[]string{"default"},
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+
+				finalList := &rbacv1.ClusterRoleBindingList{}
+				err = fakeClient.List(context.Background(), finalList)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finalList.Items).To(HaveLen(1))
+
+				createdCRB := &finalList.Items[0]
+				Expect(createdCRB.RoleRef.Name).To(Equal(createdRoleName))
+				Expect(createdCRB.RoleRef.Kind).To(Equal("ClusterRole"))
+			})
+
+			It("Should not duplicate existing cluster role binding", func() {
+				cwsa := &v1beta1.ClusterWorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cwsa",
+					},
+					Spec: v1beta1.ClusterWorkloadServiceAccountSpec{
+						Permissions: v1beta1.ClusterWorkloadServiceAccountPermissions{
+							ClusterRoles: []rbacv1.RoleRef{
+								{
+									Kind:     "ClusterRole",
+									Name:     "test-cluster-role",
+									APIGroup: "rbac.authorization.k8s.io",
+								},
+							},
+						},
+					},
+				}
+
+				resource := NewClusterWSAResource(cwsa)
+				existingCRB := &rbacv1.ClusterRoleBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "octopus-crb-" + shortHash("test-cwsa-test-cluster-role"),
+					},
+					RoleRef: rbacv1.RoleRef{
+						Kind:     "ClusterRole",
+						Name:     "test-cluster-role",
+						APIGroup: "rbac.authorization.k8s.io",
+					},
+					Subjects: []rbacv1.Subject{
+						{Kind: "ServiceAccount", Name: "test-sa", Namespace: "default"},
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(crbScheme).
+					WithObjects(existingCRB).
+					Build()
+
+				wsaToSAs := map[types.NamespacedName][]string{
+					resource.GetNamespacedName(): {"test-sa"},
+				}
+
+				service := NewResourceManagementService(fakeClient)
+				err := service.EnsureRoleBindings(
+					context.Background(),
+					[]WSAResource{resource},
+					map[types.NamespacedName]rbacv1.Role{},
+					wsaToSAs,
+					[]string{"default"},
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+
+				finalList := &rbacv1.ClusterRoleBindingList{}
+				err = fakeClient.List(context.Background(), finalList)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finalList.Items).To(HaveLen(1))
+			})
+		})
+	})
+
+	Describe("ownerReferenceAC", func() {
+		Context("When building owner references", func() {
+			It("Should return nil when scheme is nil", func() {
+				fakeClient := fake.NewClientBuilder().Build()
+				service := NewResourceManagementService(fakeClient)
+
+				wsa := &v1beta1.WorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-wsa",
+						Namespace: "default",
+						UID:       "test-uid",
+					},
+				}
+
+				ref := service.ownerReferenceAC(NewWSAResource(wsa))
+				Expect(ref).To(BeNil())
+			})
+
+			It("Should return nil when owner type is not registered in scheme", func() {
+				emptyScheme := runtime.NewScheme()
+
+				fakeClient := fake.NewClientBuilder().WithScheme(emptyScheme).Build()
+				service := NewResourceManagementServiceWithScheme(fakeClient, emptyScheme)
+
+				wsa := &v1beta1.WorkloadServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-wsa",
+						Namespace: "default",
+						UID:       "test-uid",
+					},
+				}
+
+				ref := service.ownerReferenceAC(NewWSAResource(wsa))
+				Expect(ref).To(BeNil())
+			})
+		})
+	})
 })
 
 var _ = Describe("shortHash", func() {
