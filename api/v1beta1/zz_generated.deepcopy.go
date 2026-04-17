@@ -250,6 +250,11 @@ func (in *WorkloadServiceAccountScope) DeepCopyInto(out *WorkloadServiceAccountS
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.NewProperty != nil {
+		in, out := &in.NewProperty, &out.NewProperty
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.ProjectGroups != nil {
 		in, out := &in.ProjectGroups, &out.ProjectGroups
 		*out = make([]string, len(*in))

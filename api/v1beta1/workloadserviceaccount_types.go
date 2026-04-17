@@ -58,6 +58,9 @@ type WorkloadServiceAccountScope struct {
 	Projects []string `json:"projects,omitempty"`
 	// +optional
 	// +kubebuilder:validation:items:Pattern="^[\\p{Ll}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$"
+	NewProperty []string `json:"newProperty,omitempty"`
+	// +optional
+	// +kubebuilder:validation:items:Pattern="^[\\p{Ll}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$"
 	ProjectGroups []string `json:"projectGroups,omitempty"`
 	// +optional
 	// +kubebuilder:validation:items:Pattern="^[\\p{Ll}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$"
