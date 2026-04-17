@@ -301,6 +301,7 @@ var _ = Describe("Manager", Ordered, func() {
 				Eventually(verifyMetricsEndpointReady).Should(Succeed())
 
 				By("creating the curl-metrics pod to access the metrics endpoint")
+				//nolint:lll // The command args are long, but honestly, this kubectl run is a dog's breakfast so...
 				cmd = exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",
 					"--namespace", namespace,
 					"--image=curlimages/curl:latest",
