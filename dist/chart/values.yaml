@@ -19,7 +19,7 @@ manager:
     repository: octopusdeploy/octopus-permissions-controller
     ## Image tag (defaults to Chart.appVersion if not set)
     ##
-    tag: "v0.0.1"
+    tag: "v1.2.0"
     pullPolicy: IfNotPresent
 
   ## Arguments

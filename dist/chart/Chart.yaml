@@ -3,8 +3,8 @@ name: octopus-permissions-controller
 description: A Helm chart to distribute octopus-permissions-controller
 type: application
 
-version: 0.1.0
-appVersion: "v0.0.1"
+version: 1.2.0
+appVersion: "v1.2.0"
 
 keywords:
   - kubernetes
