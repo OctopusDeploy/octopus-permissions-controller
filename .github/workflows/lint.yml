@@ -11,12 +11,23 @@ jobs:
       - name: Clone the code
         uses: actions/checkout@v4
 
+      - name: Check for code changes
+        id: changes
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            **.go
+            go.mod
+            go.sum
+
       - name: Setup Go
+        if: steps.changes.outputs.any_changed == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Run linter
+        if: steps.changes.outputs.any_changed == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.4
