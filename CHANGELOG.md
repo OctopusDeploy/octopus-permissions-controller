@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.1.2...v1.2.0) (2026-04-17)
+
+
+### Features
+
+* update helm chart ([#75](https://github.com/OctopusDeploy/octopus-permissions-controller/issues/75)) ([b12ff22](https://github.com/OctopusDeploy/octopus-permissions-controller/commit/b12ff22ed2f9172678854a22696a13c734ec4131))
+
 ## [1.1.2](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.1.1...v1.1.2) (2026-02-19)
 
 
