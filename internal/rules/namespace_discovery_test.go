@@ -67,7 +67,7 @@ var _ = Describe("NamespaceDiscoveryService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(deployments))
 				for i := range deployments {
 					objects = append(objects, &deployments[i])
 				}
@@ -107,7 +107,7 @@ var _ = Describe("NamespaceDiscoveryService", func() {
 					},
 				}
 
-				var objects []client.Object
+				objects := make([]client.Object, 0, len(deployments))
 				for i := range deployments {
 					objects = append(objects, &deployments[i])
 				}

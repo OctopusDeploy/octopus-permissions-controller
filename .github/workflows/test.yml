@@ -1,11 +1,12 @@
-name: Lint
+name: Tests
 
 on:
+  push:
   pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
-  lint:
+  test:
+    name: Run on Ubuntu
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -16,7 +17,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run linter
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.11.4
+      - name: Running Tests
+        run: |
+          go mod tidy
+          make test

@@ -192,7 +192,7 @@ var _ = Describe("BatchQueue", func() {
 
 		It("should track requeue count correctly", func() {
 			// Add with rate limiting multiple times
-			for i := 0; i < 3; i++ {
+			for range 3 {
 				queue.AddRateLimited(testBatch)
 				queue.Done(testBatch)
 			}
@@ -239,10 +239,10 @@ var _ = Describe("BatchQueue", func() {
 			resultChan := make(chan *Batch, numGoroutines*batchesPerGoroutine)
 
 			// Start goroutines to add batches
-			for i := 0; i < numGoroutines; i++ {
+			for range numGoroutines {
 				go func() {
 					defer GinkgoRecover()
-					for j := 0; j < batchesPerGoroutine; j++ {
+					for range batchesPerGoroutine {
 						batch := &Batch{
 							ID:        NewBatchID(),
 							Resources: []rules.WSAResource{},
@@ -254,10 +254,10 @@ var _ = Describe("BatchQueue", func() {
 			}
 
 			// Start goroutines to get batches
-			for i := 0; i < numGoroutines; i++ {
+			for range numGoroutines {
 				go func() {
 					defer GinkgoRecover()
-					for j := 0; j < batchesPerGoroutine; j++ {
+					for range batchesPerGoroutine {
 						batch, shutdown := queue.Get()
 						if !shutdown && batch != nil {
 							resultChan <- batch
@@ -293,7 +293,7 @@ var _ = Describe("BatchQueue", func() {
 			const numOperations = 50
 
 			// Add the same batch multiple times
-			for i := 0; i < numOperations; i++ {
+			for range numOperations {
 				queue.AddRateLimited(testBatch)
 				queue.Done(testBatch)
 			}
@@ -303,7 +303,7 @@ var _ = Describe("BatchQueue", func() {
 			// Concurrent Done operations
 			go func() {
 				defer GinkgoRecover()
-				for i := 0; i < numOperations/2; i++ {
+				for range numOperations / 2 {
 					queue.Done(testBatch)
 				}
 				close(done)
@@ -312,7 +312,7 @@ var _ = Describe("BatchQueue", func() {
 			// Concurrent Forget operations
 			go func() {
 				defer GinkgoRecover()
-				for i := 0; i < numOperations/2; i++ {
+				for range numOperations / 2 {
 					queue.Forget(testBatch)
 				}
 			}()
@@ -341,7 +341,7 @@ var _ = Describe("BatchQueue", func() {
 		It("should handle rapid Add/Get cycles", func() {
 			const numCycles = 100
 
-			for i := 0; i < numCycles; i++ {
+			for range numCycles {
 				batch := &Batch{
 					ID:        NewBatchID(),
 					Resources: []rules.WSAResource{},

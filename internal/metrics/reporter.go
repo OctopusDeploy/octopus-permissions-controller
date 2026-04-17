@@ -24,7 +24,7 @@ func NewMetricsReporter(c client.Client) *MetricsReporter {
 func (m *MetricsReporter) Start(context.Context) error {
 	opcNamespace, err := getInstallationNamespace(m.c)
 	if err != nil {
-		logger.V(0).Info("unable to get installation namespace", "error", err)
+		logger.Info("unable to get installation namespace", "error", err)
 	} else {
 		SetOpcNamespaceUid(string(opcNamespace.UID))
 	}

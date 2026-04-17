@@ -57,7 +57,6 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 		_ = agentoctopuscomv1beta1.AddToScheme(scheme)
 
 		// Reset cleanup tracking
-		cleanNamespaces = []*corev1.Namespace{}
 		cleanResources = []client.Object{}
 
 		// Create unique test namespaces for each test
@@ -66,6 +65,7 @@ var _ = Describe("Partial Update Advanced Tests", func() {
 		ns2Name := fmt.Sprintf("test-partial2-%s", uid)
 		testNamespace = ns1Name
 		targetNamespaces = []string{ns1Name, ns2Name}
+		cleanNamespaces = make([]*corev1.Namespace, 0, len(targetNamespaces))
 
 		// Create test namespaces
 		for _, ns := range targetNamespaces {
