@@ -1,6 +1,6 @@
 # Adds namespace to all resources.
 namespace: octopus-permissions-controller-system
-namePrefix: opc-
+namePrefix: octopus-permissions-controller-
 resources:
 - ./namespace.yaml
 - ../webhook

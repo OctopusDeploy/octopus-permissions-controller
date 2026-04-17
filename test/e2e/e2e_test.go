@@ -35,13 +35,13 @@ import (
 const namespace = "octopus-permissions-controller-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "opc-controller-manager"
+const serviceAccountName = "octopus-permissions-controller-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "opc-metrics-service"
+const metricsServiceName = "octopus-permissions-controller-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "opc-metrics-binding"
+const metricsRoleBindingName = "octopus-permissions-controller-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -219,7 +219,7 @@ var _ = Describe("Manager", Ordered, func() {
 			It("should ensure the metrics endpoint is serving metrics", func() {
 				By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 				cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-					"--clusterrole=opc-metrics-reader",
+					"--clusterrole=octopus-permissions-controller-metrics-reader",
 					fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 				)
 				_, err := utils.Run(cmd)
@@ -263,7 +263,7 @@ var _ = Describe("Manager", Ordered, func() {
 				By("waiting for the webhook service endpoints to be ready")
 				verifyWebhookEndpointsReady := func(g Gomega) {
 					cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
-						"-l", "kubernetes.io/service-name=opc-webhook-service",
+						"-l", "kubernetes.io/service-name=octopus-permissions-controller-webhook-service",
 						"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
 					output, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
@@ -274,7 +274,7 @@ var _ = Describe("Manager", Ordered, func() {
 				By("verifying the validating webhook server is ready")
 				verifyValidatingWebhookReady := func(g Gomega) {
 					cmd := exec.Command("kubectl", "get", "validatingwebhookconfigurations.admissionregistration.k8s.io",
-						"opc-validating-webhook-configuration",
+						"octopus-permissions-controller-validating-webhook-configuration",
 						"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
 					output, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred(), "ValidatingWebhookConfiguration should exist")
@@ -368,7 +368,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"opc-validating-webhook-configuration",
+					"octopus-permissions-controller-validating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -382,7 +382,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"mutatingwebhookconfigurations.admissionregistration.k8s.io",
-					"opc-mutating-webhook-configuration",
+					"octopus-permissions-controller-mutating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				mwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())

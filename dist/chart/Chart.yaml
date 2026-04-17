@@ -1,7 +1,14 @@
 apiVersion: v2
-name: octopus-permissions-controller-chart
-description: A Helm chart to distribute the project octopus-permissions-controller
+name: octopus-permissions-controller
+description: A Helm chart to distribute octopus-permissions-controller
 type: application
-version: 1.1.2
-appVersion: 1.1.2
-icon: https://example.com/icon.png
+
+version: 0.1.0
+appVersion: "v0.0.1"
+
+keywords:
+  - kubernetes
+  - operator
+
+annotations:
+  kubebuilder.io/generated-by: kubebuilder

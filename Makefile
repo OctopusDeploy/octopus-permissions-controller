@@ -114,8 +114,8 @@ install-cert-manager: setup-test-e2e
 setup-debug-env: setup-test-e2e manifests generate install-cert-manager certs install
 
 	@echo "Waiting for certificates to be ready..."
-	$(KUBECTL) wait --for=condition=Ready --timeout=300s certificate/opc-serving-cert -n octopus-permissions-controller-system || true
-	$(KUBECTL) wait --for=condition=Ready --timeout=300s certificate/opc-metrics-certs -n octopus-permissions-controller-system || true
+	$(KUBECTL) wait --for=condition=Ready --timeout=300s certificate/octopus-permissions-controller-serving-cert -n octopus-permissions-controller-system || true
+	$(KUBECTL) wait --for=condition=Ready --timeout=300s certificate/octopus-permissions-controller-metrics-certs -n octopus-permissions-controller-system || true
 
 	# Create certificates directory and extract TLS certificates
 	@echo "Extracting certificates to ./certificates directory..."
