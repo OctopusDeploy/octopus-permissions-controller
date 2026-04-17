@@ -7,10 +7,9 @@ on:
 permissions: {}
 
 jobs:
-  test-e2e:
+  test-chart:
     permissions:
       contents: read
-    name: Run on Ubuntu
     runs-on: ubuntu-latest
     env:
       IMG: controller:latest
