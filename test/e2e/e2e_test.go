@@ -73,7 +73,7 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
+		cmd = exec.Command("make", "deploy-tests", fmt.Sprintf("IMG=%s", managerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
@@ -250,10 +250,20 @@ var _ = Describe("Manager", Ordered, func() {
 				}
 				Eventually(verifyMetricsServerStarted, 3*time.Minute, time.Second).Should(Succeed())
 
+				By("waiting for the controller to acquire leader election")
+				verifyLeaderElection := func(g Gomega) {
+					cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("Starting workers"),
+						"Controllers not yet started (leader election pending)")
+				}
+				Eventually(verifyLeaderElection, 3*time.Minute, time.Second).Should(Succeed())
+
 				By("waiting for the webhook service endpoints to be ready")
 				verifyWebhookEndpointsReady := func(g Gomega) {
 					cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
-						"-l", "kubernetes.io/service-name=octopus-permissions-controller-webhook-service",
+						"-l", "kubernetes.io/service-name=opc-webhook-service",
 						"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
 					output, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
@@ -264,7 +274,7 @@ var _ = Describe("Manager", Ordered, func() {
 				By("verifying the validating webhook server is ready")
 				verifyValidatingWebhookReady := func(g Gomega) {
 					cmd := exec.Command("kubectl", "get", "validatingwebhookconfigurations.admissionregistration.k8s.io",
-						"octopus-permissions-controller-validating-webhook-configuration",
+						"opc-validating-webhook-configuration",
 						"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
 					output, err := utils.Run(cmd)
 					g.Expect(err).NotTo(HaveOccurred(), "ValidatingWebhookConfiguration should exist")
@@ -298,12 +308,11 @@ var _ = Describe("Manager", Ordered, func() {
 					fmt.Sprintf(`{
 					"spec": {
 						"containers": [{
-							"name": "curl",
+							"name": "curl-metrics",
 							"image": "curlimages/curl:latest",
 							"command": ["/bin/sh", "-c"],
 							"args": [
-								"for i in $(seq 1 30); do curl -v -k -H 'Authorization: Bearer %s' " +
-									"https://%s.%s.svc.cluster.local:8443/metrics && exit 0 || sleep 2; done; exit 1"
+								"for i in $(seq 1 30); do curl -v -k -H 'Authorization: Bearer %s' https://%s:8443/metrics && exit 0 || sleep 2; done; exit 1"
 							],
 							"securityContext": {
 								"readOnlyRootFilesystem": true,
@@ -320,7 +329,7 @@ var _ = Describe("Manager", Ordered, func() {
 						}],
 						"serviceAccountName": "%s"
 					}
-				}`, token, metricsServiceName, namespace, serviceAccountName))
+				}`, token, metricsServiceName, serviceAccountName))
 				_, err = utils.Run(cmd)
 				Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
 
