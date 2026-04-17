@@ -19,38 +19,52 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check for chart changes
+        id: changes
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            dist/chart/**
+
       - name: Setup Go
+        if: steps.changes.outputs.any_changed == 'true'
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
 
       - name: Install the latest version of kind
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
       - name: Verify kind installation
+        if: steps.changes.outputs.any_changed == 'true'
         run: kind version
 
       - name: Create kind cluster
+        if: steps.changes.outputs.any_changed == 'true'
         run: kind create cluster
 
       - name: Prepare octopus-permissions-controller
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           go mod tidy
           make docker-build
           kind load docker-image $IMG
 
       - name: Install Helm
+        if: steps.changes.outputs.any_changed == 'true'
         run: make install-helm
 
       - name: Lint Helm Chart
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           helm lint ./dist/chart
 
-
       - name: Install cert-manager via Helm (wait for readiness)
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           helm repo add jetstack https://charts.jetstack.io
           helm repo update
@@ -69,9 +83,11 @@ jobs:
 #          helm install prometheus-crds prometheus-community/prometheus-operator-crds
 
       - name: Deploy manager via Helm
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           make helm-deploy
 
       - name: Check Helm release status
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           make helm-status

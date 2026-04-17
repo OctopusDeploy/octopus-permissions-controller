@@ -11,12 +11,25 @@ jobs:
       - name: Clone the code
         uses: actions/checkout@v4
 
+      - name: Check for code changes
+        id: changes
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            **.go
+            go.mod
+            go.sum
+            Makefile
+            config/**
+
       - name: Setup Go
+        if: steps.changes.outputs.any_changed == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Running Tests
+        if: steps.changes.outputs.any_changed == 'true'
         run: |
           go mod tidy
           make test
