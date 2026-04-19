@@ -1,5 +1,5 @@
 apiVersion: v2
-name: octopus-permissions-controller
+name: octopus-permissions-controller-chart
 description: A Helm chart to distribute octopus-permissions-controller
 type: application
 
