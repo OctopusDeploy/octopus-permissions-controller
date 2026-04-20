@@ -950,7 +950,7 @@ spec:
           value: ""
         - name: TARGET_NAMESPACE_REGEX
           value: ""
-        image: octopusdeploy/octopus-permissions-controller:v1.2.0
+        image: octopusdeploy/octopus-permissions-controller:v1.2.1
         livenessProbe:
           httpGet:
             path: /healthz
