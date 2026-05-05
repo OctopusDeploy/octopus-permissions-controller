@@ -16,10 +16,17 @@ manager:
   replicas: 1
 
   image:
+<<<<<<< HEAD
+    repository: controller
+    ## Image tag (defaults to Chart.appVersion if not set)
+    ##
+    # tag: ""
+=======
     repository: octopusdeploy/octopus-permissions-controller
     ## Image tag (defaults to Chart.appVersion if not set)
     ##
     tag: "v1.2.1"
+>>>>>>> tmp-original-05-05-26-00-18
     pullPolicy: IfNotPresent
 
   ## Arguments
@@ -27,6 +34,8 @@ manager:
   args:
     - --leader-elect
 
+<<<<<<< HEAD
+=======
   ## Environment variables
   ##
   env:
@@ -40,6 +49,7 @@ manager:
   ##
   envOverrides: {}
 
+>>>>>>> tmp-original-05-05-26-00-18
   ## Image pull secrets
   ##
   # imagePullSecrets:

@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 /*
 Copyright 2025.
 
@@ -14,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+>>>>>>> tmp-original-05-05-26-00-18
 // Package v1beta1 contains API Schema definitions for the  v1beta1 API group.
 // +kubebuilder:object:generate=true
 // +groupName=agent.octopus.com

@@ -92,6 +92,8 @@ spec:
         {{- end }}
         command:
         - /manager
+<<<<<<< HEAD
+=======
         env:
 {{- if or .Values.manager.env (and (kindIs "map" .Values.manager.envOverrides) (not (empty .Values.manager.envOverrides))) }}
           {{- if .Values.manager.env }}
@@ -106,6 +108,7 @@ spec:
           {{- else }}
           []
           {{- end }}
+>>>>>>> tmp-original-05-05-26-00-18
         image: "{{ .Values.manager.image.repository }}{{- if not (contains "@" .Values.manager.image.repository) }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}{{- end }}"
         {{- with .Values.manager.image.pullPolicy }}
         imagePullPolicy: {{ . }}
@@ -118,6 +121,9 @@ spec:
           periodSeconds: 20
         name: manager
         ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         - containerPort: {{ .Values.webhook.port }}
           name: webhook-server
           protocol: TCP

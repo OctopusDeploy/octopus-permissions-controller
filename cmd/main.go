@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 /*
 Copyright 2025.
 
@@ -14,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+>>>>>>> tmp-original-05-05-26-00-18
 package main
 
 import (
@@ -233,6 +236,20 @@ func main() {
 		os.Exit(1)
 	}
 
+<<<<<<< HEAD
+	if err := (&controller.WorkloadServiceAccountReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "workloadserviceaccount")
+		os.Exit(1)
+	}
+	if err := (&controller.ClusterWorkloadServiceAccountReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "clusterworkloadserviceaccount")
+=======
 	// Check configuration for namespace filtering
 	var targetNamespaces []string
 	var targetNamespaceRegex *regexp.Regexp
@@ -327,6 +344,7 @@ func main() {
 		Recorder:       eventRecorder,
 	}).SetupWithManager(mgr, gcTracker); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "WorkloadServiceAccount")
+>>>>>>> tmp-original-05-05-26-00-18
 		os.Exit(1)
 	}
 	// nolint:goconst
