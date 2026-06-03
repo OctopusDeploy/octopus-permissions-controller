@@ -70,7 +70,7 @@ You can apply the samples (examples) from the config/sample:
 kubectl apply -k config/samples/
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+>**NOTE**: Ensure that the samples have default values to test it out.
 
 ### To Uninstall
 **Delete the instances (CRs) from the cluster:**
