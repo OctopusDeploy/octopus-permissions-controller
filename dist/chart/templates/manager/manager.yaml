@@ -74,7 +74,7 @@ spec:
       {{- end }}
       containers:
       - args:
-        {{- if .Values.metrics.enable }}
+        {{- if .Values.metrics.enabled }}
         - --metrics-bind-address=:{{ .Values.metrics.port }}
         {{- if not .Values.metrics.secure }}
         - --metrics-secure=false
@@ -87,11 +87,13 @@ spec:
         {{- range .Values.manager.args }}
         - {{ . }}
         {{- end }}
-        {{- if .Values.certManager.enable }}
+        {{- if .Values.certManager.enabled }}
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         {{- end }}
         command:
         - /manager
+<<<<<<< HEAD
+=======
         env:
 {{- if or .Values.manager.env (and (kindIs "map" .Values.manager.envOverrides) (not (empty .Values.manager.envOverrides))) }}
           {{- if .Values.manager.env }}
@@ -106,6 +108,7 @@ spec:
           {{- else }}
           []
           {{- end }}
+>>>>>>> tmp-original-16-06-26-00-34
         image: "{{ .Values.manager.image.repository }}{{- if not (contains "@" .Values.manager.image.repository) }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}{{- end }}"
         {{- with .Values.manager.image.pullPolicy }}
         imagePullPolicy: {{ . }}
@@ -118,6 +121,9 @@ spec:
           periodSeconds: 20
         name: manager
         ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         - containerPort: {{ .Values.webhook.port }}
           name: webhook-server
           protocol: TCP
@@ -143,11 +149,19 @@ spec:
           {{- if .Values.manager.extraVolumeMounts }}
           {{- toYaml .Values.manager.extraVolumeMounts | nindent 10 }}
           {{- end }}
+<<<<<<< HEAD
+          {{- if .Values.certManager.enabled }}
+          - mountPath: /tmp/k8s-webhook-server/serving-certs
+            name: webhook-certs
+            readOnly: true
+          {{- end }}
+=======
         {{- if .Values.certManager.enable }}
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: webhook-certs
           readOnly: true
         {{- end }}
+>>>>>>> tmp-original-16-06-26-00-34
       securityContext:
         {{- if .Values.manager.podSecurityContext }}
         {{- toYaml .Values.manager.podSecurityContext | nindent 8 }}
@@ -157,6 +171,18 @@ spec:
       serviceAccountName: {{ include "octopus-permissions-controller.serviceAccountName" . }}
       {{- if and (hasKey .Values.manager "terminationGracePeriodSeconds") (ne .Values.manager.terminationGracePeriodSeconds nil) }}
       terminationGracePeriodSeconds: {{ .Values.manager.terminationGracePeriodSeconds }}
+<<<<<<< HEAD
+      {{- end }}
+      volumes:
+        {{- if .Values.manager.extraVolumes }}
+        {{- toYaml .Values.manager.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.certManager.enabled }}
+        - name: webhook-certs
+          secret:
+            secretName: webhook-server-cert
+        {{- end }}
+=======
       {{- end }}
       volumes:
         {{- if .Values.manager.extraVolumes }}
@@ -167,4 +193,5 @@ spec:
         secret:
           secretName: webhook-server-cert
       {{- end }}
+>>>>>>> tmp-original-16-06-26-00-34
 {{- end }}

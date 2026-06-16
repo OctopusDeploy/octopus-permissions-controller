@@ -1,4 +1,8 @@
+<<<<<<< HEAD
+{{- if and .Values.certManager.enabled .Values.metrics.enabled .Values.metrics.secure }}
+=======
 {{- if and .Values.certManager.enable .Values.metrics.enable .Values.metrics.secure }}
+>>>>>>> tmp-original-16-06-26-00-34
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

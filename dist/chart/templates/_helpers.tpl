@@ -51,11 +51,19 @@ Dynamically calculates safe truncation to ensure total name length <= 63 chars.
 
 {{/*
 ServiceAccount name to use.
+<<<<<<< HEAD
+If serviceAccount.enabled is false and serviceAccount.name is set, use that name.
+Otherwise, use the standard resourceName helper with "controller-manager" suffix.
+*/}}
+{{- define "octopus-permissions-controller.serviceAccountName" -}}
+{{- if and (not (.Values.serviceAccount.enabled | default true)) .Values.serviceAccount.name }}
+=======
 If serviceAccount.enable is false and serviceAccount.name is set, use that name.
 Otherwise, use the standard resourceName helper with "controller-manager" suffix.
 */}}
 {{- define "octopus-permissions-controller.serviceAccountName" -}}
 {{- if and (not (.Values.serviceAccount.enable | default true)) .Values.serviceAccount.name }}
+>>>>>>> tmp-original-16-06-26-00-34
 {{- .Values.serviceAccount.name }}
 {{- else }}
 {{- include "octopus-permissions-controller.resourceName" (dict "suffix" "controller-manager" "context" .) }}

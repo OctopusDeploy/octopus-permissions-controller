@@ -1,4 +1,8 @@
+<<<<<<< HEAD
+{{- if and .Values.metrics.enabled .Values.metrics.secure }}
+=======
 {{- if and .Values.metrics.enable .Values.metrics.secure }}
+>>>>>>> tmp-original-16-06-26-00-34
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

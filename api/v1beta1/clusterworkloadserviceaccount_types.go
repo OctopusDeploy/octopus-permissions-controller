@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 /*
 Copyright 2025.
 
@@ -14,11 +16,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+>>>>>>> tmp-original-16-06-26-00-34
 package v1beta1
 
 import (
 	v1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -104,5 +108,8 @@ func (cwsa *ClusterWorkloadServiceAccount) GetConditions() *[]metav1.Condition {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterWorkloadServiceAccount{}, &ClusterWorkloadServiceAccountList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ClusterWorkloadServiceAccount{}, &ClusterWorkloadServiceAccountList{})
+		return nil
+	})
 }

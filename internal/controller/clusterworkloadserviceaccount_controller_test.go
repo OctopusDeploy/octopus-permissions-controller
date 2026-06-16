@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+package controller
+
+import (
+	. "github.com/onsi/ginkgo/v2"
+=======
 /*
 Copyright 2025.
 
@@ -33,10 +39,18 @@ import (
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/rules"
+>>>>>>> tmp-original-16-06-26-00-34
 )
 
 var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 	Context("When reconciling a resource", func() {
+<<<<<<< HEAD
+
+		It("should successfully reconcile the resource", func() {
+
+			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
+			// Example: If you expect a certain status condition after reconciliation, verify it here.
+=======
 		const resourceName = "test-cwsa-resource"
 
 		ctx := context.Background()
@@ -294,6 +308,7 @@ var _ = Describe("ClusterWorkloadServiceAccount Controller", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
+>>>>>>> tmp-original-16-06-26-00-34
 		})
 	})
 })
