@@ -226,7 +226,7 @@ func main() {
 		// the manager stops, so would be fine to enable this option. However,
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
@@ -305,6 +305,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// not leader-elected: webhooks are served by every replica, so every replica needs
+	// its own copy of the state the pod webhook reads
+	stateSyncer := reconciliation.NewStateSyncer(&engine, batchDebounceInterval, mgr.Elected())
+
+	if err := mgr.Add(stateSyncer); err != nil {
+		setupLog.Error(err, "unable to add state syncer")
+		os.Exit(1)
+	}
+
+	if err := (&controller.StateSyncReconciler{
+		Syncer: stateSyncer,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "StateSync")
+		os.Exit(1)
+	}
+
 	metricsReporter := metrics.NewMetricsReporter(mgr.GetClient())
 
 	if err := mgr.Add(metricsReporter); err != nil {
@@ -377,6 +393,11 @@ func main() {
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "Failed to set up ready check")
+		os.Exit(1)
+	}
+	// keeps a starting replica out of the webhook Service endpoints until it can resolve scopes
+	if err := mgr.AddReadyzCheck("engine-state", stateSyncer.ReadyzCheck); err != nil {
+		setupLog.Error(err, "Failed to set up engine state ready check")
 		os.Exit(1)
 	}
 

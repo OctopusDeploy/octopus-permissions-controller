@@ -153,23 +153,23 @@ func (i *InMemoryEngine) ApplyBatchPlan(ctx context.Context, plan BatchPlan) err
 	return nil
 }
 
-// RebuildStateFromCluster reconstructs the in-memory state by querying all WSA/CWSA resources
-// from the cluster and recomputing the complete scope mappings. This is useful for:
-// - Controller initialization/startup
-// - Recovery from state corruption
-// - Debugging state inconsistencies
-func (i *InMemoryEngine) RebuildStateFromCluster(ctx context.Context) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+// clusterState is the complete set of mappings derived from the WSA/CWSA resources
+// currently in the cluster.
+type clusterState struct {
+	scopeToSA     map[Scope]ServiceAccountName
+	saToWSAMap    map[ServiceAccountName]map[types.NamespacedName]WSAResource
+	vocabulary    GlobalVocabulary
+	resourceCount int
+}
 
-	logger := log.FromContext(ctx).WithName("rebuildState")
-	logger.Info("Rebuilding state from cluster")
-
+// computeStateFromCluster reads no shared engine state, so callers must not hold the
+// lock while calling it.
+func (i *InMemoryEngine) computeStateFromCluster(ctx context.Context) (clusterState, error) {
 	allResources := make([]WSAResource, 0)
 
 	wsaIter, err := i.GetWorkloadServiceAccounts(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list WorkloadServiceAccounts: %w", err)
+		return clusterState{}, fmt.Errorf("failed to list WorkloadServiceAccounts: %w", err)
 	}
 
 	for wsa := range wsaIter {
@@ -180,7 +180,7 @@ func (i *InMemoryEngine) RebuildStateFromCluster(ctx context.Context) error {
 
 	cwsaIter, err := i.GetClusterWorkloadServiceAccounts(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list ClusterWorkloadServiceAccounts: %w", err)
+		return clusterState{}, fmt.Errorf("failed to list ClusterWorkloadServiceAccounts: %w", err)
 	}
 
 	for cwsa := range cwsaIter {
@@ -189,19 +189,41 @@ func (i *InMemoryEngine) RebuildStateFromCluster(ctx context.Context) error {
 		}
 	}
 
-	logger.Info("Queried all resources from cluster", "totalResources", len(allResources))
-
 	scopeComputation := NewScopeComputationService(nil, nil)
 	scopeMap, vocabulary := scopeComputation.ComputeScopesForWSAs(allResources)
-
 	scopeToSA, saToWSAMap, _, _ := scopeComputation.GenerateServiceAccountMappings(scopeMap)
+
+	return clusterState{
+		scopeToSA:     scopeToSA,
+		saToWSAMap:    saToWSAMap,
+		vocabulary:    vocabulary,
+		resourceCount: len(allResources),
+	}, nil
+}
+
+// RebuildStateFromCluster reconstructs the in-memory state by querying all WSA/CWSA resources
+// from the cluster and recomputing the complete scope mappings
+func (i *InMemoryEngine) RebuildStateFromCluster(ctx context.Context) error {
+	logger := log.FromContext(ctx).WithName("rebuildState")
+	logger.Info("Rebuilding state from cluster")
+
+	state, err := i.computeStateFromCluster(ctx)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("Queried all resources from cluster", "totalResources", state.resourceCount)
+
+	// only the swap takes the lock; the webhook holds a read lock on every request
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
 	oldScopeCount := len(i.scopeToSA)
 	oldSACount := len(i.saToWsaMap)
 
-	i.scopeToSA = scopeToSA
-	i.saToWsaMap = saToWSAMap
-	i.vocabulary = &vocabulary
+	i.scopeToSA = state.scopeToSA
+	i.saToWsaMap = state.saToWSAMap
+	i.vocabulary = &state.vocabulary
 	i.ScopeComputation = NewScopeComputationService(i.vocabulary, i.scopeToSA)
 
 	logger.Info("State rebuilt from cluster",
@@ -209,7 +231,38 @@ func (i *InMemoryEngine) RebuildStateFromCluster(ctx context.Context) error {
 		"newScopeCount", len(i.scopeToSA),
 		"oldSACount", oldSACount,
 		"newSACount", len(i.saToWsaMap),
-		"resourcesProcessed", len(allResources))
+		"resourcesProcessed", state.resourceCount)
+
+	return nil
+}
+
+// RefreshScopeMappings recomputes only the scope-to-SA state the pod webhook reads,
+// for replicas not running reconciliation. See reconciliation.StateSyncer.
+//
+// Leaves saToWsaMap alone deliberately: handleDeletion treats a WSA's absence from it
+// as the signal that staging processed the deletion, so refreshing it here would drop
+// finalizers before the leader had run GC.
+func (i *InMemoryEngine) RefreshScopeMappings(ctx context.Context) error {
+	logger := log.FromContext(ctx).WithName("refreshScopeMappings")
+
+	state, err := i.computeStateFromCluster(ctx)
+	if err != nil {
+		return err
+	}
+
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	oldScopeCount := len(i.scopeToSA)
+
+	i.scopeToSA = state.scopeToSA
+	i.vocabulary = &state.vocabulary
+	i.ScopeComputation = NewScopeComputationService(i.vocabulary, i.scopeToSA)
+
+	logger.V(1).Info("Scope mappings refreshed",
+		"oldScopeCount", oldScopeCount,
+		"newScopeCount", len(i.scopeToSA),
+		"resourcesProcessed", state.resourceCount)
 
 	return nil
 }
