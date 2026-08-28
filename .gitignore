@@ -33,3 +33,6 @@ certificates
 # Load test logs
 load-test/logs/
 load-test/*.log
+
+# macOS Finder metadata
+.DS_Store
