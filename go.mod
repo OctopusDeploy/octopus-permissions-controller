@@ -1,8 +1,8 @@
 module github.com/octopusdeploy/octopus-permissions-controller
 
-go 1.25.0
+go 1.26.0
 
-toolchain go1.25.4
+toolchain go1.26.7
 
 require (
 	github.com/google/go-cmp v0.7.0
