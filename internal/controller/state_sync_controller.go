@@ -6,7 +6,6 @@ import (
 	agentoctopuscomv1beta1 "github.com/octopusdeploy/octopus-permissions-controller/api/v1beta1"
 	"github.com/octopusdeploy/octopus-permissions-controller/internal/reconciliation"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,7 +41,7 @@ func (r *StateSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(enqueueSelf),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{NeedLeaderElection: ptr.To(false)}).
+		WithOptions(controller.Options{NeedLeaderElection: new(false)}).
 		Named("statesync").
 		Complete(r)
 }
