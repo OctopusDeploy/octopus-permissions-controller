@@ -12,3 +12,8 @@ jobs:
         uses: ytanikin/PRConventionalCommits@1.3.0
         with:
           task_types: '["feat","fix","docs","test","ci","refactor","perf","chore","revert"]'
+          # Dependabot-triggered runs get a read-only GITHUB_TOKEN, so applying the
+          # label fails with "Resource not accessible by integration" and takes this
+          # required check down with it. Title validation needs no write access, so
+          # only label when the actor can.
+          add_label: ${{ github.actor != 'dependabot[bot]' }}
