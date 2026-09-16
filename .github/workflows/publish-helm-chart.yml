@@ -79,14 +79,14 @@ jobs:
       - name: Push helm chart to Octopus Deploy 🐙
         uses: OctopusDeploy/push-package-action@v4
         with:
-          space: "Modern Deployments"
+          space: "Swordfish"
           packages: ${{ needs.version.outputs.package_name }}
           overwrite_mode: IgnoreIfExists
 
       - name: Create a release in Octopus Deploy 🐙
         uses: OctopusDeploy/create-release-action@v4
         with:
-          space: "Modern Deployments"
+          space: "Swordfish"
           project: "Octopus Permissions Controller"
           release_number: ${{ needs.version.outputs.version }}
           package_version: ${{ needs.version.outputs.version }}
