@@ -10,6 +10,9 @@ on:
         type: string
         description: "The version of the helm chart to publish (e.g. v1.2.3-preview.1)"
 
+permissions:
+  contents: read
+
 jobs:
   version:
     runs-on: ubuntu-latest
@@ -21,8 +24,11 @@ jobs:
       - name: Generate workflow application version
         if: github.event_name == 'workflow_dispatch'
         id: release_version
+        # Pass the input via env rather than interpolating it into the script
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          tag=${{ inputs.version }}
+          tag="$INPUT_VERSION"
           echo "version=${tag#v}" >> $GITHUB_ENV
           echo "package_name=octopus-permissions-controller-chart-${tag#v}.tgz" >> $GITHUB_ENV
 
