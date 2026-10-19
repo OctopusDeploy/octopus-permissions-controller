@@ -4,11 +4,10 @@ on:
     branches:
       - main
 
-# The extra token is used for release-please to create the PR to allow actions to run against it
+# release-please authenticates with GHA_TOKEN (so actions run against its PR); the default
+# GITHUB_TOKEN needs nothing beyond read
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 jobs:
   release-please:

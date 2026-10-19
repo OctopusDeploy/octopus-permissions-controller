@@ -4,8 +4,9 @@ on:
     branches:
       - release-please--branches--main
 
+# Checkout persists GHA_TOKEN, which is what the push uses; the default GITHUB_TOKEN only needs read
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   update-versions:
