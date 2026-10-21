@@ -280,7 +280,7 @@ func main() {
 		"stageTimeout", stageTimeout)
 
 	// TODO: Update to use new event recorder API
-	//nolint:staticcheck // We should move this over, but it's a lot of work for this change
+	//nolint:staticcheck // We should move this over, but it's a lot of work for this change...
 	eventRecorder := mgr.GetEventRecorderFor("octopus-permissions-controller")
 
 	eventCollector := reconciliation.NewEventCollector(batchDebounceInterval, batchMaxSize)
