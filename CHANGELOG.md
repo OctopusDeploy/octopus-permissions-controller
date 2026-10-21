@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.3.0...v1.3.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* rebuild with non-impacted SSL certificates ([0f440a0](https://github.com/OctopusDeploy/octopus-permissions-controller/commit/0f440a05895af09d6377d6bb334e376fa3b7aaa7))
+
 ## [1.3.0](https://github.com/OctopusDeploy/octopus-permissions-controller/compare/v1.2.1...v1.3.0) (2026-08-25)
 
 
