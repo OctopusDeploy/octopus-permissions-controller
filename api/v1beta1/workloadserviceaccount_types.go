@@ -119,7 +119,3 @@ type WorkloadServiceAccountList struct {
 func (wsa *WorkloadServiceAccount) GetConditions() *[]metav1.Condition {
 	return &wsa.Status.Conditions
 }
-
-func init() {
-	SchemeBuilder.Register(&WorkloadServiceAccount{}, &WorkloadServiceAccountList{})
-}
